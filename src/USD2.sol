@@ -403,7 +403,6 @@ contract USD2 is ERC20 {
         // convert non-redeemable shares to redeemable shares
         uint amount = convertToAssets(nonRedeemableCollateralShares[msg.sender], totalNonRedeemableCollateral, totalNonRedeemableShares);
         uint shares = convertToShares(amount, totalRedeemableCollateral, totalRedeemableShares);
-        require(shares > 0, "USD2: insufficient shares");
         // delete old state
         totalNonRedeemableCollateral -= amount;
         totalNonRedeemableShares -= nonRedeemableCollateralShares[msg.sender];
@@ -417,7 +416,7 @@ contract USD2 is ERC20 {
         // convert paid debt to free debt
         uint paidShares = paidDebtShares[msg.sender];
         uint debt = mulDivUp(paidShares, totalPaidDebt, totalPaidDebtShares);
-        require(debt > 0, "USD2: insufficient debt");
+        if(paidShares > 0) require(debt > 0, "USD2: insufficient debt");
         paidDebtShares[msg.sender] = 0;
         totalPaidDebt -= debt;
         totalPaidDebtShares -= paidShares;
@@ -435,7 +434,6 @@ contract USD2 is ERC20 {
         // convert redeemable shares to non-redeemable shares
         uint amount = convertToAssets(redeemableCollateralShares[msg.sender], totalRedeemableCollateral, totalRedeemableShares);
         uint shares = convertToShares(amount, totalRedeemableCollateral, totalRedeemableShares);
-        require(shares > 0, "USD2: insufficient shares");
         // delete old state
         totalRedeemableCollateral -= amount;
         totalRedeemableShares -= redeemableCollateralShares[msg.sender];
@@ -449,7 +447,7 @@ contract USD2 is ERC20 {
         // convert free debt to paid debt
         uint freeShares = freeDebtShares[msg.sender];
         uint debt = mulDivDown(freeShares, totalFreeDebt, totalFreeDebtShares);
-        require(debt > 0, "USD2: insufficient debt");
+        if(freeShares > 0) require(debt > 0, "USD2: insufficient debt");
         freeDebtShares[msg.sender] = 0;
         totalFreeDebt -= debt;
         totalFreeDebtShares -= freeShares;
