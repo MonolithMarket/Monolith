@@ -23,6 +23,7 @@ contract USD2 is ERC20 {
     uint public targetFreeDebtRatioEndBps = 4000;
     uint public rateUpdateInterval = 7 days;
     uint public rateStepBps = 100;
+    uint public redeemFeeBps = 30; // 0.3%
     uint public immutable IMMUTABILITY_DEADLINE;
     uint internal constant MAX_UINT256 = 2**256 - 1;
     ICollateral public immutable collateral;
@@ -109,6 +110,11 @@ contract USD2 is ERC20 {
 
     function setRateStepBps(uint _rateStepBps) external onlyOperator beforeDeadline {
         rateStepBps = _rateStepBps;
+    }
+
+    function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
+        require(_redeemFeeBps < 10000, "USD2: invalid redeem fee");
+        redeemFeeBps = _redeemFeeBps;
     }
 
     function mulDivDown(
@@ -380,17 +386,22 @@ contract USD2 is ERC20 {
         updateFreeDebtRatio();
     }
 
+    function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
+        if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
+        uint price = getCollateralPrice();
+        amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+    }
+
     function redeem(uint amountIn, uint minAmountOut) external returns (uint amountOut) {
         accrueInterest();
-        
+
+        // calculate amountOut
+        amountOut = getRedeemAmountOut(amountIn);
+        require(amountOut >= minAmountOut, "USD2: insufficient amount out");
+
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn; // can this be abused in a share inflation attack?
         _burn(msg.sender, amountIn);
-
-        // calculate amountOut
-        uint price = getCollateralPrice();
-        amountOut = amountIn * 1e18 / price;
-        require(amountOut >= minAmountOut, "USD2: insufficient amount out");
 
         // pay caller from redeemable collateral
         totalRedeemableCollateral -= amountOut; // can this be abused in a share inflation attack?
