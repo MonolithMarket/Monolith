@@ -317,13 +317,13 @@ contract USD2 is ERC20 {
         // apply repayment
         if(redeemableBorrowers[borrower]) {
             uint shares = convertToShares(repayAmount, totalFreeDebt, totalFreeDebtShares);
-            require(shares > 0, "USD2: insufficient shares");
+            require(shares > 0, "USD2: insufficient debt shares");
             freeDebtShares[borrower] -= shares;
             totalFreeDebt -= repayAmount;
             totalFreeDebtShares -= shares;
         } else {
             uint shares = convertToShares(repayAmount, totalPaidDebt, totalPaidDebtShares);
-            require(shares > 0, "USD2: insufficient shares");
+            require(shares > 0, "USD2: insufficient debt shares");
             paidDebtShares[borrower] -= shares;
             totalPaidDebt -= repayAmount;
             totalPaidDebtShares -= shares;
@@ -332,6 +332,24 @@ contract USD2 is ERC20 {
         // calculate collateral reward
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
         uint collateralReward = collateralRewardValue * 1e18 / price;
+
+        // reduce collateral
+        if(redeemableBorrowers[borrower]) {
+            uint256 supply = totalRedeemableShares; // Saves an extra SLOAD if totalRedeemableShares is non-zero.
+            uint shares = supply == 0 ? collateralReward : mulDivUp(collateralReward, supply, totalRedeemableCollateral);
+            require(shares > 0, "USD2: insufficient collateral shares");
+            redeemableCollateralShares[borrower] -= shares;
+            totalRedeemableCollateral -= collateralReward;
+            totalRedeemableShares -= shares;
+        } else {
+            uint256 supply = totalNonRedeemableShares; // Saves an extra SLOAD if totalNonRedeemableShares is non-zero.
+            uint shares = supply == 0 ? collateralReward : mulDivUp(collateralReward, supply, totalNonRedeemableShares);
+            require(shares > 0, "USD2: insufficient collateral shares");
+            nonRedeemableCollateralShares[borrower] -= shares;
+            totalNonRedeemableCollateral -= collateralReward;
+            totalNonRedeemableShares -= shares;
+        }
+
         require(collateral.transfer(msg.sender, collateralReward));
         _burn(msg.sender, repayAmount);
         updateFreeDebtRatio();
