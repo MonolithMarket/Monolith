@@ -219,7 +219,7 @@ contract USD2 is ERC20 {
         );
     
         // update debt
-        uint interest = totalPaidDebt * rateIntegral / 1e18 / 365 days;
+        uint interest = totalPaidDebt * rateIntegral / 1e18;
 
         // update debt
         totalPaidDebt += interest;
