@@ -16,7 +16,7 @@ contract SUSD2 is ERC4626 {
     uint internal _totalAssets;
     uint public feeBps;
 
-    constructor(address _operator) ERC4626(ERC20(msg.sender), "Staked USD2", "sUSD2") {
+    constructor(address _operator, address _usd2) ERC4626(ERC20(_usd2), "Staked USD2", "sUSD2") {
         operator = _operator;
     }
 

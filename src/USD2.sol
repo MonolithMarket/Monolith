@@ -2,7 +2,7 @@
 pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC20.sol";
-import "./sUSD2.sol";
+import "lib/solmate/src/utils/SignedWadMath.sol";
 
 interface ICollateral {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
@@ -21,14 +21,12 @@ contract USD2 is ERC20 {
     uint public writeOffIncentiveBps = 2500;
     uint public targetFreeDebtRatioStartBps = 2000;
     uint public targetFreeDebtRatioEndBps = 4000;
-    uint public rateUpdateInterval = 7 days;
-    uint public rateStepBps = 100;
     uint public redeemFeeBps = 30; // 0.3%
     uint public immutable IMMUTABILITY_DEADLINE;
     uint internal constant MAX_UINT256 = 2**256 - 1;
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
-    address public immutable sUSD2;
+    address public sUSD2;
     address public operator;
 
     // collateral state
@@ -49,17 +47,16 @@ contract USD2 is ERC20 {
     mapping(address => uint) public paidDebtShares;
 
     // interest state
-    uint public borrowRateBps;
+    uint private immutable WAD_LN2 = uint(wadLn(2*1e18));
+    uint public expRate = uint(wadLn(2*1e18)) / 7 days; // 7 days half-life
+    uint public lastBorrowRateMantissa = 1e16; // 1%
     uint public lastAccrue;
-    uint public cumulativeFreeDebtRatioBps;
     uint public lastFreeDebtRatioBps;
-    uint public lastRateUpdate;
 
     constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
         collateral = ICollateral(_collateral);
         feed = IChainlinkFeed(_feed);
         operator = _operator;
-        sUSD2 = address(new SUSD2(_operator));
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
     }
 
@@ -73,6 +70,11 @@ contract USD2 is ERC20 {
         _;
     }
 
+    function initialize(address _sUSD2) external {
+        require(sUSD2 == address(0), "USD2: already initialized");
+        sUSD2 = _sUSD2;
+    }
+
     function burn(uint amount) external {
         _burn(msg.sender, amount);
     }
@@ -80,6 +82,11 @@ contract USD2 is ERC20 {
     function setOperator(address _operator) external {
         require(msg.sender == operator, "USD2: not operator");
         operator = _operator;
+    }
+
+    function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline {
+        require(_halfLife > 0, "USD2: invalid half-life");
+        expRate = WAD_LN2 / _halfLife;
     }
 
     function setCollateralFactorBps(uint _collateralFactorBps) external onlyOperator beforeDeadline {
@@ -102,14 +109,6 @@ contract USD2 is ERC20 {
         require(_end <= 10000, "USD2: invalid target free debt ratio range");
         targetFreeDebtRatioStartBps = _start;
         targetFreeDebtRatioEndBps = _end;
-    }
-
-    function setRateUpdateInterval(uint _rateUpdateInterval) external onlyOperator beforeDeadline {
-        rateUpdateInterval = _rateUpdateInterval;
-    }
-
-    function setRateStepBps(uint _rateStepBps) external onlyOperator beforeDeadline {
-        rateStepBps = _rateStepBps;
     }
 
     function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
@@ -183,33 +182,51 @@ contract USD2 is ERC20 {
         return sharesSupply == 0 ? assets : mulDivDown(assets, sharesSupply, totalAssets);
     }
 
+    function calculateRate(
+        uint _lastRate,
+        uint _timeElapsed,
+        uint _expRate,
+        uint _lastFreeDebtRatioBps,
+        uint _targetFreeDebtRatioStartBps,
+        uint _targetFreeDebtRatioEndBps
+        ) internal pure returns (uint currBorrowRate, uint integral) {
+        uint growthDecay = uint(wadExp(int(_expRate * _timeElapsed)));
+        if(_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
+            currBorrowRate = _lastRate * growthDecay / 1e18;
+            integral = (currBorrowRate - _lastRate) * 1e18 / _expRate;
+        } else if(_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
+            currBorrowRate = _lastRate * 1e18 / growthDecay;
+            integral =  (_lastRate - currBorrowRate) * 1e18 / _expRate;
+        } else {
+            currBorrowRate = _lastRate;
+            integral = _lastRate * _timeElapsed;
+        }
+    
+    }
+
     function accrueInterest() public {
         uint timeElapsed = block.timestamp - lastAccrue;
         if(timeElapsed == 0) return;
 
-        // accrue interest
-        uint256 interest = totalPaidDebt * borrowRateBps * timeElapsed / 10000 / 365 days;
+        // calculate rate
+        (uint currBorrowRate, uint rateIntegral) = calculateRate(
+            lastBorrowRateMantissa,
+            timeElapsed,
+            expRate,
+            lastFreeDebtRatioBps,
+            targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps
+        );
+    
+        // update debt
+        uint interest = totalPaidDebt * rateIntegral * timeElapsed / 1e18 / 365 days;
+
+        // update debt
         totalPaidDebt += interest;
         if(interest > 0) _mint(sUSD2, interest);
-        
-        // add last free debt ratio to cumulative free debt ratio numerator
-        cumulativeFreeDebtRatioBps += lastFreeDebtRatioBps * timeElapsed;
-
-        // update accrue timestamp
         lastAccrue = block.timestamp;
-
-        // potentially update rate
-        uint timeSinceRateUpdate = block.timestamp - lastRateUpdate;
-        if(timeSinceRateUpdate >= rateUpdateInterval) {
-            uint avgFreeDebtRatioBps = cumulativeFreeDebtRatioBps / timeSinceRateUpdate;
-            if(avgFreeDebtRatioBps < targetFreeDebtRatioStartBps) {
-                borrowRateBps += rateStepBps;
-            } else if(avgFreeDebtRatioBps > targetFreeDebtRatioEndBps) {
-                borrowRateBps = borrowRateBps > rateStepBps ? borrowRateBps - rateStepBps : 0;
-            } // else rate remains unchanged
-            cumulativeFreeDebtRatioBps = 0;
-            lastRateUpdate = block.timestamp;
-        }
+        lastBorrowRateMantissa = currBorrowRate;
+        updateFreeDebtRatio();
     }
 
     function updateFreeDebtRatio() internal {
