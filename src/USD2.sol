@@ -59,7 +59,6 @@ contract USD2 is ERC20 {
     // interest state
     uint64 private immutable WAD_LN2 = uint64(uint(wadLn(2*1e18)));
     AccrueInterestData public accrueInterestData = AccrueInterestData(uint96(1e16), uint64(0), uint64(uint((wadLn(2*1e18) / 7 days))), 2000, 4000);
-    uint public lastFreeDebtRatioBps;
 
     constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
         collateral = ICollateral(_collateral);
@@ -214,15 +213,15 @@ contract USD2 is ERC20 {
         uint _lastRate,
         uint _timeElapsed,
         uint _expRate,
-        uint _lastFreeDebtRatioBps,
+        uint _freeDebtRatioBps,
         uint _targetFreeDebtRatioStartBps,
         uint _targetFreeDebtRatioEndBps
         ) internal pure returns (uint currBorrowRate, uint integral) {
         uint growthDecay = uint(wadExp(int(_expRate * _timeElapsed)));
-        if(_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
+        if(_freeDebtRatioBps < _targetFreeDebtRatioStartBps) {
             currBorrowRate = _lastRate * growthDecay / 1e18;
             integral = (currBorrowRate - _lastRate) * 1e18 / _expRate;
-        } else if(_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
+        } else if(_freeDebtRatioBps > _targetFreeDebtRatioEndBps) {
             currBorrowRate = _lastRate * 1e18 / growthDecay;
             integral =  (_lastRate - currBorrowRate) * 1e18 / _expRate;
         } else {
@@ -241,7 +240,7 @@ contract USD2 is ERC20 {
             accrueInterestData.lastBorrowRateMantissa,
             timeElapsed,
             accrueInterestData.expRate,
-            lastFreeDebtRatioBps,
+            freeDebtRatioBps(),
             accrueInterestData.targetFreeDebtRatioStartBps,
             accrueInterestData.targetFreeDebtRatioEndBps
         );
@@ -254,12 +253,11 @@ contract USD2 is ERC20 {
         if(interest > 0) _mint(sUSD2, interest);
         accrueInterestData.lastAccrue = uint64(block.timestamp);
         accrueInterestData.lastBorrowRateMantissa = uint96(currBorrowRate);
-        updateFreeDebtRatio();
-    }
+        }
 
-    function updateFreeDebtRatio() internal {
+    function freeDebtRatioBps() public view returns(uint) {
         uint _totalFreeDebt = totalFreeDebt;
-        lastFreeDebtRatioBps = _totalFreeDebt == 0 ? 0 : _totalFreeDebt * 10000 / (_totalFreeDebt + totalPaidDebt);
+        return _totalFreeDebt == 0 ? 0 : _totalFreeDebt * 10000 / (_totalFreeDebt + totalPaidDebt);
     }
 
     function depositCollateral(uint128 amount) external {
@@ -328,8 +326,7 @@ contract USD2 is ERC20 {
         uint debtBalance = getDebtOf(msg.sender);
         require(borrowingPower >= debtBalance, "USD2: insufficient borrowing power");
         _mint(msg.sender, amount);
-        updateFreeDebtRatio();
-    }
+        }
 
     function repay(uint amount) external {
         accrueInterest();
@@ -347,8 +344,7 @@ contract USD2 is ERC20 {
             totalPaidDebtShares -= shares;
         }
         _burn(msg.sender, amount);
-        updateFreeDebtRatio();
-    }
+        }
 
     function liquidate(address borrower, uint repayAmount) external returns(uint) {
         accrueInterest();
@@ -398,8 +394,7 @@ contract USD2 is ERC20 {
 
         require(collateral.transfer(msg.sender, collateralReward));
         _burn(msg.sender, repayAmount);
-        updateFreeDebtRatio();
-        return collateralReward;
+            return collateralReward;
     }
 
     function writeOff(address borrower) external {
@@ -447,8 +442,7 @@ contract USD2 is ERC20 {
         totalRedeemable.collateral += uint128(redeemableBorrowersReward);
         totalNonRedeemable.collateral += uint128(nonRedeemableBorrowersReward);
         require(collateral.transfer(msg.sender, callerReward));
-        updateFreeDebtRatio();
-    }
+        }
 
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
@@ -470,8 +464,7 @@ contract USD2 is ERC20 {
         // pay caller from redeemable collateral
         totalRedeemable.collateral -= uint128(amountOut); // can this be abused in a share inflation attack?
         require(collateral.transfer(msg.sender, amountOut));
-        updateFreeDebtRatio();
-    }
+        }
 
     function optInRedemptions() external {
         accrueInterest();
@@ -501,8 +494,7 @@ contract USD2 is ERC20 {
         freeDebtShares[msg.sender] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
-        updateFreeDebtRatio();
-    }
+        }
 
     function optOutRedemptions() external {
         accrueInterest();
@@ -532,7 +524,6 @@ contract USD2 is ERC20 {
         paidDebtShares[msg.sender] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
-        updateFreeDebtRatio();
-    }
+        }
 
 }
