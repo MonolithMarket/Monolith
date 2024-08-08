@@ -42,10 +42,10 @@ contract USD2 is ERC20 {
     address public operator;
 
     // collateral state
-    ShareData totalRedeemable;
+    ShareData public totalRedeemable;
     mapping(address => bool) public redeemableBorrowers;
     mapping(address => uint128) public redeemableCollateralShares;
-    ShareData totalNonRedeemable;
+    ShareData public totalNonRedeemable;
     mapping(address => uint128) public nonRedeemableCollateralShares;
 
     // debt state
@@ -58,7 +58,7 @@ contract USD2 is ERC20 {
 
     // interest state
     uint64 private immutable WAD_LN2 = uint64(uint(wadLn(2*1e18)));
-    AccrueInterestData accrueInterestData = AccrueInterestData(uint96(1e16), uint64(0), uint64(uint((wadLn(2*1e18) / 7 days))), 2000, 4000);
+    AccrueInterestData public accrueInterestData = AccrueInterestData(uint96(1e16), uint64(0), uint64(uint((wadLn(2*1e18) / 7 days))), 2000, 4000);
     uint public lastFreeDebtRatioBps;
 
     constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
