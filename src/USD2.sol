@@ -394,7 +394,7 @@ contract USD2 is ERC20 {
 
         require(collateral.transfer(msg.sender, collateralReward));
         _burn(msg.sender, repayAmount);
-            return collateralReward;
+        return collateralReward;
     }
 
     function writeOff(address borrower) external {
@@ -464,7 +464,7 @@ contract USD2 is ERC20 {
         // pay caller from redeemable collateral
         totalRedeemable.collateral -= uint128(amountOut); // can this be abused in a share inflation attack?
         require(collateral.transfer(msg.sender, amountOut));
-        }
+    }
 
     function optInRedemptions() external {
         accrueInterest();
