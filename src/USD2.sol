@@ -253,7 +253,7 @@ contract USD2 is ERC20 {
         if(interest > 0) _mint(sUSD2, interest);
         accrueInterestData.lastAccrue = uint64(block.timestamp);
         accrueInterestData.lastBorrowRateMantissa = uint96(currBorrowRate);
-        }
+    }
 
     function freeDebtRatioBps() public view returns(uint) {
         uint _totalFreeDebt = totalFreeDebt;
@@ -326,7 +326,7 @@ contract USD2 is ERC20 {
         uint debtBalance = getDebtOf(msg.sender);
         require(borrowingPower >= debtBalance, "USD2: insufficient borrowing power");
         _mint(msg.sender, amount);
-        }
+    }
 
     function repay(uint amount) external {
         accrueInterest();
@@ -344,7 +344,7 @@ contract USD2 is ERC20 {
             totalPaidDebtShares -= shares;
         }
         _burn(msg.sender, amount);
-        }
+    }
 
     function liquidate(address borrower, uint repayAmount) external returns(uint) {
         accrueInterest();
@@ -442,7 +442,7 @@ contract USD2 is ERC20 {
         totalRedeemable.collateral += uint128(redeemableBorrowersReward);
         totalNonRedeemable.collateral += uint128(nonRedeemableBorrowersReward);
         require(collateral.transfer(msg.sender, callerReward));
-        }
+    }
 
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
@@ -494,7 +494,7 @@ contract USD2 is ERC20 {
         freeDebtShares[msg.sender] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
-        }
+    }
 
     function optOutRedemptions() external {
         accrueInterest();
@@ -524,6 +524,6 @@ contract USD2 is ERC20 {
         paidDebtShares[msg.sender] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
-        }
+    }
 
 }
