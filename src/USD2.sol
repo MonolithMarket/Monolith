@@ -258,7 +258,8 @@ contract USD2 is ERC20 {
     }
 
     function updateFreeDebtRatio() internal {
-        lastFreeDebtRatioBps = totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalFreeDebt + totalPaidDebt);
+        uint _totalFreeDebt = totalFreeDebt;
+        lastFreeDebtRatioBps = _totalFreeDebt == 0 ? 0 : _totalFreeDebt * 10000 / (_totalFreeDebt + totalPaidDebt);
     }
 
     function depositCollateral(uint128 amount) external {
