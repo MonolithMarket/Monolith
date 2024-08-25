@@ -85,6 +85,7 @@ contract USD2 is ERC20 {
     }
 
     function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline {
+        accrueInterest();
         require(_halfLife > 0, "USD2: invalid half-life");
         expRate = WAD_LN2 / _halfLife;
     }
