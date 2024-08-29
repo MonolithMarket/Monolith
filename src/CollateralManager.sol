@@ -3,7 +3,6 @@ pragma solidity ^0.8.13;
 
 interface IERC20 {
     function transfer(address recipient, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
 }
 
@@ -21,8 +20,8 @@ contract CollateralManager {
     uint256 public shareMergeCount;
     mapping(address => uint256) public lastShareMergeCount;
 
-    constructor(IERC20 _asset) {
-        asset = _asset;
+    constructor(address _asset) {
+        asset = IERC20(_asset);
         usd2 = msg.sender;
     }
 

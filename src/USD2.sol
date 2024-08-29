@@ -3,6 +3,7 @@ pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC20.sol";
 import "lib/solmate/src/utils/SignedWadMath.sol";
+import "./CollateralManager.sol";
 
 interface ICollateral {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
@@ -18,7 +19,6 @@ contract USD2 is ERC20 {
 
     uint public collateralFactorBps = 8500;
     uint public liqIncentiveBps = 1000;
-    uint public writeOffIncentiveBps = 2500;
     uint public targetFreeDebtRatioStartBps = 2000;
     uint public targetFreeDebtRatioEndBps = 4000;
     uint public redeemFeeBps = 30; // 0.3%
@@ -28,15 +28,7 @@ contract USD2 is ERC20 {
     IChainlinkFeed public immutable feed;
     address public sUSD2;
     address public operator;
-
-    // collateral state
-    uint public totalRedeemableCollateral;
-    uint public totalRedeemableShares;
-    mapping(address => bool) public redeemableBorrowers;
-    mapping(address => uint) public redeemableCollateralShares;
-    uint public totalNonRedeemableCollateral;
-    uint public totalNonRedeemableShares;
-    mapping(address => uint) public nonRedeemableCollateralShares;
+    CollateralManager public immutable collateralManager;
 
     // debt state
     uint public totalFreeDebt;
@@ -51,13 +43,13 @@ contract USD2 is ERC20 {
     uint public expRate = uint(wadLn(2*1e18)) / 7 days; // 7 days half-life
     uint public lastBorrowRateMantissa = 1e16; // 1%
     uint public lastAccrue;
-    uint public lastFreeDebtRatioBps;
 
     constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
         collateral = ICollateral(_collateral);
         feed = IChainlinkFeed(_feed);
         operator = _operator;
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
+        collateralManager = new CollateralManager(_collateral);
     }
 
     modifier onlyOperator() {
@@ -100,11 +92,6 @@ contract USD2 is ERC20 {
         liqIncentiveBps = _liqIncentiveBps;
     }
 
-    function setWriteOffIncentiveBps(uint _writeOffIncentiveBps) external onlyOperator beforeDeadline {
-        require(_writeOffIncentiveBps <= 10000, "USD2: invalid write-off incentive");
-        writeOffIncentiveBps = _writeOffIncentiveBps;
-    }
-
     function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline {
         require(_start <= _end, "USD2: invalid target free debt ratio range");
         require(_end <= 10000, "USD2: invalid target free debt ratio range");
@@ -115,6 +102,10 @@ contract USD2 is ERC20 {
     function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
         require(_redeemFeeBps < 10000, "USD2: invalid redeem fee");
         redeemFeeBps = _redeemFeeBps;
+    }
+
+    function getFreeDebtRatio() public view returns (uint) {
+        return totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalFreeDebt + totalPaidDebt);
     }
 
     function mulDivDown(
@@ -152,16 +143,8 @@ contract USD2 is ERC20 {
         }
     }
 
-    function getCollateralOf(address borrower) public view returns (uint) {
-        if(redeemableBorrowers[borrower]) {
-            return convertToAssets(redeemableCollateralShares[borrower], totalRedeemableCollateral, totalRedeemableShares);
-        } else {
-            return convertToAssets(nonRedeemableCollateralShares[borrower], totalNonRedeemableCollateral, totalNonRedeemableShares);
-        }
-    }
-
     function getDebtOf(address borrower) public view returns (uint) {
-        if(redeemableBorrowers[borrower]) {
+        if(collateralManager.isRedeemable(borrower)) {
             return convertToAssets(freeDebtShares[borrower], totalFreeDebt, totalFreeDebtShares);
         } else {
             return convertToAssets(paidDebtShares[borrower], totalPaidDebt, totalPaidDebtShares);
@@ -214,7 +197,7 @@ contract USD2 is ERC20 {
             lastBorrowRateMantissa,
             timeElapsed,
             expRate,
-            lastFreeDebtRatioBps,
+            getFreeDebtRatio(),
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         );
@@ -227,59 +210,26 @@ contract USD2 is ERC20 {
         if(interest > 0) _mint(sUSD2, interest);
         lastAccrue = block.timestamp;
         lastBorrowRateMantissa = currBorrowRate;
-        updateFreeDebtRatio();
     }
 
-    function updateFreeDebtRatio() internal {
-        lastFreeDebtRatioBps = totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalFreeDebt + totalPaidDebt);
+    function depositCollateral(uint amount, address to) external {
+        require(collateral.transferFrom(msg.sender, address(collateralManager), amount), "USD2: collateral transfer failed");
+        collateralManager.deposit(to);
     }
 
-    function depositCollateral(uint amount) external {
+    function withdrawCollateral(uint amount, address to) external {
         accrueInterest();
-        if(redeemableBorrowers[msg.sender]) {
-            uint shares = convertToShares(amount, totalRedeemableCollateral, totalRedeemableShares);
-            require(shares > 0, "USD2: insufficient shares");
-            redeemableCollateralShares[msg.sender] += shares;
-            totalRedeemableCollateral += amount;
-            totalRedeemableShares += shares;
-        } else {
-            uint shares = convertToShares(amount, totalNonRedeemableCollateral, totalNonRedeemableShares);
-            require(shares > 0, "USD2: insufficient shares");
-            nonRedeemableCollateralShares[msg.sender] += shares;
-            totalNonRedeemableCollateral += amount;
-            totalNonRedeemableShares += shares;
-        }
-        require(collateral.transferFrom(msg.sender, address(this), amount), "USD2: transfer failed");
-    }
-
-    function withdrawCollateral(uint amount) external {
-        accrueInterest();
-        if(redeemableBorrowers[msg.sender]) {
-            uint256 supply = totalRedeemableShares; // Saves an extra SLOAD if totalRedeemableShares is non-zero.
-            uint shares = supply == 0 ? amount : mulDivUp(amount, supply, totalRedeemableCollateral);
-            require(shares > 0, "USD2: insufficient shares");
-            redeemableCollateralShares[msg.sender] -= shares;
-            totalRedeemableCollateral -= amount;
-            totalRedeemableShares -= shares;
-        } else {
-            uint256 supply = totalNonRedeemableShares; // Saves an extra SLOAD if totalNonRedeemableShares is non-zero.
-            uint shares = supply == 0 ? amount : mulDivUp(amount, supply, totalNonRedeemableShares);
-            require(shares > 0, "USD2: insufficient shares");
-            nonRedeemableCollateralShares[msg.sender] -= shares;
-            totalNonRedeemableCollateral -= amount;
-            totalNonRedeemableShares -= shares;
-        }
-        uint collateralBalance = getCollateralOf(msg.sender);
+        collateralManager.withdraw(amount, to, msg.sender);
+        uint collateralBalance = collateralManager.collateralOf(msg.sender);
         uint price = getCollateralPrice();
         uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
         uint debtBalance = getDebtOf(msg.sender);
         require(borrowingPower >= debtBalance, "USD2: insufficient borrowing power");
-        require(collateral.transfer(msg.sender, amount), "USD2: collateral transfer failed");
     }
 
     function borrow(uint amount) external {
         accrueInterest();
-        if(redeemableBorrowers[msg.sender]) {
+        if(collateralManager.isRedeemable(msg.sender)) {
             uint256 supply = totalFreeDebtShares; // Saves an extra SLOAD if totalFreeDebtShares is non-zero.
             uint shares = supply == 0 ? amount : mulDivUp(amount, supply, totalFreeDebt);
             require(shares > 0, "USD2: insufficient shares");
@@ -294,18 +244,17 @@ contract USD2 is ERC20 {
             totalPaidDebt += amount;
             totalPaidDebtShares += shares;
         }
-        uint collateralBalance = getCollateralOf(msg.sender);
+        uint collateralBalance = collateralManager.collateralOf(msg.sender);
         uint price = getCollateralPrice();
         uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
         uint debtBalance = getDebtOf(msg.sender);
         require(borrowingPower >= debtBalance, "USD2: insufficient borrowing power");
         _mint(msg.sender, amount);
-        updateFreeDebtRatio();
     }
 
     function repay(uint amount) external {
         accrueInterest();
-        if(redeemableBorrowers[msg.sender]) {
+        if(collateralManager.isRedeemable(msg.sender)) {
             uint shares = convertToShares(amount, totalFreeDebt, totalFreeDebtShares);
             require(shares > 0, "USD2: insufficient shares");
             freeDebtShares[msg.sender] -= shares;
@@ -319,21 +268,20 @@ contract USD2 is ERC20 {
             totalPaidDebtShares -= shares;
         }
         _burn(msg.sender, amount);
-        updateFreeDebtRatio();
     }
 
     function liquidate(address borrower, uint repayAmount) external returns(uint) {
         accrueInterest();
 
         // check liquidation condition
-        uint collateralBalance = getCollateralOf(borrower);
+        uint collateralBalance = collateralManager.collateralOf(borrower);
         uint price = getCollateralPrice();
         uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
         uint debtBalance = getDebtOf(borrower);
         require(borrowingPower < debtBalance, "USD2: excessive borrowing power");
 
         // apply repayment
-        if(redeemableBorrowers[borrower]) {
+        if(collateralManager.isRedeemable(borrower)) {
             uint shares = convertToShares(repayAmount, totalFreeDebt, totalFreeDebtShares);
             require(shares > 0, "USD2: insufficient debt shares");
             freeDebtShares[borrower] -= shares;
@@ -351,75 +299,9 @@ contract USD2 is ERC20 {
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
         uint collateralReward = collateralRewardValue * 1e18 / price;
 
-        // reduce collateral
-        if(redeemableBorrowers[borrower]) {
-            uint256 supply = totalRedeemableShares; // Saves an extra SLOAD if totalRedeemableShares is non-zero.
-            uint shares = supply == 0 ? collateralReward : mulDivUp(collateralReward, supply, totalRedeemableCollateral);
-            require(shares > 0, "USD2: insufficient collateral shares");
-            redeemableCollateralShares[borrower] -= shares;
-            totalRedeemableCollateral -= collateralReward;
-            totalRedeemableShares -= shares;
-        } else {
-            uint256 supply = totalNonRedeemableShares; // Saves an extra SLOAD if totalNonRedeemableShares is non-zero.
-            uint shares = supply == 0 ? collateralReward : mulDivUp(collateralReward, supply, totalNonRedeemableShares);
-            require(shares > 0, "USD2: insufficient collateral shares");
-            nonRedeemableCollateralShares[borrower] -= shares;
-            totalNonRedeemableCollateral -= collateralReward;
-            totalNonRedeemableShares -= shares;
-        }
-
-        require(collateral.transfer(msg.sender, collateralReward));
+        collateralManager.withdraw(collateralReward, msg.sender, borrower);
         _burn(msg.sender, repayAmount);
-        updateFreeDebtRatio();
         return collateralReward;
-    }
-
-    function writeOff(address borrower) external {
-        accrueInterest();
-
-        // check write off condition
-        uint collateralBalance = getCollateralOf(borrower);
-        uint price = getCollateralPrice();
-        uint collateralValue = price * collateralBalance / 1e18; // no CF check in this case
-        uint debtBalance = getDebtOf(borrower);
-        require(collateralValue < debtBalance, "USD2: excessive collateral value");
-
-        // delete their debt before redistributing it
-        if(redeemableBorrowers[borrower]) {
-            totalFreeDebtShares -= freeDebtShares[borrower];
-            freeDebtShares[borrower] = 0;
-            totalFreeDebt -= debtBalance;
-        } else {
-            totalPaidDebtShares -= paidDebtShares[borrower];
-            paidDebtShares[borrower] = 0;
-            totalPaidDebt -= debtBalance;
-        }
-
-        // distribute loss to both buckets of debt pro-rata
-        uint freeDebtLoss = debtBalance * totalFreeDebt / (totalFreeDebt + totalPaidDebt);
-        uint paidDebtLoss = debtBalance - freeDebtLoss;
-        totalFreeDebt += freeDebtLoss;
-        totalPaidDebt += paidDebtLoss;
-
-        // now delete their collateral before redistributing it
-        if(redeemableBorrowers[borrower]) {
-            totalRedeemableShares -= redeemableCollateralShares[borrower];
-            redeemableCollateralShares[borrower] = 0;
-            totalRedeemableCollateral -= collateralBalance;
-        } else {
-            totalNonRedeemableShares -= nonRedeemableCollateralShares[borrower];
-            nonRedeemableCollateralShares[borrower] = 0;
-            totalNonRedeemableCollateral -= collateralBalance;
-        }
-
-        uint callerReward = collateralBalance * writeOffIncentiveBps / 10000;
-        uint borrowersReward = collateralBalance - callerReward;
-        uint redeemableBorrowersReward = borrowersReward * totalRedeemableCollateral / (totalRedeemableCollateral + totalNonRedeemableCollateral);
-        uint nonRedeemableBorrowersReward = borrowersReward - redeemableBorrowersReward;
-        totalRedeemableCollateral += redeemableBorrowersReward;
-        totalNonRedeemableCollateral += nonRedeemableBorrowersReward;
-        require(collateral.transfer(msg.sender, callerReward));
-        updateFreeDebtRatio();
     }
 
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
@@ -440,25 +322,12 @@ contract USD2 is ERC20 {
         _burn(msg.sender, amountIn);
 
         // pay caller from redeemable collateral
-        totalRedeemableCollateral -= amountOut; // can this be abused in a share inflation attack?
-        require(collateral.transfer(msg.sender, amountOut));
-        updateFreeDebtRatio();
+        collateralManager.seize(amountOut, msg.sender);
     }
 
     function optInRedemptions() external {
         accrueInterest();
-        // convert non-redeemable shares to redeemable shares
-        uint amount = convertToAssets(nonRedeemableCollateralShares[msg.sender], totalNonRedeemableCollateral, totalNonRedeemableShares);
-        uint shares = convertToShares(amount, totalRedeemableCollateral, totalRedeemableShares);
-        // delete old state
-        totalNonRedeemableCollateral -= amount;
-        totalNonRedeemableShares -= nonRedeemableCollateralShares[msg.sender];
-        nonRedeemableCollateralShares[msg.sender] = 0;
-        // create new state
-        redeemableCollateralShares[msg.sender] += shares;
-        totalRedeemableCollateral += amount;
-        totalRedeemableShares += shares;
-        redeemableBorrowers[msg.sender] = true;
+        collateralManager.setRedeemable(msg.sender, true);
 
         // convert paid debt to free debt
         uint paidShares = paidDebtShares[msg.sender];
@@ -473,23 +342,11 @@ contract USD2 is ERC20 {
         freeDebtShares[msg.sender] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
-        updateFreeDebtRatio();
     }
 
     function optOutRedemptions() external {
         accrueInterest();
-        // convert redeemable shares to non-redeemable shares
-        uint amount = convertToAssets(redeemableCollateralShares[msg.sender], totalRedeemableCollateral, totalRedeemableShares);
-        uint shares = convertToShares(amount, totalRedeemableCollateral, totalRedeemableShares);
-        // delete old state
-        totalRedeemableCollateral -= amount;
-        totalRedeemableShares -= redeemableCollateralShares[msg.sender];
-        redeemableCollateralShares[msg.sender] = 0;
-        // create new state
-        nonRedeemableCollateralShares[msg.sender] += shares;
-        totalNonRedeemableCollateral += amount;
-        totalNonRedeemableShares += shares;
-        redeemableBorrowers[msg.sender] = false;
+        collateralManager.setRedeemable(msg.sender, false);
 
         // convert free debt to paid debt
         uint freeShares = freeDebtShares[msg.sender];
@@ -504,7 +361,6 @@ contract USD2 is ERC20 {
         paidDebtShares[msg.sender] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
-        updateFreeDebtRatio();
     }
 
 }
