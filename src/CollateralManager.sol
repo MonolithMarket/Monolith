@@ -83,12 +83,20 @@ contract CollateralManager {
 
     function withdraw(uint256 assets, address receiver, address owner) public onlyUSD2 updateShares(owner) returns (uint256 shares) {
         if(isRedeemable[owner]) {
-            shares = (assets * totalShares) / totalRedeemable;
+            if(assets == type(uint256).max) {
+                assets = collateralOf(owner);
+                shares = _shares[owner];
+            } else {
+                shares = (assets * totalShares) / totalRedeemable;
+            }
             require(shares > 0, "Withdraw would result in zero shares");
             _shares[owner] -= shares;
             totalShares -= shares;
             totalRedeemable -= assets;
         } else {
+            if(assets == type(uint256).max) {
+                assets = _collateral[owner];
+            }
             _collateral[receiver] -= assets;
             totalNonRedeemable -= assets;
         }

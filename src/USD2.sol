@@ -270,7 +270,7 @@ contract USD2 is ERC20 {
         _burn(msg.sender, amount);
     }
 
-    function liquidate(address borrower, uint repayAmount) external returns(uint) {
+    function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
 
         // check liquidation condition
@@ -298,8 +298,16 @@ contract USD2 is ERC20 {
         // calculate collateral reward
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
         uint collateralReward = collateralRewardValue * 1e18 / price;
+        bool useEntireBalance;
+        if(collateralBalance < collateralReward) {
+            useEntireBalance = true;
+            collateralReward = collateralBalance;
+        }
+        require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
 
-        collateralManager.withdraw(collateralReward, msg.sender, borrower);
+        if(collateralReward > 0) {
+            collateralManager.withdraw(useEntireBalance ? type(uint).max : collateralReward, msg.sender, borrower);
+        }
         _burn(msg.sender, repayAmount);
         return collateralReward;
     }
