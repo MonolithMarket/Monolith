@@ -15,6 +15,12 @@ interface IChainlinkFeed {
     function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
 }
 
+interface IsUSD2 {
+    function totalAssets() external view returns (uint256);
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
+    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
+}
+
 contract USD2 is ERC20 {
 
     uint public collateralFactorBps = 8500;
@@ -26,7 +32,7 @@ contract USD2 is ERC20 {
     uint internal constant MAX_UINT256 = 2**256 - 1;
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
-    address public sUSD2;
+    IsUSD2 public sUSD2;
     address public operator;
     CollateralManager public immutable collateralManager;
 
@@ -63,8 +69,9 @@ contract USD2 is ERC20 {
     }
 
     function initialize(address _sUSD2) external {
-        require(sUSD2 == address(0), "USD2: already initialized");
-        sUSD2 = _sUSD2;
+        require(sUSD2 == IsUSD2(address(0)), "USD2: already initialized");
+        sUSD2 = IsUSD2(_sUSD2);
+        USD2(address(this)).approve(address(sUSD2), type(uint).max);
     }
 
     function burn(uint amount) external {
@@ -202,12 +209,24 @@ contract USD2 is ERC20 {
             targetFreeDebtRatioEndBps
         );
     
-        // update debt
         uint interest = totalPaidDebt * rateIntegral / 1e18;
 
-        // update debt
-        totalPaidDebt += interest;
-        if(interest > 0) _mint(sUSD2, interest);
+        if(interest > 0) {
+            uint totalStaked = sUSD2.totalAssets();
+            if(totalStaked < totalPaidDebt) {
+                uint stakedDebt = totalPaidDebt - totalStaked;
+                uint stakedInterest = interest * stakedDebt / totalPaidDebt;
+                _mint(address(sUSD2), stakedInterest);
+                uint remainingInterest = interest - stakedInterest;
+                _mint(address(this), remainingInterest);
+                sUSD2.deposit(remainingInterest, address(this));
+
+            } else {
+                _mint(address(sUSD2), interest);
+            }
+            totalPaidDebt += interest;
+        }
+
         lastAccrue = block.timestamp;
         lastBorrowRateMantissa = currBorrowRate;
     }
@@ -369,6 +388,15 @@ contract USD2 is ERC20 {
         paidDebtShares[msg.sender] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
+    }
+
+    function addToReserve(uint amount) external {
+        USD2(address(this)).transferFrom(msg.sender, address(this), amount);
+        sUSD2.deposit(amount, address(this));
+    }
+
+    function removeFromReserve(uint amount) external onlyOperator {
+        sUSD2.withdraw(amount, msg.sender, address(this));
     }
 
 }
