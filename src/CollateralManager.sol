@@ -54,6 +54,7 @@ contract CollateralManager {
     }
 
     function seize(uint256 assets, address to) public onlyUSD2 {
+        require(assets < totalRedeemable, "Remaining redeemable collateral cannot be zero");
         totalRedeemable -= assets;
 
         require(asset.transfer(to, assets), "Asset transfer failed");
