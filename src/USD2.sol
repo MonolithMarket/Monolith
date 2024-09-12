@@ -328,7 +328,42 @@ contract USD2 is ERC20 {
             collateralManager.withdraw(useEntireBalance ? type(uint).max : collateralReward, msg.sender, borrower);
         }
         _burn(msg.sender, repayAmount);
+        writeOff(borrower);
         return collateralReward;
+    }
+
+    function writeOff(address borrower) public {
+        accrueInterest();
+        // check for write off
+        uint debt = getDebtOf(borrower);
+        if(debt > 0) {
+            uint price = getCollateralPrice();
+            uint collateralValue = price * collateralManager.collateralOf(borrower) / 1e18;
+            if(collateralValue < debt) {
+                // collateral redistribution
+                collateralManager.withdraw(type(uint).max, borrower, address(collateralManager));
+                collateralManager.sync();
+                // debt redistribution
+                bool isRedeemable = collateralManager.isRedeemable(borrower);
+                if(isRedeemable) {
+                    freeDebtShares[borrower] = 0;
+                    totalFreeDebt -= debt;
+                    totalFreeDebtShares -= convertToShares(debt, totalFreeDebt, totalFreeDebtShares);
+                } else {
+                    paidDebtShares[borrower] = 0;
+                    totalPaidDebt -= debt;
+                    totalPaidDebtShares -= convertToShares(debt, totalPaidDebt, totalPaidDebtShares);
+                }
+                uint256 totalDebt = totalFreeDebt + totalPaidDebt;
+                if (totalDebt > 0) {
+                    uint256 freeDebtIncrease = (debt * totalFreeDebt) / totalDebt;
+                    uint256 paidDebtIncrease = debt - freeDebtIncrease;
+
+                    totalFreeDebt += freeDebtIncrease;
+                    totalPaidDebt += paidDebtIncrease;
+                }
+            }
+        }
     }
 
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {

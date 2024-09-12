@@ -10,11 +10,12 @@ contract CollateralManager {
     
     address public immutable usd2;
     IERC20 public immutable asset;
-    uint256 public totalShares;
+    uint256 public totalRedeemableShares;
     uint256 public totalRedeemable;
+    uint256 public totalNonRedeemableShares;
     uint256 public totalNonRedeemable;
-    mapping(address => uint256) private _shares;
-    mapping(address => uint256) private _collateral; // non-redeemable collateral
+    mapping(address => uint256) private _redeemableShares;
+    mapping(address => uint256) public nonRedeemableShares;
     mapping(address => bool) public isRedeemable;
 
     uint256 public shareMergeCount;
@@ -31,13 +32,13 @@ contract CollateralManager {
     }
 
     modifier updateShares(address account) {
-        _shares[account] = sharesOf(account);
+        _redeemableShares[account] = redeemableSharesOf(account);
         lastShareMergeCount[account] = shareMergeCount;
         _;
     }
 
-    function sharesOf(address account) public view returns (uint256) {
-        uint256 rawShares = _shares[account];
+    function redeemableSharesOf(address account) public view returns (uint256) {
+        uint256 rawShares = _redeemableShares[account];
         uint256 accountLastMergeCount = lastShareMergeCount[account];
         uint256 mergeDelta = shareMergeCount - accountLastMergeCount;
         if (mergeDelta > 0) {
@@ -48,9 +49,9 @@ contract CollateralManager {
 
     function collateralOf(address account) public view returns (uint256) {
         if(isRedeemable[account]) {
-            return convertToAssets(sharesOf(account));
+            return convertToRedeemableAssets(redeemableSharesOf(account));
         }
-        return _collateral[account];
+        return convertToNonRedeemableAssets(nonRedeemableShares[account]);
     }
 
     function seize(uint256 assets, address to) public onlyUSD2 {
@@ -61,8 +62,8 @@ contract CollateralManager {
 
         emit Seize(to, assets);
 
-        if (totalShares > 1e18 && convertToShares(1e18) > 1e36) {
-            totalShares /= 1e18;
+        if (totalRedeemableShares > 1e18 && convertToRedeemableShares(1e18) > 1e36) {
+            totalRedeemableShares /= 1e18;
             shareMergeCount++;
             emit Rebase(shareMergeCount);
         }
@@ -71,14 +72,17 @@ contract CollateralManager {
     function deposit(address receiver) public updateShares(receiver) returns (uint256 shares) {
         uint256 assets = asset.balanceOf(address(this)) - totalRedeemable - totalNonRedeemable;
         if(isRedeemable[receiver]) {
-            shares = totalShares == 0 ? assets : (assets * totalShares) / totalRedeemable;
+            shares = totalRedeemableShares == 0 ? assets : (assets * totalRedeemableShares) / totalRedeemable;
             require(shares > 0, "Deposit would result in zero shares");
             totalRedeemable += assets;
-            totalShares += shares;
-            _shares[receiver] += shares;
+            totalRedeemableShares += shares;
+            _redeemableShares[receiver] += shares;
         } else {
-            _collateral[receiver] += assets;
+            shares = totalNonRedeemableShares == 0 ? assets : (assets * totalNonRedeemableShares) / totalNonRedeemable;
+            require(shares > 0, "Deposit would result in zero shares");
             totalNonRedeemable += assets;
+            totalNonRedeemableShares += shares;
+            nonRedeemableShares[receiver] += shares;
         }
     }
 
@@ -86,19 +90,24 @@ contract CollateralManager {
         if(isRedeemable[owner]) {
             if(assets == type(uint256).max) {
                 assets = collateralOf(owner);
-                shares = _shares[owner];
+                shares = _redeemableShares[owner];
             } else {
-                shares = (assets * totalShares) / totalRedeemable;
+                shares = (assets * totalRedeemableShares) / totalRedeemable;
             }
             require(shares > 0, "Withdraw would result in zero shares");
-            _shares[owner] -= shares;
-            totalShares -= shares;
+            _redeemableShares[owner] -= shares;
+            totalRedeemableShares -= shares;
             totalRedeemable -= assets;
         } else {
             if(assets == type(uint256).max) {
-                assets = _collateral[owner];
+                assets = collateralOf(owner);
+                shares = nonRedeemableShares[owner];
+            } else {
+                shares = (assets * totalNonRedeemableShares) / totalNonRedeemable;
             }
-            _collateral[receiver] -= assets;
+            require(shares > 0, "Withdraw would result in zero shares");
+            nonRedeemableShares[owner] -= shares;
+            totalNonRedeemableShares -= shares;
             totalNonRedeemable -= assets;
         }
 
@@ -107,39 +116,66 @@ contract CollateralManager {
 
     function setRedeemable(address account, bool redeemable) public onlyUSD2 updateShares(account) {
         if(redeemable) { // become redeemable
-            uint assets = _collateral[account];
-            if(assets > 0) {
-                _collateral[account] = 0;
+            uint shares = nonRedeemableShares[account];
+            if(shares > 0) {
+                uint assets = convertToNonRedeemableAssets(shares);
+                nonRedeemableShares[account] = 0;
+                totalNonRedeemableShares -= shares;
                 totalNonRedeemable -= assets;
+                uint redeemableShares = totalRedeemableShares == 0 ? assets : (assets * totalRedeemableShares) / totalRedeemable;
+                require(redeemableShares > 0, "Zero shares");
                 totalRedeemable += assets;
-                uint shares = totalShares == 0 ? assets : (assets * totalShares) / totalRedeemable;
-                require(shares > 0, "Zero shares");
-                totalRedeemable += assets;
-                totalShares += shares;
-                _shares[account] += shares;
+                totalRedeemableShares += redeemableShares;
+                _redeemableShares[account] += redeemableShares;
             }
             isRedeemable[account] = true;
         } else { // become non-redeemable
-            uint shares = _shares[account];
+            uint shares = _redeemableShares[account];
             if(shares > 0) {
-                uint assets = convertToAssets(shares);
+                uint assets = convertToRedeemableAssets(shares);
                 require(assets > 0, "Zero shares");
-                _shares[account] = 0;
-                totalShares -= shares;
+                _redeemableShares[account] = 0;
+                totalRedeemableShares -= shares;
                 totalRedeemable -= assets;
+                uint _nonRedeemableShares = totalNonRedeemableShares == 0 ? assets : (assets * totalNonRedeemableShares) / totalNonRedeemable;
                 totalNonRedeemable += assets;
-                _collateral[account] += assets;
+                totalNonRedeemableShares += _nonRedeemableShares;
+                nonRedeemableShares[account] += _nonRedeemableShares;
             }
             isRedeemable[account] = false;
         }
     }
 
-    function convertToShares(uint256 assets) public view returns (uint256 shares) {
-        return totalShares == 0 ? assets : (assets * totalShares) / totalRedeemable;
+    function convertToRedeemableShares(uint256 assets) public view returns (uint256 shares) {
+        return totalRedeemableShares == 0 ? assets : (assets * totalRedeemableShares) / totalRedeemable;
     }
 
-    function convertToAssets(uint256 shares) public view returns (uint256 assets) {
-        return totalShares == 0 ? shares : (shares * totalRedeemable) / totalShares;
+    function convertToRedeemableAssets(uint256 shares) public view returns (uint256 assets) {
+        return totalRedeemableShares == 0 ? shares : (shares * totalRedeemable) / totalRedeemableShares;
+    }
+
+    function convertToNonRedeemableShares(uint256 assets) public view returns (uint256 shares) {
+        return totalNonRedeemableShares == 0 ? assets : (assets * totalNonRedeemableShares) / totalNonRedeemable;
+    }
+
+    function convertToNonRedeemableAssets(uint256 shares) public view returns (uint256 assets) {
+        return totalNonRedeemableShares == 0 ? shares : (shares * totalNonRedeemable) / totalNonRedeemableShares;
+    }
+
+    function sync() public {
+        uint256 currentBalance = asset.balanceOf(address(this));
+        uint256 lastBalance = totalNonRedeemable + totalRedeemable;
+
+        if (currentBalance > lastBalance) {
+            uint256 excessBalance = currentBalance - lastBalance;
+
+            // Calculate the proportional increase
+            uint256 nonRedeemableShare = (totalNonRedeemable * excessBalance) / lastBalance;
+            uint256 redeemableShare = excessBalance - nonRedeemableShare;
+
+            totalNonRedeemable += nonRedeemableShare;
+            totalRedeemable += redeemableShare;
+        }
     }
 
     event Seize(address indexed to, uint256 assets);
