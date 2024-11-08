@@ -231,62 +231,74 @@ contract USD2 is ERC20 {
         lastBorrowRateMantissa = currBorrowRate;
     }
 
-    function depositCollateral(uint amount, address to) external {
-        require(collateral.transferFrom(msg.sender, address(collateralManager), amount), "USD2: collateral transfer failed");
-        collateralManager.deposit(to);
-    }
-
-    function withdrawCollateral(uint amount, address to) external {
+    // Add this new function that combines borrow, repay, deposit, and withdraw
+    function adjust(int256 collateralDelta, int256 debtDelta) external {
         accrueInterest();
-        collateralManager.withdraw(amount, to, msg.sender);
-        uint collateralBalance = collateralManager.collateralOf(msg.sender);
-        uint price = getCollateralPrice();
-        uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
-        uint debtBalance = getDebtOf(msg.sender);
-        require(borrowingPower >= debtBalance, "USD2: insufficient borrowing power");
-    }
-
-    function borrow(uint amount) external {
-        accrueInterest();
-        if(collateralManager.isRedeemable(msg.sender)) {
-            uint256 supply = totalFreeDebtShares; // Saves an extra SLOAD if totalFreeDebtShares is non-zero.
-            uint shares = supply == 0 ? amount : mulDivUp(amount, supply, totalFreeDebt);
-            require(shares > 0, "USD2: insufficient shares");
-            freeDebtShares[msg.sender] += shares;
-            totalFreeDebt += amount;
-            totalFreeDebtShares += shares;
-        } else {
-            uint256 supply = totalPaidDebtShares; // Saves an extra SLOAD if totalPaidDebtShares is non-zero.
-            uint shares = supply == 0 ? amount : mulDivUp(amount, supply, totalPaidDebt);
-            require(shares > 0, "USD2: insufficient shares");
-            paidDebtShares[msg.sender] += shares;
-            totalPaidDebt += amount;
-            totalPaidDebtShares += shares;
+        
+        // Handle collateral changes
+        if (collateralDelta > 0) {
+            // Deposit collateral
+            require(collateral.transferFrom(
+                msg.sender, 
+                address(collateralManager), 
+                uint256(collateralDelta)
+            ), "USD2: collateral transfer failed");
+            collateralManager.deposit(msg.sender);
+        } else if (collateralDelta < 0) {
+            // Withdraw collateral
+            collateralManager.withdraw(
+                uint256(-collateralDelta), 
+                msg.sender, 
+                msg.sender
+            );
         }
-        uint collateralBalance = collateralManager.collateralOf(msg.sender);
-        uint price = getCollateralPrice();
-        uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
-        uint debtBalance = getDebtOf(msg.sender);
-        require(borrowingPower >= debtBalance, "USD2: insufficient borrowing power");
-        _mint(msg.sender, amount);
-    }
 
-    function repay(uint amount) external {
-        accrueInterest();
-        if(collateralManager.isRedeemable(msg.sender)) {
-            uint shares = convertToShares(amount, totalFreeDebt, totalFreeDebtShares);
-            require(shares > 0, "USD2: insufficient shares");
-            freeDebtShares[msg.sender] -= shares;
-            totalFreeDebt -= amount;
-            totalFreeDebtShares -= shares;
-        } else {
-            uint shares = convertToShares(amount, totalPaidDebt, totalPaidDebtShares);
-            require(shares > 0, "USD2: insufficient shares");
-            paidDebtShares[msg.sender] -= shares;
-            totalPaidDebt -= amount;
-            totalPaidDebtShares -= shares;
+        // Handle debt changes
+        if (debtDelta > 0) {
+            // Borrow
+            if(collateralManager.isRedeemable(msg.sender)) {
+                uint256 supply = totalFreeDebtShares;
+                uint256 amount = uint256(debtDelta);
+                uint256 shares = supply == 0 ? amount : mulDivUp(amount, supply, totalFreeDebt);
+                require(shares > 0, "USD2: insufficient shares");
+                freeDebtShares[msg.sender] += shares;
+                totalFreeDebt += amount;
+                totalFreeDebtShares += shares;
+            } else {
+                uint256 supply = totalPaidDebtShares;
+                uint256 amount = uint256(debtDelta);
+                uint256 shares = supply == 0 ? amount : mulDivUp(amount, supply, totalPaidDebt);
+                require(shares > 0, "USD2: insufficient shares");
+                paidDebtShares[msg.sender] += shares;
+                totalPaidDebt += amount;
+                totalPaidDebtShares += shares;
+            }
+            _mint(msg.sender, uint256(debtDelta));
+        } else if (debtDelta < 0) {
+            // Repay
+            uint256 amount = uint256(-debtDelta);
+            if(collateralManager.isRedeemable(msg.sender)) {
+                uint256 shares = convertToShares(amount, totalFreeDebt, totalFreeDebtShares);
+                require(shares > 0, "USD2: insufficient shares");
+                freeDebtShares[msg.sender] -= shares;
+                totalFreeDebt -= amount;
+                totalFreeDebtShares -= shares;
+            } else {
+                uint256 shares = convertToShares(amount, totalPaidDebt, totalPaidDebtShares);
+                require(shares > 0, "USD2: insufficient shares");
+                paidDebtShares[msg.sender] -= shares;
+                totalPaidDebt -= amount;
+                totalPaidDebtShares -= shares;
+            }
+            _burn(msg.sender, amount);
         }
-        _burn(msg.sender, amount);
+
+        // Check final position is safe
+        uint256 collateralBalance = collateralManager.collateralOf(msg.sender);
+        uint256 price = getCollateralPrice();
+        uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
+        uint256 debtBalance = getDebtOf(msg.sender);
+        require(borrowingPower >= debtBalance, "USD2: unsafe position");
     }
 
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
