@@ -36,6 +36,8 @@ contract USD2 is ERC20 {
     address public operator;
     CollateralManager public immutable collateralManager;
 
+    mapping(address => mapping(address => bool)) public delegations;
+
     // debt state
     uint public totalFreeDebt;
     uint public totalFreeDebtShares;
@@ -231,37 +233,41 @@ contract USD2 is ERC20 {
         lastBorrowRateMantissa = currBorrowRate;
     }
 
-    // Add this new function that combines borrow, repay, deposit, and withdraw
-    function adjust(int256 collateralDelta, int256 debtDelta) external {
+    function delegate(address delegatee, bool isDelegatee) external {
+        delegations[msg.sender][delegatee] = isDelegatee;
+    }
+
+    function adjust(address account, int256 collateralDelta, int256 debtDelta) external {
+        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         accrueInterest();
         
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Deposit collateral
             require(collateral.transferFrom(
-                msg.sender, 
+                msg.sender, // we deposit from msg.sender to the account
                 address(collateralManager), 
                 uint256(collateralDelta)
             ), "USD2: collateral transfer failed");
-            collateralManager.deposit(msg.sender);
+            collateralManager.deposit(account);
         } else if (collateralDelta < 0) {
             // Withdraw collateral
             collateralManager.withdraw(
                 uint256(-collateralDelta), 
-                msg.sender, 
-                msg.sender
+                msg.sender, // we withdraw to msg.sender from the account
+                account
             );
         }
 
         // Handle debt changes
         if (debtDelta > 0) {
             // Borrow
-            if(collateralManager.isRedeemable(msg.sender)) {
+            if(collateralManager.isRedeemable(account)) {
                 uint256 supply = totalFreeDebtShares;
                 uint256 amount = uint256(debtDelta);
                 uint256 shares = supply == 0 ? amount : mulDivUp(amount, supply, totalFreeDebt);
                 require(shares > 0, "USD2: insufficient shares");
-                freeDebtShares[msg.sender] += shares;
+                freeDebtShares[account] += shares;
                 totalFreeDebt += amount;
                 totalFreeDebtShares += shares;
             } else {
@@ -269,35 +275,35 @@ contract USD2 is ERC20 {
                 uint256 amount = uint256(debtDelta);
                 uint256 shares = supply == 0 ? amount : mulDivUp(amount, supply, totalPaidDebt);
                 require(shares > 0, "USD2: insufficient shares");
-                paidDebtShares[msg.sender] += shares;
+                paidDebtShares[account] += shares;
                 totalPaidDebt += amount;
                 totalPaidDebtShares += shares;
             }
-            _mint(msg.sender, uint256(debtDelta));
+            _mint(msg.sender, uint256(debtDelta)); // we mint to msg.sender from the account's credit
         } else if (debtDelta < 0) {
             // Repay
             uint256 amount = uint256(-debtDelta);
-            if(collateralManager.isRedeemable(msg.sender)) {
+            if(collateralManager.isRedeemable(account)) {
                 uint256 shares = convertToShares(amount, totalFreeDebt, totalFreeDebtShares);
                 require(shares > 0, "USD2: insufficient shares");
-                freeDebtShares[msg.sender] -= shares;
+                freeDebtShares[account] -= shares;
                 totalFreeDebt -= amount;
                 totalFreeDebtShares -= shares;
             } else {
                 uint256 shares = convertToShares(amount, totalPaidDebt, totalPaidDebtShares);
                 require(shares > 0, "USD2: insufficient shares");
-                paidDebtShares[msg.sender] -= shares;
+                paidDebtShares[account] -= shares;
                 totalPaidDebt -= amount;
                 totalPaidDebtShares -= shares;
             }
-            _burn(msg.sender, amount);
+            _burn(msg.sender, amount); // we burn from msg.sender to repay the account's credit
         }
 
         // Check final position is safe
-        uint256 collateralBalance = collateralManager.collateralOf(msg.sender);
+        uint256 collateralBalance = collateralManager.collateralOf(account);
         uint256 price = getCollateralPrice();
         uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
-        uint256 debtBalance = getDebtOf(msg.sender);
+        uint256 debtBalance = getDebtOf(account);
         require(borrowingPower >= debtBalance, "USD2: unsafe position");
     }
 
@@ -399,40 +405,42 @@ contract USD2 is ERC20 {
         collateralManager.seize(amountOut, msg.sender);
     }
 
-    function optInRedemptions() external {
+    function optInRedemptions(address account) external {
+        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         accrueInterest();
-        collateralManager.setRedeemable(msg.sender, true);
+        collateralManager.setRedeemable(account, true);
 
         // convert paid debt to free debt
-        uint paidShares = paidDebtShares[msg.sender];
+        uint paidShares = paidDebtShares[account];
         uint debt = mulDivUp(paidShares, totalPaidDebt, totalPaidDebtShares);
         if(paidShares > 0) require(debt > 0, "USD2: insufficient debt");
-        paidDebtShares[msg.sender] = 0;
+        paidDebtShares[account] = 0;
         totalPaidDebt -= debt;
         totalPaidDebtShares -= paidShares;
         uint freeDebtSupply = totalFreeDebtShares; // Saves an extra SLOAD if totalFreeDebtShares is non-zero.
         uint freeShares = freeDebtSupply == 0 ? debt : mulDivUp(debt, freeDebtSupply, totalFreeDebt);
         require(freeShares > 0, "USD2: insufficient free debt shares");
-        freeDebtShares[msg.sender] += freeShares;
+        freeDebtShares[account] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
     }
 
-    function optOutRedemptions() external {
+    function optOutRedemptions(address account) external {
+        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         accrueInterest();
-        collateralManager.setRedeemable(msg.sender, false);
+        collateralManager.setRedeemable(account, false);
 
         // convert free debt to paid debt
-        uint freeShares = freeDebtShares[msg.sender];
+        uint freeShares = freeDebtShares[account];
         uint debt = mulDivDown(freeShares, totalFreeDebt, totalFreeDebtShares);
         if(freeShares > 0) require(debt > 0, "USD2: insufficient debt");
-        freeDebtShares[msg.sender] = 0;
+        freeDebtShares[account] = 0;
         totalFreeDebt -= debt;
         totalFreeDebtShares -= freeShares;
         uint paidDebtSupply = totalPaidDebtShares; // Saves an extra SLOAD if totalPaidDebtShares is non-zero.
         uint paidShares = paidDebtSupply == 0 ? debt : mulDivUp(debt, paidDebtSupply, totalPaidDebt);
         require(paidShares > 0, "USD2: insufficient paid debt shares");
-        paidDebtShares[msg.sender] += paidShares;
+        paidDebtShares[account] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
     }
