@@ -299,7 +299,10 @@ contract USD2 is ERC20 {
             _burn(msg.sender, amount); // we burn from msg.sender to repay the account's credit
         }
 
-        // Check final position is safe
+        // Skip invariant if user does not reduce collateral AND does not increase debt
+        if(collateralDelta >= 0 && debtDelta <= 0) return;
+
+        // Enforce invariant
         uint256 collateralBalance = collateralManager.collateralOf(account);
         uint256 price = getCollateralPrice();
         uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
