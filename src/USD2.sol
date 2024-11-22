@@ -293,7 +293,8 @@ contract USD2 is ERC20 {
             _mint(msg.sender, uint256(debtDelta)); // we mint to msg.sender from the account's credit
         } else if (debtDelta < 0) {
             // Repay
-            uint256 amount = uint256(-debtDelta);
+            uint256 amount = debtDelta == type(int256).min ? getDebtOf(account) : uint256(-debtDelta);
+
             if(collateralManager.isRedeemable(account)) {
                 uint256 shares = convertToShares(amount, totalFreeDebt, totalFreeDebtShares);
                 freeDebtShares[account] -= shares;
