@@ -30,6 +30,7 @@ contract USD2 is ERC20 {
     uint public redeemFeeBps = 30; // 0.3%
     uint public immutable IMMUTABILITY_DEADLINE;
     uint internal constant MAX_UINT256 = 2**256 - 1;
+    uint internal constant MIN_RATE = 5e15; // 0.5%
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
     IsUSD2 public sUSD2;
@@ -189,7 +190,22 @@ contract USD2 is ERC20 {
             integral = (currBorrowRate - _lastRate) * 1e18 / _expRate;
         } else if(_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
             currBorrowRate = _lastRate * 1e18 / growthDecay;
-            integral =  (_lastRate - currBorrowRate) * 1e18 / _expRate;
+            if (currBorrowRate < MIN_RATE) {
+                currBorrowRate = MIN_RATE;
+                // calculate integral
+                if (_lastRate <= MIN_RATE) {
+                    // Already at min rate, just use flat rate for entire period
+                    integral = MIN_RATE * _timeElapsed;
+                } else {
+                    // Calculate time until min rate is reached
+                    uint timeToMin = uint(wadLn(int(MIN_RATE * 1e18 / _lastRate))) * 1e18 / _expRate;
+                    // Decaying integral up to min rate, then add flat rate portion
+                    integral = (_lastRate - MIN_RATE) * 1e18 / _expRate + 
+                              MIN_RATE * (_timeElapsed - timeToMin);
+                }
+            } else {
+                integral = (_lastRate - currBorrowRate) * 1e18 / _expRate;
+            }
         } else {
             currBorrowRate = _lastRate;
             integral = _lastRate * _timeElapsed;
@@ -238,7 +254,6 @@ contract USD2 is ERC20 {
     }
 
     function adjust(address account, int256 collateralDelta, int256 debtDelta) external {
-        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         accrueInterest();
         
         // Handle collateral changes
@@ -263,18 +278,14 @@ contract USD2 is ERC20 {
         if (debtDelta > 0) {
             // Borrow
             if(collateralManager.isRedeemable(account)) {
-                uint256 supply = totalFreeDebtShares;
                 uint256 amount = uint256(debtDelta);
-                uint256 shares = supply == 0 ? amount : mulDivUp(amount, supply, totalFreeDebt);
-                require(shares > 0, "USD2: insufficient shares");
+                uint256 shares = totalFreeDebtShares == 0 ? amount : mulDivUp(amount, totalFreeDebtShares, totalFreeDebt);
                 freeDebtShares[account] += shares;
                 totalFreeDebt += amount;
                 totalFreeDebtShares += shares;
             } else {
-                uint256 supply = totalPaidDebtShares;
                 uint256 amount = uint256(debtDelta);
-                uint256 shares = supply == 0 ? amount : mulDivUp(amount, supply, totalPaidDebt);
-                require(shares > 0, "USD2: insufficient shares");
+                uint256 shares = totalPaidDebtShares == 0 ? amount : mulDivUp(amount, totalPaidDebtShares, totalPaidDebt);
                 paidDebtShares[account] += shares;
                 totalPaidDebt += amount;
                 totalPaidDebtShares += shares;
@@ -285,13 +296,11 @@ contract USD2 is ERC20 {
             uint256 amount = uint256(-debtDelta);
             if(collateralManager.isRedeemable(account)) {
                 uint256 shares = convertToShares(amount, totalFreeDebt, totalFreeDebtShares);
-                require(shares > 0, "USD2: insufficient shares");
                 freeDebtShares[account] -= shares;
                 totalFreeDebt -= amount;
                 totalFreeDebtShares -= shares;
             } else {
                 uint256 shares = convertToShares(amount, totalPaidDebt, totalPaidDebtShares);
-                require(shares > 0, "USD2: insufficient shares");
                 paidDebtShares[account] -= shares;
                 totalPaidDebt -= amount;
                 totalPaidDebtShares -= shares;
@@ -299,10 +308,11 @@ contract USD2 is ERC20 {
             _burn(msg.sender, amount); // we burn from msg.sender to repay the account's credit
         }
 
-        // Skip invariant if user does not reduce collateral AND does not increase debt
+        // Skip invariants if user does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
 
-        // Enforce invariant
+        // Enforce invariants
+        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         uint256 collateralBalance = collateralManager.collateralOf(account);
         uint256 price = getCollateralPrice();
         uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
@@ -349,6 +359,7 @@ contract USD2 is ERC20 {
             collateralManager.withdraw(useEntireBalance ? type(uint).max : collateralReward, msg.sender, borrower);
         }
         _burn(msg.sender, repayAmount);
+        // try to write off remaining debt
         writeOff(borrower);
         return collateralReward;
     }
