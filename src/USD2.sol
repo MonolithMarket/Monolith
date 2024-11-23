@@ -105,6 +105,7 @@ contract USD2 is ERC20 {
     function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline {
         require(_start <= _end, "USD2: invalid target free debt ratio range");
         require(_end <= 10000, "USD2: invalid target free debt ratio range");
+        accrueInterest();
         targetFreeDebtRatioStartBps = _start;
         targetFreeDebtRatioEndBps = _end;
     }
