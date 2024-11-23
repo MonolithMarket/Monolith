@@ -428,14 +428,14 @@ contract USD2 is ERC20 {
 
         // convert paid debt to free debt
         uint paidShares = paidDebtShares[account];
+        if(paidShares == 0) return;
         uint debt = mulDivUp(paidShares, totalPaidDebt, totalPaidDebtShares);
-        if(paidShares > 0) require(debt > 0, "USD2: insufficient debt");
+        require(debt > 0, "USD2: insufficient debt");
         paidDebtShares[account] = 0;
         totalPaidDebt -= debt;
         totalPaidDebtShares -= paidShares;
         uint freeDebtSupply = totalFreeDebtShares; // Saves an extra SLOAD if totalFreeDebtShares is non-zero.
         uint freeShares = freeDebtSupply == 0 ? debt : mulDivUp(debt, freeDebtSupply, totalFreeDebt);
-        require(freeShares > 0, "USD2: insufficient free debt shares");
         freeDebtShares[account] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
@@ -448,14 +448,14 @@ contract USD2 is ERC20 {
 
         // convert free debt to paid debt
         uint freeShares = freeDebtShares[account];
+        if(freeShares == 0) return;
         uint debt = mulDivDown(freeShares, totalFreeDebt, totalFreeDebtShares);
-        if(freeShares > 0) require(debt > 0, "USD2: insufficient debt");
+        require(debt > 0, "USD2: insufficient debt");
         freeDebtShares[account] = 0;
         totalFreeDebt -= debt;
         totalFreeDebtShares -= freeShares;
         uint paidDebtSupply = totalPaidDebtShares; // Saves an extra SLOAD if totalPaidDebtShares is non-zero.
         uint paidShares = paidDebtSupply == 0 ? debt : mulDivUp(debt, paidDebtSupply, totalPaidDebt);
-        require(paidShares > 0, "USD2: insufficient paid debt shares");
         paidDebtShares[account] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
