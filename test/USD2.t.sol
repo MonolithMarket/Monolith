@@ -564,6 +564,19 @@ contract USD2Test is Test {
         assertEq(usd2.collateralManager().totalRedeemable() + usd2.collateralManager().totalNonRedeemable(), prevRedeemableCollateral + prevNonRedeemableCollateral);
     }
 
+    function test_writeOff_safePosition() public {
+        usd2.initialize(sUSD2);
+        address WRITTEN_OFF_BORROWER = address(this);
+        vm.startPrank(WRITTEN_OFF_BORROWER);
+        MockCollateral(collateral).__mint(WRITTEN_OFF_BORROWER, 1000);
+        MockCollateral(collateral).approve(address(usd2), 1000);
+        usd2.adjust(WRITTEN_OFF_BORROWER, 1000, 850);
+        usd2.writeOff(WRITTEN_OFF_BORROWER);
+        // assert written off borrower's debt and collateral are the same as before
+        assertEq(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 850);
+        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000);
+    }
+
     function test_calculateRate_growth() public view {
         uint lastRate = 1e16;
         uint timeElapsed = 7 days;
