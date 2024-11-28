@@ -315,10 +315,11 @@ contract USD2 is ERC20 {
 
         // Enforce invariants
         require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
+        uint256 debtBalance = getDebtOf(account);
+        if(debtBalance == 0) return;
         uint256 collateralBalance = collateralManager.collateralOf(account);
         uint256 price = getCollateralPrice();
         uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
-        uint256 debtBalance = getDebtOf(account);
         require(borrowingPower >= debtBalance, "USD2: unsafe position");
     }
 
