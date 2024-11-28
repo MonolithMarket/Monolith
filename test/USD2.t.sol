@@ -6,6 +6,7 @@ import "lib/solmate/src/utils/SignedWadMath.sol";
 import {USD2, IChainlinkFeed} from "src/USD2.sol";
 import {SUSD2} from "src/SUSD2.sol";
 import  "lib/solmate/src/tokens/ERC20.sol";
+import {CollateralManager} from "src/CollateralManager.sol";
 
 contract MockCollateral is ERC20 {
     constructor() ERC20("MockCollateral", "MCOLL", 18) {}
@@ -16,12 +17,23 @@ contract MockCollateral is ERC20 {
 }
 
 contract MockFeed is IChainlinkFeed {
+
+    uint price;
+
+    constructor() {
+        price = 1e18;
+    }
+
     function decimals() external pure returns (uint8) {
         return 18;
     }
 
-    function latestRoundData() external pure returns (uint80, int256, uint256, uint256, uint80) {
-        return (0, 1e18, 1e18, 1e18, 0);
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (0, int(price), 1e18, 1e18, 0);
+    }
+
+    function __setPrice(uint _price) external {
+        price = _price;
     }
 }
 
@@ -55,9 +67,12 @@ contract USD2Test is Test {
     address feed = address(new MockFeed());
     address operator = address(3);
     address sUSD2;
+    CollateralManager collateralManager;
 
     function setUp() public {
         usd2 = new USD2Wrapper(collateral, feed, operator);
+        // just to show collateralManager on the forge debugger source maps
+        collateralManager = usd2.collateralManager();
         sUSD2 = address(new SUSD2(operator, address(usd2)));
     }
 
@@ -440,6 +455,113 @@ contract USD2Test is Test {
         usd2.adjust(address(this), 0, type(int256).min);
         assertEq(usd2.getDebtOf(address(this)), 0);
         assertEq(usd2.balanceOf(address(1)), 0);
+    }
+
+    function test_redeem() public {
+        uint collateralAmount = 10000;
+        uint loan = 8500;
+        uint redeemAmount = 1000;
+        uint minAmountOut = 997;
+        address BORROWER = address(this);
+        address REDEEMER = address(1);
+        usd2.initialize(sUSD2);
+        MockCollateral(collateral).__mint(BORROWER, collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.optInRedemptions(address(this));
+        // deposit 10000, borrow 8500
+        usd2.adjust(BORROWER, int(collateralAmount), int(loan));
+        assertEq(usd2.totalFreeDebt(), loan);
+        // redeem
+        usd2.transfer(REDEEMER, redeemAmount);
+        vm.prank(REDEEMER);
+        usd2.redeem(redeemAmount, minAmountOut);
+        assertEq(usd2.balanceOf(REDEEMER), 0); // redeemeer's entire balance is redeemed
+        assertEq(usd2.getDebtOf(BORROWER), loan - redeemAmount); // borrower's debt decreases by redeem amount
+        assertEq(usd2.collateralManager().collateralOf(BORROWER), collateralAmount - minAmountOut); // collateral decreases by minAmountOut
+        assertEq(usd2.totalFreeDebt(), loan - redeemAmount);
+        assertEq(usd2.totalSupply(), loan - redeemAmount);
+    }
+
+    function test_redeem_InsufficientAmountOut() public {
+        uint collateralAmount = 10000;
+        uint loan = 8500;
+        uint redeemAmount = 1000;
+        uint minAmountOut = 998; // in this case, minAmountOut is too high
+        address BORROWER = address(this);
+        address REDEEMER = address(1);
+        usd2.initialize(sUSD2);
+        MockCollateral(collateral).__mint(BORROWER, collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.optInRedemptions(address(this));
+        // deposit 10000, borrow 8500
+        usd2.adjust(BORROWER, int(collateralAmount), int(loan));
+        assertEq(usd2.totalFreeDebt(), loan);
+        // redeem
+        usd2.transfer(REDEEMER, redeemAmount);
+        vm.startPrank(REDEEMER);
+        vm.expectRevert("USD2: insufficient amount out");
+        usd2.redeem(redeemAmount, minAmountOut);
+    }
+
+    function test_redeem_nonRedeemable() public {
+        uint collateralAmount = 10000;
+        uint loan = 8500;
+        address BORROWER = address(this);
+        address REDEEMER = address(1);
+        usd2.initialize(sUSD2);
+        MockCollateral(collateral).__mint(BORROWER, collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        // redeemer is not opted in, there's no redeemable collateral
+        // usd2.optInRedemptions(address(this));
+        // deposit 10000, borrow 8500
+        usd2.adjust(BORROWER, int(collateralAmount), int(loan));
+        assertEq(usd2.totalFreeDebt(), 0);
+        // redeem
+        usd2.transfer(REDEEMER, loan);
+        vm.startPrank(REDEEMER);
+        vm.expectRevert("USD2: insufficient amount out");
+        usd2.redeem(1, 1);
+    }
+
+    function test_writeOff() public {
+        usd2.initialize(sUSD2);
+        // first borrower is redeemable
+        address REDEEMABLE_BORROWER = address(11);
+        vm.startPrank(REDEEMABLE_BORROWER);
+        MockCollateral(collateral).__mint(REDEEMABLE_BORROWER, 1000);
+        usd2.optInRedemptions(REDEEMABLE_BORROWER);
+        MockCollateral(collateral).approve(address(usd2), 1000);
+        usd2.adjust(REDEEMABLE_BORROWER, 1000, 850);
+        // second borrower is non-redeemable
+        address NON_REDEEMABLE_BORROWER = address(12);
+        vm.startPrank(NON_REDEEMABLE_BORROWER);
+        MockCollateral(collateral).__mint(NON_REDEEMABLE_BORROWER, 1000);
+        MockCollateral(collateral).approve(address(usd2), 1000);
+        usd2.adjust(NON_REDEEMABLE_BORROWER, 1000, 850);
+        // third borrower will be written off, he's non-redeemable btw
+        address WRITTEN_OFF_BORROWER = address(this);
+        vm.startPrank(WRITTEN_OFF_BORROWER);
+        MockCollateral(collateral).__mint(WRITTEN_OFF_BORROWER, 1000);
+        MockCollateral(collateral).approve(address(usd2), 1000);
+        usd2.adjust(WRITTEN_OFF_BORROWER, 1000, 850);
+        // reduce collateral price to just under $0.85 (debt value)
+        MockFeed(feed).__setPrice(85e16 - 1);
+        uint prevFreeDebt = usd2.totalFreeDebt();
+        uint prevPaidDebt = usd2.totalPaidDebt();
+        uint prevRedeemableCollateral = usd2.collateralManager().totalRedeemable();
+        uint prevNonRedeemableCollateral = usd2.collateralManager().totalNonRedeemable();
+        usd2.writeOff(WRITTEN_OFF_BORROWER);
+        // assert written off borrower's debt and collateral are zero
+        assertEq(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 0);
+        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 0);
+        // assert other borrowers receive half of the written off borrower's debt and collateral    
+        assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850 + 425);
+        assertEq(usd2.collateralManager().collateralOf(REDEEMABLE_BORROWER), 1000 + 500);
+        assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850 + 425);
+        assertEq(usd2.collateralManager().collateralOf(NON_REDEEMABLE_BORROWER), 1000 + 500);
+        // assert total debt and collateral are unchanged
+        assertEq(usd2.totalFreeDebt() + usd2.totalPaidDebt(), prevFreeDebt + prevPaidDebt);
+        assertEq(usd2.collateralManager().totalRedeemable() + usd2.collateralManager().totalNonRedeemable(), prevRedeemableCollateral + prevNonRedeemableCollateral);
     }
 
     function test_calculateRate_growth() public view {

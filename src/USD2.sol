@@ -375,22 +375,22 @@ contract USD2 is ERC20 {
             uint collateralValue = price * collateralManager.collateralOf(borrower) / 1e18;
             if(collateralValue < debt) {
                 // collateral redistribution
-                collateralManager.withdraw(type(uint).max, borrower, address(collateralManager));
+                collateralManager.withdraw(type(uint).max, address(collateralManager), borrower);
                 collateralManager.sync();
                 // debt redistribution
                 bool isRedeemable = collateralManager.isRedeemable(borrower);
                 if(isRedeemable) {
+                    totalFreeDebtShares -= freeDebtShares[borrower];
                     freeDebtShares[borrower] = 0;
                     totalFreeDebt -= debt;
-                    totalFreeDebtShares -= convertToShares(debt, totalFreeDebt, totalFreeDebtShares);
                 } else {
+                    totalPaidDebtShares -= paidDebtShares[borrower];
                     paidDebtShares[borrower] = 0;
                     totalPaidDebt -= debt;
-                    totalPaidDebtShares -= convertToShares(debt, totalPaidDebt, totalPaidDebtShares);
                 }
                 uint256 totalDebt = totalFreeDebt + totalPaidDebt;
                 if (totalDebt > 0) {
-                    uint256 freeDebtIncrease = (debt * totalFreeDebt) / totalDebt;
+                    uint256 freeDebtIncrease = debt * totalFreeDebt / totalDebt;
                     uint256 paidDebtIncrease = debt - freeDebtIncrease;
 
                     totalFreeDebt += freeDebtIncrease;
@@ -403,6 +403,7 @@ contract USD2 is ERC20 {
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
         uint price = getCollateralPrice();
+        // multiply amountIn by price then apply redeem fee to amountIn
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
 
