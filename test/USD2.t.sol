@@ -577,6 +577,31 @@ contract USD2Test is Test {
         assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000);
     }
 
+    function test_getRedeemAmountOut() public {
+        uint collateralAmount = 2e18;
+        uint loanAmount = 1e18;
+        usd2.initialize(sUSD2);
+        MockCollateral(collateral).__mint(address(this), collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.optInRedemptions(address(this));
+        usd2.adjust(address(this), int(collateralAmount), int(loanAmount));
+        uint amountIn = 1e18;
+        uint redeemFeeBps = 30;
+        uint expectedAmountOut = 1e18 * (10000 - redeemFeeBps) / 10000;
+        assertEq(usd2.getRedeemAmountOut(amountIn), expectedAmountOut);
+    }
+
+    function test_getRedeemAmountOut_insufficientFreeDebt() public {
+        uint collateralAmount = 2e18;
+        uint loanAmount = 1e18;
+        usd2.initialize(sUSD2);
+        MockCollateral(collateral).__mint(address(this), collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.optInRedemptions(address(this));
+        usd2.adjust(address(this), int(collateralAmount), int(loanAmount));
+        assertEq(usd2.getRedeemAmountOut(1e18 + 1), 0);
+    }
+
     function test_calculateRate_growth() public view {
         uint lastRate = 1e16;
         uint timeElapsed = 7 days;
