@@ -617,15 +617,19 @@ contract USD2Test is Test {
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         );
+        uint initialDebt = 1e18;
         uint expectedRate = lastRate;
         uint expectedIntegral = 0;
+        uint expectedDebt = initialDebt;
         for(uint i = 0; i < timeElapsed; i++) {
             uint growthDecay = uint(wadExp(int(expRate)));
             expectedRate = expectedRate * growthDecay / 1e18;
-            expectedIntegral += expectedRate;
+            expectedIntegral += expectedRate / 365 days;
+            expectedDebt += expectedDebt * expectedRate / 1e18 / 365 days;
         }
         assertApproxEqAbs(currBorrowRate, expectedRate, 1e8);
         assertApproxEqAbs(integral, expectedIntegral, 1e16);
+        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
     }
 
     function test_calculateRate_decay() public view {
@@ -643,15 +647,19 @@ contract USD2Test is Test {
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         );
+        uint initialDebt = 1e18;
         uint expectedRate = lastRate;
         uint expectedIntegral = 0;
+        uint expectedDebt = initialDebt;
         for(uint i = 0; i < timeElapsed; i++) {
             uint growthDecay = uint(wadExp(int(expRate)));
             expectedRate = expectedRate * 1e18 / growthDecay;
-            expectedIntegral += expectedRate;
+            expectedIntegral += expectedRate / 365 days;
+            expectedDebt += expectedDebt * expectedRate / 1e18 / 365 days;
         }
         assertApproxEqAbs(currBorrowRate, expectedRate, 1e8);
         assertApproxEqAbs(integral, expectedIntegral, 1e16);
+        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
     }
 
     function test_calculateRate_decay_minRate_to_minRate() public view {
@@ -670,8 +678,11 @@ contract USD2Test is Test {
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         );
+        uint initialDebt = 1e18;
+        uint expectedDebt = initialDebt + initialDebt * minRate * timeElapsed / 1e18 / 365 days;
         assertEq(currBorrowRate, minRate);
-        assertEq(integral, minRate * timeElapsed);
+        assertEq(integral, minRate * timeElapsed / 365 days);
+        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
     }
 
     function test_calculateRate_decay_to_minRate() public view {
@@ -690,18 +701,22 @@ contract USD2Test is Test {
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         );
+        uint initialDebt = 1e18;
         uint expectedRate = lastRate;
         uint expectedIntegral = 0;
+        uint expectedDebt = initialDebt;
         for(uint i = 0; i < timeElapsed; i++) {
             uint growthDecay = uint(wadExp(int(expRate)));
             expectedRate = expectedRate * 1e18 / growthDecay;
             if(expectedRate < minRate) {
                 expectedRate = minRate;
             }
-            expectedIntegral += expectedRate;
+            expectedIntegral += expectedRate / 365 days;
+            expectedDebt += expectedDebt * expectedRate / 1e18 / 365 days;
         }
         assertApproxEqAbs(currBorrowRate, expectedRate, 1e8);
         assertApproxEqAbs(integral, expectedIntegral, 1e16);
+        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
     }
 
     function test_calculateRate_unchanged() public view {
@@ -719,10 +734,13 @@ contract USD2Test is Test {
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         );
+        uint initialDebt = 1e18;
         uint expectedRate = lastRate;
-        uint expectedIntegral = lastRate * timeElapsed;
+        uint expectedIntegral = lastRate * timeElapsed / 365 days;
+        uint expectedDebt = initialDebt + initialDebt * lastRate * timeElapsed / 1e18 / 365 days;
         assertEq(currBorrowRate, expectedRate);
         assertEq(integral, expectedIntegral);
+        assertEq(expectedDebt, initialDebt + initialDebt * integral / 1e18);
     }
         
 

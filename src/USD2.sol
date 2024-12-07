@@ -188,7 +188,7 @@ contract USD2 is ERC20 {
         uint growthDecay = uint(wadExp(int(_expRate * _timeElapsed)));
         if(_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
             currBorrowRate = _lastRate * growthDecay / 1e18;
-            integral = (currBorrowRate - _lastRate) * 1e18 / _expRate;
+            integral = (currBorrowRate - _lastRate) * 1e18 / _expRate / 365 days;
         } else if(_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
             currBorrowRate = _lastRate * 1e18 / growthDecay;
             if (currBorrowRate < MIN_RATE) {
@@ -196,20 +196,20 @@ contract USD2 is ERC20 {
                 // calculate integral
                 if (_lastRate <= MIN_RATE) {
                     // Already at min rate, just use flat rate for entire period
-                    integral = MIN_RATE * _timeElapsed;
+                    integral = MIN_RATE * _timeElapsed / 365 days;
                 } else {
                     // Calculate time until min rate is reached
                     uint timeToMin = uint(wadLn(int(MIN_RATE * 1e18 / _lastRate))) * 1e18 / _expRate;
                     // Decaying integral up to min rate, then add flat rate portion
-                    integral = (_lastRate - MIN_RATE) * 1e18 / _expRate + 
-                              MIN_RATE * (_timeElapsed - timeToMin);
+                    integral = ((_lastRate - MIN_RATE) * 1e18 / _expRate + 
+                              MIN_RATE * (_timeElapsed - timeToMin)) / 365 days;
                 }
             } else {
-                integral = (_lastRate - currBorrowRate) * 1e18 / _expRate;
+                integral = (_lastRate - currBorrowRate) * 1e18 / _expRate / 365 days;
             }
         } else {
             currBorrowRate = _lastRate;
-            integral = _lastRate * _timeElapsed;
+            integral = _lastRate * _timeElapsed / 365 days;
         }
     
     }
