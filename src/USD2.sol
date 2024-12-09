@@ -184,13 +184,16 @@ contract USD2 is ERC20 {
         uint _lastFreeDebtRatioBps,
         uint _targetFreeDebtRatioStartBps,
         uint _targetFreeDebtRatioEndBps
-        ) internal pure returns (uint currBorrowRate, uint integral) {
-        uint growthDecay = uint(wadExp(int(_expRate * _timeElapsed)));
-        if(_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
-            currBorrowRate = _lastRate * growthDecay / 1e18;
-            integral = (currBorrowRate - _lastRate) * 1e18 / _expRate / 365 days;
-        } else if(_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
+    ) internal pure returns (uint currBorrowRate, uint integral) {
+        // we use a negative exponent in order to prevent growthDecay overflow due to large timeElapsed
+        // Results of positive exponents can exceed max uint256, negative exponents only return a value between [0, 1e18]
+        uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
+        
+        if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
             currBorrowRate = _lastRate * 1e18 / growthDecay;
+            integral = (currBorrowRate - _lastRate) * 1e18 / _expRate / 365 days;
+        } else if (_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
+            currBorrowRate = _lastRate * growthDecay / 1e18;
             if (currBorrowRate < MIN_RATE) {
                 currBorrowRate = MIN_RATE;
                 // calculate integral
@@ -211,7 +214,6 @@ contract USD2 is ERC20 {
             currBorrowRate = _lastRate;
             integral = _lastRate * _timeElapsed / 365 days;
         }
-    
     }
 
     function accrueInterest() public {
