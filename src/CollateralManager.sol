@@ -6,6 +6,9 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
+/// @title CollateralManager
+/// @notice Manages redeemable and non-redeemable collateral shares for USD2
+/// @dev Handles deposits, withdrawals, and redemption switching
 contract CollateralManager {
     
     address public immutable usd2;
@@ -21,22 +24,29 @@ contract CollateralManager {
     uint256 public shareMergeCount;
     mapping(address => uint256) public lastShareMergeCount;
 
+    /// @param _asset The address of the ERC20 token used as collateral
     constructor(address _asset) {
         asset = IERC20(_asset);
         usd2 = msg.sender;
     }
 
+    /// @notice Restricts function access to only USD2 contract
     modifier onlyUSD2() {
         require(msg.sender == usd2, "Not authorized");
         _;
     }
 
+    /// @notice Updates shares for an account in case there's been a share merge
+    /// @param account The address whose shares are being updated
     modifier updateShares(address account) {
         _redeemableShares[account] = redeemableSharesOf(account);
         lastShareMergeCount[account] = shareMergeCount;
         _;
     }
 
+    /// @notice Calculates the current redeemable shares for an account
+    /// @param account The address to check
+    /// @return The number of redeemable shares after applying merge adjustments
     function redeemableSharesOf(address account) public view returns (uint256) {
         uint256 rawShares = _redeemableShares[account];
         uint256 accountLastMergeCount = lastShareMergeCount[account];
@@ -47,6 +57,9 @@ contract CollateralManager {
         return rawShares;
     }
 
+    /// @notice Gets the total collateral amount for an account whether redeemable or not
+    /// @param account The address to check
+    /// @return The total collateral amount in asset tokens
     function collateralOf(address account) public view returns (uint256) {
         if(isRedeemable[account]) {
             return convertToRedeemableAssets(redeemableSharesOf(account));
@@ -54,6 +67,9 @@ contract CollateralManager {
         return convertToNonRedeemableAssets(nonRedeemableShares[account]);
     }
 
+    /// @notice Allows USD2 core to seize collateral during liquidations
+    /// @param assets The amount of collateral to seize
+    /// @param to The recipient address
     function seize(uint256 assets, address to) public onlyUSD2 {
         require(totalRedeemable > assets, "Remaining redeemable collateral cannot be zero");
         totalRedeemable -= assets;
@@ -69,6 +85,9 @@ contract CollateralManager {
         }
     }
 
+    /// @notice Deposits collateral and mints shares. Collateral is non-redeemable by default
+    /// @param receiver The address receiving the shares
+    /// @return shares The number of shares minted
     function deposit(address receiver) public updateShares(receiver) returns (uint256 shares) {
         uint256 assets = asset.balanceOf(address(this)) - totalRedeemable - totalNonRedeemable;
         if(isRedeemable[receiver]) {
@@ -84,8 +103,15 @@ contract CollateralManager {
             totalNonRedeemableShares += shares;
             nonRedeemableShares[receiver] += shares;
         }
+        emit Deposit(receiver, shares, assets);
     }
 
+    /// @notice Withdraws collateral by burning shares
+    /// @param assets The amount of assets to withdraw
+    /// @param receiver The address receiving the assets
+    /// @param owner The owner of the shares
+    /// @return shares The number of shares burned
+    /// @dev Only callable by USD2 core. If assets is set to type(uint256).max, it will withdraw all owner's collateral
     function withdraw(uint256 assets, address receiver, address owner) public onlyUSD2 updateShares(owner) returns (uint256 shares) {
         if(isRedeemable[owner]) {
             if(assets == type(uint256).max) {
@@ -112,8 +138,13 @@ contract CollateralManager {
         }
 
         require(asset.transfer(receiver, assets), "Asset transfer failed");
+        emit Withdraw(owner, receiver, shares, assets);
     }
 
+    /// @notice Toggles an account's redeemable status and converts collateral shares accordingly
+    /// @param account The address to modify
+    /// @param redeemable The new redeemable status (true for redeemable, false for non-redeemable)
+    /// @dev Only callable by USD2 core
     function setRedeemable(address account, bool redeemable) public onlyUSD2 updateShares(account) {
         if(redeemable) { // become redeemable
             uint shares = nonRedeemableShares[account];
@@ -144,24 +175,39 @@ contract CollateralManager {
             }
             isRedeemable[account] = false;
         }
+        emit RedeemableStatusChanged(account, redeemable);
     }
 
+    /// @notice Converts asset amount to redeemable shares
+    /// @param assets The amount of assets to convert
+    /// @return shares The equivalent amount of redeemable shares
     function convertToRedeemableShares(uint256 assets) public view returns (uint256 shares) {
         return totalRedeemableShares == 0 ? assets : (assets * totalRedeemableShares) / totalRedeemable;
     }
 
+    /// @notice Converts redeemable shares to asset amount
+    /// @param shares The amount of shares to convert
+    /// @return assets The equivalent amount of assets
     function convertToRedeemableAssets(uint256 shares) public view returns (uint256 assets) {
         return totalRedeemableShares == 0 ? shares : (shares * totalRedeemable) / totalRedeemableShares;
     }
 
+    /// @notice Converts asset amount to non-redeemable shares
+    /// @param assets The amount of assets to convert
+    /// @return shares The equivalent amount of non-redeemable shares
     function convertToNonRedeemableShares(uint256 assets) public view returns (uint256 shares) {
         return totalNonRedeemableShares == 0 ? assets : (assets * totalNonRedeemableShares) / totalNonRedeemable;
     }
 
+    /// @notice Converts non-redeemable shares to asset amount
+    /// @param shares The amount of shares to convert
+    /// @return assets The equivalent amount of assets
     function convertToNonRedeemableAssets(uint256 shares) public view returns (uint256 assets) {
         return totalNonRedeemableShares == 0 ? shares : (shares * totalNonRedeemable) / totalNonRedeemableShares;
     }
 
+    /// @notice Distributes donated assets among all borrowers collateral balances pro-rata during write-off
+    /// @dev Distributes excess balance proportionally between redeemable and non-redeemable pools
     function sync() public {
         uint256 currentBalance = asset.balanceOf(address(this));
         uint256 lastBalance = totalNonRedeemable + totalRedeemable;
@@ -170,14 +216,44 @@ contract CollateralManager {
             uint256 excessBalance = currentBalance - lastBalance;
 
             // Calculate the proportional increase
-            uint256 nonRedeemableShare = (totalNonRedeemable * excessBalance) / lastBalance;
-            uint256 redeemableShare = excessBalance - nonRedeemableShare;
+            uint256 nonRedeemablePortion = (totalNonRedeemable * excessBalance) / lastBalance;
+            uint256 redeemablePortion = excessBalance - nonRedeemablePortion;
 
-            totalNonRedeemable += nonRedeemableShare;
-            totalRedeemable += redeemableShare;
+            totalNonRedeemable += nonRedeemablePortion;
+            totalRedeemable += redeemablePortion;
+            emit Sync(nonRedeemablePortion, redeemablePortion);
         }
     }
 
+    /// @notice Emitted when collateral is seized
+    /// @param to The address receiving the seized assets
+    /// @param assets The amount of assets seized
     event Seize(address indexed to, uint256 assets);
+
+    /// @notice Emitted when shares are merged/rebased
+    /// @param newMergeCount The new merge count after the rebase
     event Rebase(uint newMergeCount);
+
+    /// @notice Emitted when collateral is deposited
+    /// @param receiver The address receiving the shares
+    /// @param shares The number of shares deposited
+    /// @param assets The amount of assets deposited
+    event Deposit(address indexed receiver, uint256 shares, uint256 assets);
+
+    /// @notice Emitted when collateral is withdrawn
+    /// @param owner The owner of the shares
+    /// @param receiver The address receiving the assets
+    /// @param shares The number of shares withdrawn
+    /// @param assets The amount of assets withdrawn
+    event Withdraw(address indexed owner, address indexed receiver, uint256 shares, uint256 assets);
+
+    /// @notice Emitted when redeemable status is changed
+    /// @param account The address whose redeemable status is changed
+    /// @param redeemable The new redeemable status
+    event RedeemableStatusChanged(address indexed account, bool redeemable);
+
+    /// @notice Emitted when excess balance is distributed
+    /// @param nonRedeemablePortion The amount of excess balance distributed to non-redeemable shares
+    /// @param redeemablePortion The amount of excess balance distributed to redeemable shares
+    event Sync(uint256 nonRedeemablePortion, uint256 redeemablePortion);
 }
