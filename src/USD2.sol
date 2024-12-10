@@ -53,6 +53,20 @@ contract USD2 is ERC20 {
     uint public lastBorrowRateMantissa = 1e16; // 1%
     uint public lastAccrue;
 
+    event OperatorUpdated(address indexed newOperator);
+    event HalfLifeUpdated(uint newHalfLife);
+    event CollateralFactorUpdated(uint newFactorBps);
+    event LiqIncentiveUpdated(uint newIncentiveBps);
+    event TargetFreeDebtRatioRangeUpdated(uint newStartBps, uint newEndBps);
+    event RedeemFeeUpdated(uint newFeeBps);
+    event DelegationUpdated(address indexed account, address indexed delegatee, bool isDelegatee);
+    event PositionAdjusted(address indexed account, int256 collateralDelta, int256 debtDelta);
+    event Liquidated(address indexed borrower, address indexed liquidator, uint repayAmount, uint collateralOut);
+    event ReserveAdded(address indexed from, uint amount);
+    event ReserveRemoved(uint amount);
+    event Redeemed(address indexed redeemer, uint amountIn, uint amountOut);
+    event WrittenOff(address indexed account, address indexed caller, uint debt, uint collateral, bool isRedeemable);
+
     constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
         collateral = ICollateral(_collateral);
         feed = IChainlinkFeed(_feed);
@@ -84,22 +98,26 @@ contract USD2 is ERC20 {
     function setOperator(address _operator) external {
         require(msg.sender == operator, "USD2: not operator");
         operator = _operator;
+        emit OperatorUpdated(_operator);
     }
 
     function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline {
         accrueInterest();
         require(_halfLife > 0, "USD2: invalid half-life");
         expRate = WAD_LN2 / _halfLife;
+        emit HalfLifeUpdated(_halfLife);
     }
 
     function setCollateralFactorBps(uint _collateralFactorBps) external onlyOperator beforeDeadline {
         require(_collateralFactorBps <= 10000, "USD2: invalid collateral factor");
         collateralFactorBps = _collateralFactorBps;
+        emit CollateralFactorUpdated(_collateralFactorBps);
     }
 
     function setLiqIncentiveBps(uint _liqIncentiveBps) external onlyOperator beforeDeadline {
         require(_liqIncentiveBps <= 10000, "USD2: invalid liquidation incentive");
         liqIncentiveBps = _liqIncentiveBps;
+        emit LiqIncentiveUpdated(_liqIncentiveBps);
     }
 
     function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline {
@@ -108,11 +126,13 @@ contract USD2 is ERC20 {
         accrueInterest();
         targetFreeDebtRatioStartBps = _start;
         targetFreeDebtRatioEndBps = _end;
+        emit TargetFreeDebtRatioRangeUpdated(_start, _end);
     }
 
     function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
         require(_redeemFeeBps < 10000, "USD2: invalid redeem fee");
         redeemFeeBps = _redeemFeeBps;
+        emit RedeemFeeUpdated(_redeemFeeBps);
     }
 
     function getFreeDebtRatio() public view returns (uint) {
@@ -254,6 +274,7 @@ contract USD2 is ERC20 {
 
     function delegate(address delegatee, bool isDelegatee) external {
         delegations[msg.sender][delegatee] = isDelegatee;
+        emit DelegationUpdated(msg.sender, delegatee, isDelegatee);
     }
 
     function adjust(address account, int256 collateralDelta, int256 debtDelta) external {
@@ -323,6 +344,8 @@ contract USD2 is ERC20 {
         uint256 price = getCollateralPrice();
         uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
         require(borrowingPower >= debtBalance, "USD2: unsafe position");
+
+        emit PositionAdjusted(account, collateralDelta, debtDelta);
     }
 
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
@@ -366,6 +389,7 @@ contract USD2 is ERC20 {
         _burn(msg.sender, repayAmount);
         // try to write off remaining debt
         writeOff(borrower);
+        emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
         return collateralReward;
     }
 
@@ -374,8 +398,9 @@ contract USD2 is ERC20 {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
+            uint collateralBalance = collateralManager.collateralOf(borrower);
             uint price = getCollateralPrice();
-            uint collateralValue = price * collateralManager.collateralOf(borrower) / 1e18;
+            uint collateralValue = price * collateralBalance / 1e18;
             if(collateralValue < debt) {
                 // collateral redistribution
                 collateralManager.withdraw(type(uint).max, address(collateralManager), borrower);
@@ -399,6 +424,7 @@ contract USD2 is ERC20 {
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
+                emit WrittenOff(borrower, msg.sender, debt, collateralBalance, isRedeemable);
             }
         }
     }
@@ -423,6 +449,9 @@ contract USD2 is ERC20 {
 
         // pay caller from redeemable collateral
         collateralManager.seize(amountOut, msg.sender);
+
+        emit Redeemed(msg.sender, amountIn, amountOut);
+        return amountOut;
     }
 
     function optInRedemptions(address account) external {
@@ -443,6 +472,7 @@ contract USD2 is ERC20 {
         freeDebtShares[account] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
+        // redemption status events are tracked in CollateralManager
     }
 
     function optOutRedemptions(address account) external {
@@ -463,15 +493,18 @@ contract USD2 is ERC20 {
         paidDebtShares[account] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
+        // redemption status events are tracked in CollateralManager
     }
 
     function addToReserve(uint amount) external {
         USD2(address(this)).transferFrom(msg.sender, address(this), amount);
         sUSD2.deposit(amount, address(this));
+        emit ReserveAdded(msg.sender, amount);
     }
 
     function removeFromReserve(uint amount) external onlyOperator {
         sUSD2.withdraw(amount, msg.sender, address(this));
+        emit ReserveRemoved(amount);
     }
 
 }
