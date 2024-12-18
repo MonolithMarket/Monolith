@@ -34,6 +34,7 @@ contract USD2 is ERC20 {
     uint public immutable IMMUTABILITY_DEADLINE;
     uint internal constant MAX_UINT256 = 2**256 - 1;
     uint internal constant MIN_RATE = 5e15; // 0.5%
+    uint public MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
     IsUSD2 public sUSD2;
@@ -421,6 +422,19 @@ contract USD2 is ERC20 {
         emit PositionAdjusted(account, collateralDelta, debtDelta);
     }
 
+    function getLiquidatableDebt(address borrower) public view returns (uint liquidatableDebt) {
+        // check liquidation condition
+        uint collateralBalance = collateralManager.collateralOf(borrower);
+        uint price = getCollateralPrice();
+        uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
+        uint debtBalance = getDebtOf(borrower);
+        if(borrowingPower > debtBalance) return 0;
+        // liquidate only the amount of debt that is above the borrowing power
+        liquidatableDebt = debtBalance - borrowingPower;
+        // liquidate at least MIN_LIQUIDATION_DEBT (or the entire debt if it's less than MIN_LIQUIDATION_DEBT)
+        if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debtBalance < MIN_LIQUIDATION_DEBT ? debtBalance : MIN_LIQUIDATION_DEBT;
+    }
+
     /// @notice Liquidates an unsafe position
     /// @param borrower The account to be liquidated
     /// @param repayAmount The amount of debt to repay
@@ -429,12 +443,11 @@ contract USD2 is ERC20 {
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
 
+        require(repayAmount > 0, "USD2: repay amount must be greater than 0");
+
         // check liquidation condition
-        uint collateralBalance = collateralManager.collateralOf(borrower);
-        uint price = getCollateralPrice();
-        uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
-        uint debtBalance = getDebtOf(borrower);
-        require(borrowingPower < debtBalance, "USD2: excessive borrowing power");
+        uint liquidatableDebt = getLiquidatableDebt(borrower);
+        require(liquidatableDebt >= repayAmount, "USD2: insufficient liquidatable debt");
 
         // apply repayment
         if(collateralManager.isRedeemable(borrower)) {
@@ -453,8 +466,10 @@ contract USD2 is ERC20 {
 
         // calculate collateral reward
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
+        uint price = getCollateralPrice();
         uint collateralReward = collateralRewardValue * 1e18 / price;
         bool useEntireBalance;
+        uint collateralBalance = collateralManager.collateralOf(borrower);
         if(collateralBalance < collateralReward) {
             useEntireBalance = true;
             collateralReward = collateralBalance;
