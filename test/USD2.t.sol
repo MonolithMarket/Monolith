@@ -604,7 +604,7 @@ contract USD2Test is Test {
 
     function test_calculateRate_growth() public view {
         uint lastRate = 1e16;
-        uint timeElapsed = 7 days;
+        uint timeElapsed = 100;
         uint expRate = usd2.expRate();
         uint lastFreeDebtRatioBps = 0;
         uint targetFreeDebtRatioStartBps = usd2.targetFreeDebtRatioStartBps();
@@ -634,7 +634,7 @@ contract USD2Test is Test {
 
     function test_calculateRate_decay() public view {
         uint lastRate = 1e16;
-        uint timeElapsed = 7 days;
+        uint timeElapsed = 100;
         uint expRate = usd2.expRate();
         uint lastFreeDebtRatioBps = 10000;
         uint targetFreeDebtRatioStartBps = usd2.targetFreeDebtRatioStartBps();
@@ -688,7 +688,7 @@ contract USD2Test is Test {
     function test_calculateRate_decay_to_minRate() public view {
         uint minRate = 5e15;
         uint lastRate = 1e15;
-        uint timeElapsed = 7 days;
+        uint timeElapsed = 100;
         uint expRate = usd2.expRate();
         uint lastFreeDebtRatioBps = 10000;
         uint targetFreeDebtRatioStartBps = usd2.targetFreeDebtRatioStartBps();
