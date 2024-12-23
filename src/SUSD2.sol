@@ -2,6 +2,7 @@
 pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC4626.sol";
+import "lib/solmate/src/utils/FixedPointMathLib.sol";
 
 /// @title USD2 Interface
 /// @notice Interface for USD2 token's interest accrual functionality
@@ -13,7 +14,7 @@ interface IUSD2 {
 /// @notice A tokenized vault for USD2, implementing the ERC4626 standard
 /// @dev Allows staking of USD2 tokens with fee collection mechanism
 contract SUSD2 is ERC4626 {
-
+    using FixedPointMathLib for uint256;
     /// @notice Maximum fee that can be set (25%)
     uint public constant MAX_FEE_BPS = 2500;
     
@@ -92,7 +93,11 @@ contract SUSD2 is ERC4626 {
         if (bal > _totalAssets) {
             uint fee = (bal - _totalAssets) * feeBps / 10000;
             _totalAssets = bal;
-            if(fee > 0 && feeRecipient != address(0)) _mint(feeRecipient, convertToShares(fee));
+            if(fee > 0 && feeRecipient != address(0)) {
+                uint supply = totalSupply;
+                uint shares = supply == 0 ? fee : fee.mulDivDown(supply, _totalAssets - fee);
+                _mint(feeRecipient, shares);
+            }
         }
     }
 
