@@ -528,40 +528,38 @@ contract USD2Test is Test {
         // first borrower is redeemable
         address REDEEMABLE_BORROWER = address(11);
         vm.startPrank(REDEEMABLE_BORROWER);
-        MockCollateral(collateral).__mint(REDEEMABLE_BORROWER, 1000);
+        MockCollateral(collateral).__mint(REDEEMABLE_BORROWER, 1000e18);
         usd2.optInRedemptions(REDEEMABLE_BORROWER);
-        MockCollateral(collateral).approve(address(usd2), 1000);
-        usd2.adjust(REDEEMABLE_BORROWER, 1000, 850);
+        MockCollateral(collateral).approve(address(usd2), 1000e18);
+        usd2.adjust(REDEEMABLE_BORROWER, 1000e18, 850e18);
         // second borrower is non-redeemable
         address NON_REDEEMABLE_BORROWER = address(12);
         vm.startPrank(NON_REDEEMABLE_BORROWER);
-        MockCollateral(collateral).__mint(NON_REDEEMABLE_BORROWER, 1000);
-        MockCollateral(collateral).approve(address(usd2), 1000);
-        usd2.adjust(NON_REDEEMABLE_BORROWER, 1000, 850);
+        MockCollateral(collateral).__mint(NON_REDEEMABLE_BORROWER, 1000e18);
+        MockCollateral(collateral).approve(address(usd2), 1000e18);
+        usd2.adjust(NON_REDEEMABLE_BORROWER, 1000e18, 850e18);
         // third borrower will be written off, he's non-redeemable btw
         address WRITTEN_OFF_BORROWER = address(this);
         vm.startPrank(WRITTEN_OFF_BORROWER);
-        MockCollateral(collateral).__mint(WRITTEN_OFF_BORROWER, 1000);
-        MockCollateral(collateral).approve(address(usd2), 1000);
-        usd2.adjust(WRITTEN_OFF_BORROWER, 1000, 850);
-        // reduce collateral price to just under $0.85 (debt value)
-        MockFeed(feed).__setPrice(85e16 - 1);
+        MockCollateral(collateral).__mint(WRITTEN_OFF_BORROWER, 1000e18);
+        MockCollateral(collateral).approve(address(usd2), 1000e18);
+        // deposit $1000, borrow $850 (both tokens are worth $1 each)
+        usd2.adjust(WRITTEN_OFF_BORROWER, 1000e18, 850e18);
+        // reduce collateral price to just under $0.5
+        MockFeed(feed).__setPrice(0.5e18);
         uint prevFreeDebt = usd2.totalFreeDebt();
         uint prevPaidDebt = usd2.totalPaidDebt();
-        uint prevRedeemableCollateral = usd2.collateralManager().totalRedeemable();
-        uint prevNonRedeemableCollateral = usd2.collateralManager().totalNonRedeemable();
         usd2.writeOff(WRITTEN_OFF_BORROWER);
-        // assert written off borrower's debt and collateral are zero
-        assertEq(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 0);
-        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 0);
-        // assert other borrowers receive half of the written off borrower's debt and collateral    
-        assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850 + 425);
-        assertEq(usd2.collateralManager().collateralOf(REDEEMABLE_BORROWER), 1000 + 500);
-        assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850 + 425);
-        assertEq(usd2.collateralManager().collateralOf(NON_REDEEMABLE_BORROWER), 1000 + 500);
-        // assert total debt and collateral are unchanged
+        // assert written off borrower's debt is equal to his collateral value
+        // at $0.5 price per collateral, 1000 collateral is worth $500. $350 of debt needs to go.
+        assertApproxEqAbs(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 500e18, 1);
+        // collateral remains unchanged
+        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000e18);
+        // assert other borrowers receive 350 of the written off borrower's debt (850 - 500)
+        assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850e18 + (350e18 / 2));
+        assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850e18 + (350e18 / 2));
+        // assert total debt is unchanged
         assertEq(usd2.totalFreeDebt() + usd2.totalPaidDebt(), prevFreeDebt + prevPaidDebt);
-        assertEq(usd2.collateralManager().totalRedeemable() + usd2.collateralManager().totalNonRedeemable(), prevRedeemableCollateral + prevNonRedeemableCollateral);
     }
 
     function test_writeOff_safePosition() public {

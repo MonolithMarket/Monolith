@@ -206,25 +206,6 @@ contract CollateralManager {
         return totalNonRedeemableShares == 0 ? shares : (shares * totalNonRedeemable) / totalNonRedeemableShares;
     }
 
-    /// @notice Distributes donated assets among all borrowers collateral balances pro-rata during write-off
-    /// @dev Distributes excess balance proportionally between redeemable and non-redeemable pools
-    function sync() public {
-        uint256 currentBalance = asset.balanceOf(address(this));
-        uint256 lastBalance = totalNonRedeemable + totalRedeemable;
-
-        if (currentBalance > lastBalance) {
-            uint256 excessBalance = currentBalance - lastBalance;
-
-            // Calculate the proportional increase
-            uint256 nonRedeemablePortion = (totalNonRedeemable * excessBalance) / lastBalance;
-            uint256 redeemablePortion = excessBalance - nonRedeemablePortion;
-
-            totalNonRedeemable += nonRedeemablePortion;
-            totalRedeemable += redeemablePortion;
-            emit Sync(nonRedeemablePortion, redeemablePortion);
-        }
-    }
-
     /// @notice Emitted when collateral is seized
     /// @param to The address receiving the seized assets
     /// @param assets The amount of assets seized
@@ -251,9 +232,4 @@ contract CollateralManager {
     /// @param account The address whose redeemable status is changed
     /// @param redeemable The new redeemable status
     event RedeemableStatusChanged(address indexed account, bool redeemable);
-
-    /// @notice Emitted when excess balance is distributed
-    /// @param nonRedeemablePortion The amount of excess balance distributed to non-redeemable shares
-    /// @param redeemablePortion The amount of excess balance distributed to redeemable shares
-    event Sync(uint256 nonRedeemablePortion, uint256 redeemablePortion);
 }

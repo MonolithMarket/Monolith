@@ -69,7 +69,7 @@ contract USD2 is ERC20 {
     event ReserveAdded(address indexed from, uint amount);
     event ReserveRemoved(uint amount);
     event Redeemed(address indexed redeemer, uint amountIn, uint amountOut);
-    event WrittenOff(address indexed account, address indexed caller, uint debt, uint collateral, bool isRedeemable);
+    event WrittenOff(address indexed account, address indexed caller, uint redistributedDebt, uint collateral);
 
     constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
         collateral = ICollateral(_collateral);
@@ -486,9 +486,9 @@ contract USD2 is ERC20 {
         return collateralReward;
     }
 
-    /// @notice Redistributes collateral and debt of undercollateralized accounts among other borrowers
-    /// @param borrower The account whose debt should be written off
-    /// @dev This function is called by liquidate() when a borrower's position is unsafe. It should never revert to avoid liquidation failure.
+    /// @notice Redistributes excess debt of undercollateralized accounts among other borrowers
+    /// @param borrower The account in potentiallyundercollateralized state
+    /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
     function writeOff(address borrower) public {
         accrueInterest();
         // check for write off
@@ -498,29 +498,42 @@ contract USD2 is ERC20 {
             uint price = getCollateralPrice();
             uint collateralValue = price * collateralBalance / 1e18;
             if(collateralValue < debt) {
-                // collateral redistribution
-                collateralManager.withdraw(type(uint).max, address(collateralManager), borrower);
-                collateralManager.sync();
-                // debt redistribution
+                // 1. delete all of the borrower's debt
                 bool isRedeemable = collateralManager.isRedeemable(borrower);
                 if(isRedeemable) {
-                    totalFreeDebtShares -= freeDebtShares[borrower];
+                    uint shares = convertToShares(debt, totalFreeDebt, totalFreeDebtShares);
+                    totalFreeDebtShares -= shares;
                     freeDebtShares[borrower] = 0;
                     totalFreeDebt -= debt;
                 } else {
-                    totalPaidDebtShares -= paidDebtShares[borrower];
+                    uint shares = convertToShares(debt, totalPaidDebt, totalPaidDebtShares);
+                    totalPaidDebtShares -= shares;
                     paidDebtShares[borrower] = 0;
                     totalPaidDebt -= debt;
                 }
+                // 2. redistribute excess debt among remaining borrowers
                 uint256 totalDebt = totalFreeDebt + totalPaidDebt;
+                uint256 excessDebt = debt - collateralValue;
                 if (totalDebt > 0) {
-                    uint256 freeDebtIncrease = debt * totalFreeDebt / totalDebt;
-                    uint256 paidDebtIncrease = debt - freeDebtIncrease;
+                    uint256 freeDebtIncrease = excessDebt * totalFreeDebt / totalDebt;
+                    uint256 paidDebtIncrease = excessDebt - freeDebtIncrease;
 
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
-                emit WrittenOff(borrower, msg.sender, debt, collateralBalance, isRedeemable);
+                // 3. assign the borrower a new debt equal to his collateral value
+                if(isRedeemable) {
+                    uint shares = convertToShares(collateralValue, totalFreeDebt, totalFreeDebtShares);
+                    totalFreeDebtShares += shares;
+                    freeDebtShares[borrower] = shares;
+                    totalFreeDebt += collateralValue;
+                } else {
+                    uint shares = convertToShares(collateralValue, totalPaidDebt, totalPaidDebtShares);
+                    totalPaidDebtShares += shares;
+                    paidDebtShares[borrower] = shares;
+                    totalPaidDebt += collateralValue;
+                }
+                emit WrittenOff(borrower, msg.sender, excessDebt, collateralBalance);
             }
         }
     }
