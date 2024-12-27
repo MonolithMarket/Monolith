@@ -223,4 +223,86 @@ contract SUSD2Test is Test {
         assertEq(susd2.convertToAssets(susd2.balanceOf(feeRecipient)), 2499);
     }
 
+    function test_withdraw_success() public {
+        test_deposit_success();
+        uint shares = susd2.convertToShares(100);
+        uint sharesOut = susd2.withdraw(100, address(this), address(this));
+        assertEq(sharesOut, shares);
+        assertEq(susd2.balanceOf(address(this)), 0);
+        assertEq(susd2.totalAssets(), 0);
+        assertEq(susd2.totalSupply(), 0);
+        assertEq(usd2.balanceOf(address(susd2)), 0);
+        assertEq(usd2.isAccrued(), true);
+    }
+
+    function test_withdraw_afterInterest() public {
+        test_deposit_afterInterest();
+        usd2.__setMockInterest(0); // avoid adding more interest
+        uint shares = susd2.convertToShares(100);
+        uint sharesOut = susd2.withdraw(100, address(this), address(this));
+        assertEq(sharesOut, shares);
+        assertEq(susd2.balanceOf(address(this)), 100); // after interest
+        assertEq(susd2.totalAssets(), 200);
+        assertEq(susd2.totalSupply(), 100);
+        assertEq(usd2.balanceOf(address(susd2)), 200);
+        assertEq(usd2.isAccrued(), true);
+    }
+
+    function test_withdraw_afterInterest_fee() public {
+        // 25% fee
+        address feeRecipient = address(3);
+        vm.startPrank(operator);
+        susd2.setFeeBps(2500);
+        susd2.setFeeRecipient(feeRecipient);
+        vm.stopPrank();
+        test_deposit_afterInterest_fee();
+        uint shares = susd2.convertToShares(10000);
+        usd2.__setMockInterest(0); // avoid adding more interest
+        uint sharesOut = susd2.withdraw(10000, address(this), address(this));
+        assertEq(sharesOut, shares);
+        assertEq(susd2.convertToAssets(susd2.balanceOf(address(this))), 10000 + 7500);
+        assertEq(susd2.convertToAssets(susd2.balanceOf(feeRecipient)), 2499);
+    }
+
+    function test_redeem_success() public {
+        test_deposit_success();
+        uint shares = susd2.balanceOf(address(this));
+        uint amountOut = susd2.redeem(shares, address(this), address(this));
+        assertEq(amountOut, 100);
+        assertEq(susd2.balanceOf(address(this)), 0);
+        assertEq(susd2.totalAssets(), 0);
+        assertEq(susd2.totalSupply(), 0);
+        assertEq(usd2.balanceOf(address(susd2)), 0);
+        assertEq(usd2.isAccrued(), true);
+    }
+
+    function test_redeem_afterInterest() public {
+        test_deposit_afterInterest();
+        usd2.__setMockInterest(0); // avoid adding more interest
+        uint shares = susd2.convertToShares(100);
+        uint amountOut = susd2.redeem(shares, address(this), address(this));
+        assertEq(amountOut, 100);
+        assertEq(susd2.balanceOf(address(this)), 100); // after interest
+        assertEq(susd2.totalAssets(), 200);
+        assertEq(susd2.totalSupply(), 100);
+        assertEq(usd2.balanceOf(address(susd2)), 200);
+        assertEq(usd2.isAccrued(), true);
+    }
+
+    function test_redeem_afterInterest_fee() public {
+        // 25% fee
+        address feeRecipient = address(3);
+        vm.startPrank(operator);
+        susd2.setFeeBps(2500);
+        susd2.setFeeRecipient(feeRecipient);
+        vm.stopPrank();
+        test_deposit_afterInterest_fee();
+        uint shares = susd2.convertToShares(10000);
+        usd2.__setMockInterest(0); // avoid adding more interest
+        uint amountOut = susd2.redeem(shares, address(this), address(this));
+        assertEq(amountOut, 10000);
+        assertEq(susd2.convertToAssets(susd2.balanceOf(address(this))), 10000 + 7500);
+        assertEq(susd2.convertToAssets(susd2.balanceOf(feeRecipient)), 2499);
+    }
+
 }
