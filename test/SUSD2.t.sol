@@ -159,5 +159,68 @@ contract SUSD2Test is Test {
         assertEq(susd2.convertToAssets(susd2.balanceOf(address(this))), 10000 + 10000 + 7500);
         assertEq(susd2.convertToAssets(susd2.balanceOf(feeRecipient)), 2499);
     }
+    
+    function test_mint_success() public {
+        usd2.__mint(address(this), 100);
+        usd2.approve(address(susd2), 100);
+        uint shares = susd2.convertToShares(100);
+        uint amountOut = susd2.mint(shares, address(this));
+        assertEq(amountOut, 100);
+        assertEq(susd2.balanceOf(address(this)), 100);
+        assertEq(susd2.totalAssets(), 100);
+        assertEq(susd2.totalSupply(), 100);
+        assertEq(usd2.balanceOf(address(susd2)), 100);
+        assertEq(usd2.isAccrued(), true);
+    }
+
+    function test_mint_afterInterest() public {
+        test_mint_success();
+        usd2.__setMockInterest(100);
+        usd2.__mint(address(this), 100);
+        usd2.approve(address(susd2), 100);
+        uint shares = susd2.convertToShares(50);
+        uint amountOut = susd2.mint(shares, address(this));
+        assertEq(amountOut, 100);
+        assertEq(susd2.balanceOf(address(this)), 150);
+        assertEq(susd2.totalAssets(), 300);
+        assertEq(susd2.totalSupply(), 150);
+        assertEq(usd2.balanceOf(address(susd2)), 300);
+        assertEq(usd2.isAccrued(), true);
+    }
+
+    function test_mint_afterInterest_fee() public {
+        // 25% fee
+        address feeRecipient = address(3);
+        vm.startPrank(operator);
+        susd2.setFeeBps(2500);
+        susd2.setFeeRecipient(feeRecipient);
+        vm.stopPrank();
+        // initial mint        
+        usd2.__mint(address(this), 10000);
+        usd2.approve(address(susd2), 10000);
+        uint shares = susd2.convertToShares(10000);
+        uint amountOut = susd2.mint(shares, address(this));
+        assertEq(amountOut, 10000);
+        assertEq(susd2.balanceOf(address(this)), 10000);
+        assertEq(susd2.totalAssets(), 10000);
+        assertEq(susd2.totalSupply(), 10000);
+        assertEq(usd2.balanceOf(address(susd2)), 10000);
+        assertEq(usd2.isAccrued(), true);
+        // interest accrued
+        usd2.__setMockInterest(10000);
+        // 2nd mint
+        usd2.__mint(address(this), 10000);
+        usd2.approve(address(susd2), 10000);
+        susd2.accrueInterest(); // update shares to reflect interest
+        usd2.__setMockInterest(0); // avoid adding more interest
+        shares = susd2.convertToShares(10000);
+        amountOut = susd2.mint(shares, address(this));
+        assertEq(amountOut, 10000);
+        assertEq(susd2.totalAssets(), 30000);
+        assertEq(usd2.balanceOf(address(susd2)), 30000);
+        assertEq(usd2.isAccrued(), true);
+        assertEq(susd2.convertToAssets(susd2.balanceOf(address(this))), 10000 + 10000 + 7500);
+        assertEq(susd2.convertToAssets(susd2.balanceOf(feeRecipient)), 2499);
+    }
 
 }
