@@ -3,6 +3,7 @@ pragma solidity 0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
 import "lib/solmate/src/utils/SignedWadMath.sol";
+import "lib/solmate/src/utils/CREATE3.sol";
 import {USD2, IChainlinkFeed} from "src/USD2.sol";
 import {SUSD2} from "src/SUSD2.sol";
 import  "lib/solmate/src/tokens/ERC20.sol";
@@ -40,10 +41,11 @@ contract MockFeed is IChainlinkFeed {
 contract USD2Wrapper is USD2 {
 
     constructor(
+        address _sUSD2,
         address _collateral,
         address _feed,
         address _operator
-    ) USD2(_collateral, _feed, _operator) {}
+    ) USD2(_sUSD2, _collateral, _feed, _operator) {}
 
     function _calculateRate(uint _lastRate,
         uint _timeElapsed,
@@ -70,10 +72,20 @@ contract USD2Test is Test {
     CollateralManager collateralManager;
 
     function setUp() public {
-        usd2 = new USD2Wrapper(collateral, feed, operator);
+        usd2 = USD2Wrapper(CREATE3.getDeployed(keccak256("USD2")));
+        sUSD2 = CREATE3.getDeployed(keccak256("SUSD2"));
+        CREATE3.deploy(
+            keccak256("USD2"),
+            abi.encodePacked(type(USD2Wrapper).creationCode, abi.encode(sUSD2, collateral, feed, operator)),
+            0
+        );
+        CREATE3.deploy(
+            keccak256("SUSD2"),
+            abi.encodePacked(type(SUSD2).creationCode, abi.encode(operator, address(usd2))),
+            0
+        );
         // just to show collateralManager on the forge debugger source maps
         collateralManager = usd2.collateralManager();
-        sUSD2 = address(new SUSD2(operator, address(usd2)));
     }
 
     function test_constructor() public view {
@@ -83,14 +95,6 @@ contract USD2Test is Test {
         assertEq(usd2.operator(), operator);
         assertEq(usd2.IMMUTABILITY_DEADLINE(), block.timestamp + 365 days);
         assertNotEq(address(usd2.collateralManager()), address(0));
-    }
-
-    function test_initialize() public {
-        usd2.initialize(sUSD2);
-        assertEq(address(usd2.sUSD2()), sUSD2);
-        assertEq(usd2.allowance(address(usd2), sUSD2), type(uint).max);
-        vm.expectRevert("USD2: already initialized");
-        usd2.initialize(sUSD2);
     }
 
     function test_burn(uint amount) public {
@@ -211,7 +215,6 @@ contract USD2Test is Test {
     }
 
     function test_addToReserve() public {
-        usd2.initialize(sUSD2);
         usd2.__mint(address(this), 1000);
         usd2.approve(address(usd2), 1000);
         usd2.addToReserve(1000);
@@ -233,7 +236,6 @@ contract USD2Test is Test {
     }
 
     function test_adjust_depositCollateral() public {
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(address(this), 1000);
         MockCollateral(collateral).approve(address(usd2), 1000);
         usd2.adjust(address(this), 1000, 0);
@@ -243,7 +245,6 @@ contract USD2Test is Test {
     }
 
     function test_adjust_depositCollateral_isRedeemable() public {
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(address(this), 1000);
         MockCollateral(collateral).approve(address(usd2), 1000);
         usd2.optInRedemptions(address(this));
@@ -254,7 +255,6 @@ contract USD2Test is Test {
     }
 
     function test_adjust_depositCollateral_onBehalf() public {
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(address(this), 1000);
         MockCollateral(collateral).approve(address(usd2), 1000);
         usd2.adjust(address(1), 1000, 0);
@@ -410,7 +410,6 @@ contract USD2Test is Test {
         uint minAmountOut = 997;
         address BORROWER = address(this);
         address REDEEMER = address(1);
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(BORROWER, collateralAmount);
         MockCollateral(collateral).approve(address(usd2), collateralAmount);
         usd2.optInRedemptions(address(this));
@@ -435,7 +434,6 @@ contract USD2Test is Test {
         uint minAmountOut = 998; // in this case, minAmountOut is too high
         address BORROWER = address(this);
         address REDEEMER = address(1);
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(BORROWER, collateralAmount);
         MockCollateral(collateral).approve(address(usd2), collateralAmount);
         usd2.optInRedemptions(address(this));
@@ -454,7 +452,6 @@ contract USD2Test is Test {
         uint loan = 8500;
         address BORROWER = address(this);
         address REDEEMER = address(1);
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(BORROWER, collateralAmount);
         MockCollateral(collateral).approve(address(usd2), collateralAmount);
         // redeemer is not opted in, there's no redeemable collateral
@@ -470,7 +467,6 @@ contract USD2Test is Test {
     }
 
     function test_writeOff() public {
-        usd2.initialize(sUSD2);
         // first borrower is redeemable
         address REDEEMABLE_BORROWER = address(11);
         vm.startPrank(REDEEMABLE_BORROWER);
@@ -509,7 +505,6 @@ contract USD2Test is Test {
     }
 
     function test_writeOff_safePosition() public {
-        usd2.initialize(sUSD2);
         address WRITTEN_OFF_BORROWER = address(this);
         vm.startPrank(WRITTEN_OFF_BORROWER);
         MockCollateral(collateral).__mint(WRITTEN_OFF_BORROWER, 1000);
@@ -524,7 +519,6 @@ contract USD2Test is Test {
     function test_getRedeemAmountOut() public {
         uint collateralAmount = 2e18;
         uint loanAmount = 1e18;
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(address(this), collateralAmount);
         MockCollateral(collateral).approve(address(usd2), collateralAmount);
         usd2.optInRedemptions(address(this));
@@ -538,7 +532,6 @@ contract USD2Test is Test {
     function test_getRedeemAmountOut_insufficientFreeDebt() public {
         uint collateralAmount = 2e18;
         uint loanAmount = 1e18;
-        usd2.initialize(sUSD2);
         MockCollateral(collateral).__mint(address(this), collateralAmount);
         MockCollateral(collateral).approve(address(usd2), collateralAmount);
         usd2.optInRedemptions(address(this));

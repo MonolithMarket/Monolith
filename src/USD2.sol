@@ -36,7 +36,7 @@ contract USD2 is ERC20 {
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
-    IsUSD2 public sUSD2;
+    IsUSD2 public immutable sUSD2;
     address public operator;
     CollateralManager public immutable collateralManager;
 
@@ -68,12 +68,15 @@ contract USD2 is ERC20 {
     event Redeemed(address indexed redeemer, uint amountIn, uint amountOut);
     event WrittenOff(address indexed account, address indexed caller, uint redistributedDebt, uint collateral);
 
-    constructor(address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
+    constructor(address _sUSD2, address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
+        sUSD2 = IsUSD2(_sUSD2);
         collateral = ICollateral(_collateral);
         feed = IChainlinkFeed(_feed);
         operator = _operator;
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
         collateralManager = new CollateralManager(_collateral);
+        allowance[address(this)][_sUSD2] = type(uint).max;
+        emit Approval(address(this), _sUSD2, type(uint).max);
     }
 
     modifier onlyOperator() {
@@ -86,13 +89,9 @@ contract USD2 is ERC20 {
         _;
     }
 
-    /// @notice Initializes the USD2 contract with an sUSD2 address
-    /// @param _sUSD2 The address of the sUSD2 contract
-    /// @dev Can only be called once
-    function initialize(address _sUSD2) external {
-        require(sUSD2 == IsUSD2(address(0)), "USD2: already initialized");
-        sUSD2 = IsUSD2(_sUSD2);
-        USD2(address(this)).approve(address(sUSD2), type(uint).max);
+    function reapprove() external {
+        allowance[address(this)][address(sUSD2)] = type(uint).max;
+        emit Approval(address(this), address(sUSD2), type(uint).max);
     }
 
     /// @notice Burns USD2 tokens without receiving anything in return
