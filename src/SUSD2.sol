@@ -28,10 +28,10 @@ contract SUSD2 is ERC4626 {
     address public feeRecipient;
     
     /// @notice Total assets held by the vault
-    uint internal _totalAssets;
+    uint240 internal _totalAssets;
     
     /// @notice Current fee rate in basis points (1/10000)
-    uint public feeBps;
+    uint16 public feeBps;
 
     /// @param _operator Address of the initial operator
     /// @param _usd2 Address of the USD2 token
@@ -70,26 +70,26 @@ contract SUSD2 is ERC4626 {
         accrueInterest(); // apply old fee before changing fee
         require(msg.sender == operator, "SUSD2: FORBIDDEN");
         require(_feeBps <= MAX_FEE_BPS, "SUSD2: INVALID_FEE");
-        feeBps = _feeBps;
+        feeBps = uint16(_feeBps);
     }
 
     /// @notice Hook called before assets are withdrawn
     /// @param assets Amount of assets being withdrawn
     function beforeWithdraw(uint256 assets, uint256) internal override {
-        _totalAssets -= assets;
+        _totalAssets -= uint240(assets);
     }
 
     /// @notice Hook called after assets are deposited
     /// @param assets Amount of assets being deposited
     function afterDeposit(uint256 assets, uint256) internal override {
-        _totalAssets += assets;
+        _totalAssets += uint240(assets);
     }
 
     /// @notice Accrues interest and collects fees
     /// @dev Mints shares to fee recipient if there are fees to collect
     function accrueInterest() public {
         IUSD2(address(asset)).accrueInterest();
-        uint bal = asset.balanceOf(address(this));
+        uint240 bal = uint240(asset.balanceOf(address(this)));
         if (bal > _totalAssets) {
             uint fee = (bal - _totalAssets) * feeBps / 10000;
             _totalAssets = bal;
