@@ -26,9 +26,22 @@ interface IsUSD2 {
 /// @dev Implements a dual debt system with free (redeemable) and paid debt
 contract USD2 is ERC20 {
 
-    uint public targetFreeDebtRatioStartBps = 2000;
-    uint public targetFreeDebtRatioEndBps = 4000;
-    uint public redeemFeeBps = 30; // 0.3%
+    // single 248-bit slot
+    uint16 public targetFreeDebtRatioStartBps = 2000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    uint16 public targetFreeDebtRatioEndBps = 4000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    uint16 public redeemFeeBps = 30; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
+    uint64 public expRate = uint64(uint(wadLn(2*1e18)) / 7 days); // max result is 693147180559945309 which is within uint64 range
+    uint40 public lastAccrue; // max uint40 is year 36812
+    uint96 public lastBorrowRateMantissa; // max uint96 is equivalent to 7922816251426% APR
+
+    // other slots
+    uint public totalFreeDebt;
+    uint public totalFreeDebtShares;
+    uint public totalPaidDebt;
+    uint public totalPaidDebtShares;
+    address public operator;
+
+    // immutables and constants
     uint public immutable IMMUTABILITY_DEADLINE;
     uint public constant COLLATERAL_FACTOR_BPS = 9000;
     uint internal constant MAX_UINT256 = 2**256 - 1;
@@ -37,24 +50,12 @@ contract USD2 is ERC20 {
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
     IsUSD2 public immutable sUSD2;
-    address public operator;
     CollateralManager public immutable collateralManager;
-
-    mapping(address => mapping(address => bool)) public delegations;
-
-    // debt state
-    uint public totalFreeDebt;
-    uint public totalFreeDebtShares;
-    mapping(address => uint) public freeDebtShares;
-    uint public totalPaidDebt;
-    uint public totalPaidDebtShares;
-    mapping(address => uint) public paidDebtShares;
-
-    // interest state
     uint private immutable WAD_LN2 = uint(wadLn(2*1e18));
-    uint public expRate = uint(wadLn(2*1e18)) / 7 days; // 7 days half-life
-    uint public lastBorrowRateMantissa = 1e16; // 1%
-    uint public lastAccrue;
+
+    mapping(address => uint) public freeDebtShares;
+    mapping(address => uint) public paidDebtShares;
+    mapping(address => mapping(address => bool)) public delegations;
 
     event OperatorUpdated(address indexed newOperator);
     event HalfLifeUpdated(uint newHalfLife);
@@ -115,7 +116,7 @@ contract USD2 is ERC20 {
     function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline {
         accrueInterest();
         require(_halfLife > 0, "USD2: invalid half-life");
-        expRate = WAD_LN2 / _halfLife;
+        expRate = uint64(WAD_LN2 / _halfLife);
         emit HalfLifeUpdated(_halfLife);
     }
 
@@ -127,8 +128,8 @@ contract USD2 is ERC20 {
         require(_start <= _end, "USD2: invalid target free debt ratio range");
         require(_end <= 10000, "USD2: invalid target free debt ratio range");
         accrueInterest();
-        targetFreeDebtRatioStartBps = _start;
-        targetFreeDebtRatioEndBps = _end;
+        targetFreeDebtRatioStartBps = uint16(_start);
+        targetFreeDebtRatioEndBps = uint16(_end);
         emit TargetFreeDebtRatioRangeUpdated(_start, _end);
     }
 
@@ -137,7 +138,7 @@ contract USD2 is ERC20 {
     /// @dev Can only be called by operator before immutability deadline
     function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
         require(_redeemFeeBps < 10000, "USD2: invalid redeem fee");
-        redeemFeeBps = _redeemFeeBps;
+        redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeUpdated(_redeemFeeBps);
     }
 
@@ -312,8 +313,8 @@ contract USD2 is ERC20 {
             totalPaidDebt += interest;
         }
 
-        lastAccrue = block.timestamp;
-        lastBorrowRateMantissa = currBorrowRate;
+        lastAccrue = uint40(block.timestamp);
+        lastBorrowRateMantissa = uint96(currBorrowRate);
     }
 
     /// @notice Allows an account to delegate control of their position to another address (adjustPosition, optInRedemptions, optOutRedemptions functions)
