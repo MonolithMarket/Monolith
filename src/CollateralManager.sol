@@ -114,23 +114,13 @@ contract CollateralManager {
     /// @dev Only callable by USD2 core. If assets is set to type(uint256).max, it will withdraw all owner's collateral
     function withdraw(uint256 assets, address receiver, address owner) public onlyUSD2 updateShares(owner) returns (uint256 shares) {
         if(isRedeemable[owner]) {
-            if(assets == type(uint256).max) {
-                assets = collateralOf(owner);
-                shares = _redeemableShares[owner];
-            } else {
-                shares = (assets * totalRedeemableShares) / totalRedeemable;
-            }
+            shares = (assets * totalRedeemableShares) / totalRedeemable;
             require(shares > 0, "Withdraw would result in zero shares");
             _redeemableShares[owner] -= shares;
             totalRedeemableShares -= shares;
             totalRedeemable -= assets;
         } else {
-            if(assets == type(uint256).max) {
-                assets = collateralOf(owner);
-                shares = nonRedeemableShares[owner];
-            } else {
-                shares = (assets * totalNonRedeemableShares) / totalNonRedeemable;
-            }
+            shares = (assets * totalNonRedeemableShares) / totalNonRedeemable;
             require(shares > 0, "Withdraw would result in zero shares");
             nonRedeemableShares[owner] -= shares;
             totalNonRedeemableShares -= shares;

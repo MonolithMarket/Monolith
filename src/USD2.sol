@@ -26,15 +26,14 @@ interface IsUSD2 {
 /// @dev Implements a dual debt system with free (redeemable) and paid debt
 contract USD2 is ERC20 {
 
-    uint public collateralFactorBps = 8500;
-    uint public liqIncentiveBps = 1000;
     uint public targetFreeDebtRatioStartBps = 2000;
     uint public targetFreeDebtRatioEndBps = 4000;
     uint public redeemFeeBps = 30; // 0.3%
     uint public immutable IMMUTABILITY_DEADLINE;
+    uint public constant COLLATERAL_FACTOR_BPS = 9000;
     uint internal constant MAX_UINT256 = 2**256 - 1;
     uint internal constant MIN_RATE = 5e15; // 0.5%
-    uint public MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
+    uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
     ICollateral public immutable collateral;
     IChainlinkFeed public immutable feed;
     IsUSD2 public sUSD2;
@@ -59,8 +58,6 @@ contract USD2 is ERC20 {
 
     event OperatorUpdated(address indexed newOperator);
     event HalfLifeUpdated(uint newHalfLife);
-    event CollateralFactorUpdated(uint newFactorBps);
-    event LiqIncentiveUpdated(uint newIncentiveBps);
     event TargetFreeDebtRatioRangeUpdated(uint newStartBps, uint newEndBps);
     event RedeemFeeUpdated(uint newFeeBps);
     event DelegationUpdated(address indexed account, address indexed delegatee, bool isDelegatee);
@@ -121,24 +118,6 @@ contract USD2 is ERC20 {
         require(_halfLife > 0, "USD2: invalid half-life");
         expRate = WAD_LN2 / _halfLife;
         emit HalfLifeUpdated(_halfLife);
-    }
-
-    /// @notice Sets the collateral factor used for borrowing (between 0 and 10000)
-    /// @param _collateralFactorBps The new collateral factor in basis points (100 = 1%)
-    /// @dev Can only be called by operator before immutability deadline
-    function setCollateralFactorBps(uint _collateralFactorBps) external onlyOperator beforeDeadline {
-        require(_collateralFactorBps <= 10000, "USD2: invalid collateral factor");
-        collateralFactorBps = _collateralFactorBps;
-        emit CollateralFactorUpdated(_collateralFactorBps);
-    }
-
-    /// @notice Sets the liquidation incentive for liquidators (between 0 and 10000)
-    /// @param _liqIncentiveBps The new liquidation incentive in basis points (100 = 1%)
-    /// @dev Can only be called by operator before immutability deadline
-    function setLiqIncentiveBps(uint _liqIncentiveBps) external onlyOperator beforeDeadline {
-        require(_liqIncentiveBps <= 10000, "USD2: invalid liquidation incentive");
-        liqIncentiveBps = _liqIncentiveBps;
-        emit LiqIncentiveUpdated(_liqIncentiveBps);
     }
 
     /// @notice Sets the target range for free debt ratio (between 0 and 10000 each)
@@ -416,7 +395,7 @@ contract USD2 is ERC20 {
         if(debtBalance == 0) return;
         uint256 collateralBalance = collateralManager.collateralOf(account);
         uint256 price = getCollateralPrice();
-        uint256 borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
+        uint256 borrowingPower = price * collateralBalance * COLLATERAL_FACTOR_BPS / 1e18 / 10000;
         require(borrowingPower >= debtBalance, "USD2: unsafe position");
 
         emit PositionAdjusted(account, collateralDelta, debtDelta);
@@ -426,7 +405,7 @@ contract USD2 is ERC20 {
         // check liquidation condition
         uint collateralBalance = collateralManager.collateralOf(borrower);
         uint price = getCollateralPrice();
-        uint borrowingPower = price * collateralBalance * collateralFactorBps / 1e18 / 10000;
+        uint borrowingPower = price * collateralBalance * COLLATERAL_FACTOR_BPS / 1e18 / 10000;
         uint debtBalance = getDebtOf(borrower);
         if(borrowingPower > debtBalance) return 0;
         // liquidate only the amount of debt that is above the borrowing power
@@ -449,6 +428,9 @@ contract USD2 is ERC20 {
         uint liquidatableDebt = getLiquidatableDebt(borrower);
         require(liquidatableDebt >= repayAmount, "USD2: insufficient liquidatable debt");
 
+        // record debt before repayment
+        uint debtBefore = getDebtOf(borrower);
+
         // apply repayment
         if(collateralManager.isRedeemable(borrower)) {
             uint shares = convertToShares(repayAmount, totalFreeDebt, totalFreeDebtShares);
@@ -465,19 +447,13 @@ contract USD2 is ERC20 {
         }
 
         // calculate collateral reward
-        uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
-        uint price = getCollateralPrice();
-        uint collateralReward = collateralRewardValue * 1e18 / price;
-        bool useEntireBalance;
         uint collateralBalance = collateralManager.collateralOf(borrower);
-        if(collateralBalance < collateralReward) {
-            useEntireBalance = true;
-            collateralReward = collateralBalance;
-        }
+        // liquidator gets the same % of collateral as the debt they repay (e.g. repaying 1% of debt gets them 1% of collateral)
+        uint collateralReward = collateralBalance * repayAmount / debtBefore;
         require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
 
         if(collateralReward > 0) {
-            collateralManager.withdraw(useEntireBalance ? type(uint).max : collateralReward, msg.sender, borrower);
+            collateralManager.withdraw(collateralReward, msg.sender, borrower);
         }
         _burn(msg.sender, repayAmount);
         // try to write off remaining debt

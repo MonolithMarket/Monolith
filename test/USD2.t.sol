@@ -144,60 +144,6 @@ contract USD2Test is Test {
         assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
     }
 
-    function test_setCollateralFactorBps() public {
-        vm.prank(operator);
-        usd2.setCollateralFactorBps(5000);
-        assertEq(usd2.collateralFactorBps(), 5000);
-    }
-
-    function test_setCollateralFactorBps_notOperator() public {
-        vm.expectRevert("USD2: not operator");
-        usd2.setCollateralFactorBps(5000);
-        assertEq(usd2.collateralFactorBps(), 8500);
-    }
-
-    function test_setCollateralFactorBps_invalidCollateralFactorBps() public {
-        vm.prank(operator);
-        vm.expectRevert("USD2: invalid collateral factor");
-        usd2.setCollateralFactorBps(10001);
-        assertEq(usd2.collateralFactorBps(), 8500);
-    }
-
-    function test_setCollateralFactorBps_afterDeadline() public {
-        vm.warp(usd2.IMMUTABILITY_DEADLINE() + 1);
-        vm.prank(operator);
-        vm.expectRevert("USD2: immutability deadline passed");
-        usd2.setCollateralFactorBps(5000);
-        assertEq(usd2.collateralFactorBps(), 8500);
-    }
-
-    function test_setLiqIncentiveBps() public {
-        vm.prank(operator);
-        usd2.setLiqIncentiveBps(5000);
-        assertEq(usd2.liqIncentiveBps(), 5000);
-    }
-
-    function test_setLiqIncentiveBps_notOperator() public {
-        vm.expectRevert("USD2: not operator");
-        usd2.setLiqIncentiveBps(5000);
-        assertEq(usd2.liqIncentiveBps(), 1000);
-    }
-
-    function test_setLiqIncentiveBps_invalidLiqIncentiveBps() public {
-        vm.prank(operator);
-        vm.expectRevert("USD2: invalid liquidation incentive");
-        usd2.setLiqIncentiveBps(10001);
-        assertEq(usd2.liqIncentiveBps(), 1000);
-    }
-
-    function test_setLiqIncentiveBps_afterDeadline() public {
-        vm.warp(usd2.IMMUTABILITY_DEADLINE() + 1);
-        vm.prank(operator);
-        vm.expectRevert("USD2: immutability deadline passed");
-        usd2.setLiqIncentiveBps(5000);
-        assertEq(usd2.liqIncentiveBps(), 1000);
-    }
-
     function test_setTargetFreeDebtRatioRangeBps() public {
         vm.prank(operator);
         usd2.setTargetFreeDebtRatioRangeBps(0, 10000);
@@ -364,16 +310,16 @@ contract USD2Test is Test {
 
     function test_adjust_borrow() public {
         test_adjust_depositCollateral(); // 1000 collateral, $1 each
-        usd2.adjust(address(this), 0, 850); // 85% collateral factor
-        assertEq(usd2.balanceOf(address(this)), 850);
-        assertEq(usd2.getDebtOf(address(this)), 850);
+        usd2.adjust(address(this), 0, 900); // 90% collateral factor
+        assertEq(usd2.balanceOf(address(this)), 900);
+        assertEq(usd2.getDebtOf(address(this)), 900);
     }
 
     function test_adjust_borrow_isRedeemable() public {
         test_adjust_depositCollateral_isRedeemable(); // 1000 collateral, $1 each
-        usd2.adjust(address(this), 0, 850); // 85% collateral factor
-        assertEq(usd2.balanceOf(address(this)), 850);
-        assertEq(usd2.getDebtOf(address(this)), 850);
+        usd2.adjust(address(this), 0, 900); // 90% collateral factor
+        assertEq(usd2.balanceOf(address(this)), 900);
+        assertEq(usd2.getDebtOf(address(this)), 900);
     }
 
     function test_adjust_borrow_onBehalf() public {
@@ -395,7 +341,7 @@ contract USD2Test is Test {
     function test_adjust_borrow_unsafe() public {
         test_adjust_depositCollateral(); // 1000 collateral, $1 each
         vm.expectRevert("USD2: unsafe position");
-        usd2.adjust(address(this), 0, 851); // 85.1% collateral factor
+        usd2.adjust(address(this), 0, 901); // 90.1% collateral factor
     }
 
     function test_adjust_borrow_unsafe_onBehalf() public {
@@ -403,7 +349,7 @@ contract USD2Test is Test {
         usd2.delegate(address(1), true);
         vm.startPrank(address(1));
         vm.expectRevert("USD2: unsafe position");
-        usd2.adjust(address(this), 0, 851); // 85.1% collateral factor
+        usd2.adjust(address(this), 0, 901); // 90.1% collateral factor
     }
 
     function test_adjust_borrow_repeat() public {
@@ -414,23 +360,23 @@ contract USD2Test is Test {
 
     function test_adjust_repay() public {
         test_adjust_borrow();
-        usd2.adjust(address(this), 0, -850);
+        usd2.adjust(address(this), 0, -900);
         assertEq(usd2.balanceOf(address(this)), 0);
         assertEq(usd2.getDebtOf(address(this)), 0);
     }
 
     function test_adjust_repay_onBehalf() public {
         test_adjust_borrow();
-        usd2.transfer(address(1), 850);
+        usd2.transfer(address(1), 900);
         vm.prank(address(1));
-        usd2.adjust(address(this), 0, -850);
+        usd2.adjust(address(this), 0, -900);
         assertEq(usd2.getDebtOf(address(this)), 0);
         assertEq(usd2.balanceOf(address(1)), 0);
     }
 
     function test_adjust_repay_isRedeemable() public {
         test_adjust_borrow_isRedeemable();
-        usd2.adjust(address(this), 0, -850);
+        usd2.adjust(address(this), 0, -900);
         assertEq(usd2.balanceOf(address(this)), 0);
         assertEq(usd2.getDebtOf(address(this)), 0);
     }
@@ -438,7 +384,7 @@ contract USD2Test is Test {
     function test_adjust_repay_notEnoughDebt() public {
         test_adjust_borrow();
         vm.expectRevert();
-        usd2.adjust(address(this), 0, -851);
+        usd2.adjust(address(this), 0, -901);
     }
 
     function test_adjust_repay_all() public {
@@ -450,7 +396,7 @@ contract USD2Test is Test {
 
     function test_adjust_repay_all_onBehalf() public {
         test_adjust_borrow();
-        usd2.transfer(address(1), 850);
+        usd2.transfer(address(1), 900);
         vm.prank(address(1));
         usd2.adjust(address(this), 0, type(int256).min);
         assertEq(usd2.getDebtOf(address(this)), 0);
