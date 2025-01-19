@@ -249,10 +249,10 @@ contract USD2 is ERC20 {
         uint _targetFreeDebtRatioStartBps,
         uint _targetFreeDebtRatioEndBps
     ) internal pure returns (uint currBorrowRate, uint integral) {
-        // we use a negative exponent in order to prevent growthDecay overflow due to large timeElapsed
-        // Results of positive exponents can exceed max uint256, negative exponents only return a value between [0, 1e18]
         // check _expRate * _timeElapsed overflow
         if(uint(type(int256).max) / _expRate < _timeElapsed) _timeElapsed = uint(type(int256).max) / _expRate;
+        // we use a negative exponent in order to prevent growthDecay overflow due to large timeElapsed
+        // Results of positive exponents can exceed max uint256, negative exponents only return a value between [0, 1e18]
         uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
         
         if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
@@ -333,7 +333,7 @@ contract USD2 is ERC20 {
     /// @param collateralDelta The change in collateral amount (positive for deposit, negative for withdrawal)
     /// @param debtDelta The change in debt amount (positive for borrow, negative for repay)
     /// @dev This function can be called by anyone if it only repays debt and/or adds collateral. If it includes borrowing or withdrawing collateral, it must be called by the account itself or by a delegatee.
-    function adjust(address account, int256 collateralDelta, int256 debtDelta) external {
+    function adjust(address account, int256 collateralDelta, int256 debtDelta) public {
         accrueInterest();
         
         // Handle collateral changes
@@ -402,6 +402,20 @@ contract USD2 is ERC20 {
         require(borrowingPower >= debtBalance, "USD2: unsafe position");
 
         emit PositionAdjusted(account, collateralDelta, debtDelta);
+    }
+
+    /// @notice Overloaded function that adjusts a user's collateral, debt position and opts them into/out of redeemable state
+    /// @param account The account whose position is being adjusted
+    /// @param collateralDelta The change in collateral amount (positive for deposit, negative for withdrawal)
+    /// @param debtDelta The change in debt amount (positive for borrow, negative for repay)
+    /// @param isRedeemable True to opt in to redeemable state, false to opt out
+    function adjust(address account, int256 collateralDelta, int256 debtDelta, bool isRedeemable) external {
+        if(isRedeemable) {
+            optInRedemptions(account);
+        } else {
+            optOutRedemptions(account);
+        }
+        adjust(account, collateralDelta, debtDelta);
     }
 
     function getLiquidatableDebt(address borrower) public view returns (uint liquidatableDebt) {
@@ -553,7 +567,7 @@ contract USD2 is ERC20 {
     /// @notice Opts into the collateral redemption system, converting paid debt to free debt
     /// @param account The account to opt in
     /// @dev This function is called by the account itself or by a delegatee
-    function optInRedemptions(address account) external {
+    function optInRedemptions(address account) public {
         require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         accrueInterest();
         collateralManager.setRedeemable(account, true);
@@ -577,7 +591,7 @@ contract USD2 is ERC20 {
     /// @notice Opts out of the collateral redemption system, converting free debt to paid debt
     /// @param account The account to opt out
     /// @dev This function is called by the account itself or by a delegatee
-    function optOutRedemptions(address account) external {
+    function optOutRedemptions(address account) public {
         require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
         accrueInterest();
         collateralManager.setRedeemable(account, false);
