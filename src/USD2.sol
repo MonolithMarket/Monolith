@@ -76,6 +76,7 @@ contract USD2 is ERC20 {
         operator = _operator;
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
         collateralManager = new CollateralManager(_collateral);
+        lastAccrue = uint40(block.timestamp);
         allowance[address(this)][_sUSD2] = type(uint).max;
         emit Approval(address(this), _sUSD2, type(uint).max);
     }
@@ -250,6 +251,8 @@ contract USD2 is ERC20 {
     ) internal pure returns (uint currBorrowRate, uint integral) {
         // we use a negative exponent in order to prevent growthDecay overflow due to large timeElapsed
         // Results of positive exponents can exceed max uint256, negative exponents only return a value between [0, 1e18]
+        // check _expRate * _timeElapsed overflow
+        if(uint(type(int256).max) / _expRate < _timeElapsed) _timeElapsed = uint(type(int256).max) / _expRate;
         uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
         
         if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
