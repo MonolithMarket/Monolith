@@ -32,7 +32,7 @@ contract USD2 is ERC20 {
     uint16 public redeemFeeBps = 30; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
     uint64 public expRate = uint64(uint(wadLn(2*1e18)) / 7 days); // max result is 693147180559945309 which is within uint64 range
     uint40 public lastAccrue; // max uint40 is year 36812
-    uint96 public lastBorrowRateMantissa; // max uint96 is equivalent to 7922816251426% APR
+    uint96 public lastBorrowRateMantissa = uint96(MIN_RATE); // max uint96 is equivalent to 7922816251426% APR
 
     // other slots
     uint public totalFreeDebt;
