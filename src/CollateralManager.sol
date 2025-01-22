@@ -17,7 +17,7 @@ contract CollateralManager {
     uint256 public totalRedeemable;
     uint256 public totalNonRedeemableShares;
     uint256 public totalNonRedeemable;
-    mapping(address => uint256) private _redeemableShares;
+    mapping(address => uint256) public redeemableShares;
     mapping(address => uint256) public nonRedeemableShares;
     mapping(address => bool) public isRedeemable;
 
@@ -39,7 +39,7 @@ contract CollateralManager {
     /// @notice Updates shares for an account in case there's been a share merge
     /// @param account The address whose shares are being updated
     modifier updateShares(address account) {
-        _redeemableShares[account] = redeemableSharesOf(account);
+        redeemableShares[account] = redeemableSharesOf(account);
         lastShareMergeCount[account] = shareMergeCount;
         _;
     }
@@ -48,7 +48,7 @@ contract CollateralManager {
     /// @param account The address to check
     /// @return The number of redeemable shares after applying merge adjustments
     function redeemableSharesOf(address account) public view returns (uint256) {
-        uint256 rawShares = _redeemableShares[account];
+        uint256 rawShares = redeemableShares[account];
         uint256 accountLastMergeCount = lastShareMergeCount[account];
         uint256 mergeDelta = shareMergeCount - accountLastMergeCount;
         if (mergeDelta > 0) {
@@ -67,7 +67,7 @@ contract CollateralManager {
         return convertToNonRedeemableAssets(nonRedeemableShares[account]);
     }
 
-    /// @notice Allows USD2 core to seize collateral during liquidations
+    /// @notice Allows USD2 core to seize collateral during redemptions
     /// @param assets The amount of collateral to seize
     /// @param to The recipient address
     function seize(uint256 assets, address to) public onlyUSD2 {
@@ -95,7 +95,7 @@ contract CollateralManager {
             require(shares > 0, "Deposit would result in zero shares");
             totalRedeemable += assets;
             totalRedeemableShares += shares;
-            _redeemableShares[receiver] += shares;
+            redeemableShares[receiver] += shares;
         } else {
             shares = totalNonRedeemableShares == 0 ? assets : (assets * totalNonRedeemableShares) / totalNonRedeemable;
             require(shares > 0, "Deposit would result in zero shares");
@@ -116,7 +116,7 @@ contract CollateralManager {
         if(isRedeemable[owner]) {
             shares = (assets * totalRedeemableShares) / totalRedeemable;
             require(shares > 0, "Withdraw would result in zero shares");
-            _redeemableShares[owner] -= shares;
+            redeemableShares[owner] -= shares;
             totalRedeemableShares -= shares;
             totalRedeemable -= assets;
         } else {
@@ -143,19 +143,19 @@ contract CollateralManager {
                 nonRedeemableShares[account] = 0;
                 totalNonRedeemableShares -= shares;
                 totalNonRedeemable -= assets;
-                uint redeemableShares = totalRedeemableShares == 0 ? assets : (assets * totalRedeemableShares) / totalRedeemable;
-                require(redeemableShares > 0, "Zero shares");
+                uint _redeemableShares = totalRedeemableShares == 0 ? assets : (assets * totalRedeemableShares) / totalRedeemable;
+                require(_redeemableShares > 0, "Zero shares");
                 totalRedeemable += assets;
-                totalRedeemableShares += redeemableShares;
-                _redeemableShares[account] += redeemableShares;
+                totalRedeemableShares += _redeemableShares;
+                redeemableShares[account] += _redeemableShares;
             }
             isRedeemable[account] = true;
         } else { // become non-redeemable
-            uint shares = _redeemableShares[account];
+            uint shares = redeemableShares[account];
             if(shares > 0) {
                 uint assets = convertToRedeemableAssets(shares);
                 require(assets > 0, "Zero shares");
-                _redeemableShares[account] = 0;
+                redeemableShares[account] = 0;
                 totalRedeemableShares -= shares;
                 totalRedeemable -= assets;
                 uint _nonRedeemableShares = totalNonRedeemableShares == 0 ? assets : (assets * totalNonRedeemableShares) / totalNonRedeemable;
