@@ -33,9 +33,20 @@ contract SUSD2 is ERC4626 {
     /// @notice Current fee rate in basis points (1/10000)
     uint16 public feeBps;
 
+    /// @param _name Name of the token. Prepended with "Staked "
+    /// @param _symbol Symbol of the token. Prepended with "s"
     /// @param _operator Address of the initial operator
     /// @param _usd2 Address of the USD2 token
-    constructor(address _operator, address _usd2) ERC4626(ERC20(_usd2), "Staked USD2", "sUSD2") {
+    constructor(
+        string memory _name,
+        string memory _symbol,
+        address _operator,
+        address _usd2
+    ) ERC4626(
+        ERC20(_usd2),
+        string.concat("Staked ", _name),
+        string.concat("s", _symbol)
+    ) {
         operator = _operator;
     }
 

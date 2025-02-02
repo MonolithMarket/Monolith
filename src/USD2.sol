@@ -42,8 +42,9 @@ contract USD2 is ERC20 {
     address public operator;
 
     // immutables and constants
+    address public immutable factory;
     uint public immutable IMMUTABILITY_DEADLINE;
-    uint public constant COLLATERAL_FACTOR_BPS = 9000;
+    uint public immutable COLLATERAL_FACTOR_BPS;
     uint internal constant MAX_UINT256 = 2**256 - 1;
     uint internal constant MIN_RATE = 5e15; // 0.5%
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
@@ -69,7 +70,18 @@ contract USD2 is ERC20 {
     event Redeemed(address indexed redeemer, uint amountIn, uint amountOut);
     event WrittenOff(address indexed account, address indexed caller, uint redistributedDebt, uint collateral);
 
-    constructor(address _sUSD2, address _collateral, address _feed, address _operator) ERC20("USD2", "USD2", 18) {
+    constructor(
+        string memory _name,
+        string memory _symbol, 
+        address _sUSD2,
+        address _collateral,
+        address _feed,
+        address _operator,
+        uint _collateralFactor
+    ) ERC20(_name, _symbol, 18) {
+        require(_collateralFactor <= 10000, "USD2: invalid collateral factor");
+        factory = msg.sender;
+        COLLATERAL_FACTOR_BPS = _collateralFactor;
         sUSD2 = IsUSD2(_sUSD2);
         collateral = ICollateral(_collateral);
         feed = IChainlinkFeed(_feed);
