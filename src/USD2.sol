@@ -5,6 +5,10 @@ import "lib/solmate/src/tokens/ERC20.sol";
 import "lib/solmate/src/utils/SignedWadMath.sol";
 import "./CollateralManager.sol";
 
+interface IFactory {
+    function feeBps() external view returns (uint256);
+}
+
 interface ICollateral {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
     function transfer(address recipient, uint256 amount) external returns (bool);
@@ -17,8 +21,6 @@ interface IChainlinkFeed {
 
 interface IsUSD2 {
     function totalAssets() external view returns (uint256);
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
-    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
 }
 
 /// @title USD2 - An autonomous collateralized debt position (CDP) protocol
@@ -26,13 +28,18 @@ interface IsUSD2 {
 /// @dev Implements a dual debt system with free (redeemable) and paid debt
 contract USD2 is ERC20 {
 
-    // single 248-bit slot
+    // single 256-bit slot
     uint16 public targetFreeDebtRatioStartBps = 2000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
     uint16 public targetFreeDebtRatioEndBps = 4000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
     uint16 public redeemFeeBps = 30; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
     uint64 public expRate = uint64(uint(wadLn(2*1e18)) / 7 days); // max result is 693147180559945309 which is within uint64 range
     uint40 public lastAccrue; // max uint40 is year 36812
-    uint96 public lastBorrowRateMantissa = uint96(MIN_RATE); // max uint96 is equivalent to 7922816251426% APR
+    uint88 public lastBorrowRateMantissa = uint88(MIN_RATE); // max uint88 is equivalent to 309485000% APR
+    uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+
+    // single 256-bit slot
+    uint128 public accruedLocalFees;
+    uint128 public accruedGlobalFees;
 
     // other slots
     uint public totalFreeDebt;
@@ -43,6 +50,7 @@ contract USD2 is ERC20 {
 
     // immutables and constants
     address public immutable factory;
+    uint public constant MAX_FEE_BPS = 1000;
     uint public immutable IMMUTABILITY_DEADLINE;
     uint public immutable COLLATERAL_FACTOR_BPS;
     uint internal constant MAX_UINT256 = 2**256 - 1;
@@ -69,6 +77,7 @@ contract USD2 is ERC20 {
     event ReserveRemoved(uint amount);
     event Redeemed(address indexed redeemer, uint amountIn, uint amountOut);
     event WrittenOff(address indexed account, address indexed caller, uint redistributedDebt, uint collateral);
+    event InterestFeeUpdated(uint newFeeBps);
 
     constructor(
         string memory _name,
@@ -89,8 +98,6 @@ contract USD2 is ERC20 {
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
         collateralManager = new CollateralManager(_collateral);
         lastAccrue = uint40(block.timestamp);
-        allowance[address(this)][_sUSD2] = type(uint).max;
-        emit Approval(address(this), _sUSD2, type(uint).max);
     }
 
     modifier onlyOperator() {
@@ -101,11 +108,6 @@ contract USD2 is ERC20 {
     modifier beforeDeadline() {
         require(block.timestamp < IMMUTABILITY_DEADLINE, "USD2: immutability deadline passed");
         _;
-    }
-
-    function reapprove() external {
-        allowance[address(this)][address(sUSD2)] = type(uint).max;
-        emit Approval(address(this), address(sUSD2), type(uint).max);
     }
 
     /// @notice Burns USD2 tokens without receiving anything in return
@@ -121,6 +123,12 @@ contract USD2 is ERC20 {
         require(msg.sender == operator, "USD2: not operator");
         operator = _operator;
         emit OperatorUpdated(_operator);
+    }
+
+    function setInterestFeeBps(uint _feeBps) external onlyOperator {
+        require(_feeBps <= MAX_FEE_BPS, "USD2: invalid fee");
+        feeBps = uint16(_feeBps);
+        emit InterestFeeUpdated(_feeBps);
     }
 
     /// @notice Sets the half-life period for interest rate adjustments. Half life is the duration needed for the rate to decay by half or double
@@ -311,6 +319,11 @@ contract USD2 is ERC20 {
         );
     
         uint interest = totalPaidDebt * rateIntegral / 1e18;
+        uint128 localFee = uint128(interest * IFactory(factory).feeBps() / 10000);
+        uint128 globalFee = uint128(interest * feeBps / 10000);
+        accruedLocalFees += localFee;
+        accruedGlobalFees += globalFee;
+        interest -= (localFee + globalFee);
 
         if(interest > 0) {
             uint totalStaked = sUSD2.totalAssets();
@@ -319,8 +332,7 @@ contract USD2 is ERC20 {
                 uint stakedInterest = interest * stakedDebt / totalPaidDebt;
                 _mint(address(sUSD2), stakedInterest);
                 uint remainingInterest = interest - stakedInterest;
-                _mint(address(this), remainingInterest);
-                sUSD2.deposit(remainingInterest, address(this));
+                accruedLocalFees += uint128(remainingInterest);
 
             } else {
                 _mint(address(sUSD2), interest);
@@ -329,7 +341,7 @@ contract USD2 is ERC20 {
         }
 
         lastAccrue = uint40(block.timestamp);
-        lastBorrowRateMantissa = uint96(currBorrowRate);
+        lastBorrowRateMantissa = uint88(currBorrowRate);
     }
 
     /// @notice Allows an account to delegate control of their position to another address (adjustPosition, optInRedemptions, optOutRedemptions functions)
@@ -624,20 +636,15 @@ contract USD2 is ERC20 {
         // redemption status events are tracked in CollateralManager
     }
 
-    /// @notice Adds USD2 to the protocol's reserve
-    /// @param amount The amount of USD2 to add
-    function addToReserve(uint amount) external {
-        USD2(address(this)).transferFrom(msg.sender, address(this), amount);
-        sUSD2.deposit(amount, address(this));
-        emit ReserveAdded(msg.sender, amount);
+    function pullLocalFees() external onlyOperator {
+        _mint(msg.sender, accruedLocalFees);
+        accruedLocalFees = 0;
     }
 
-    /// @notice Removes USD2 from the protocol's reserve
-    /// @param amount The amount of USD2 to remove
-    /// @dev This function is called by the operator
-    function removeFromReserve(uint amount) external onlyOperator {
-        sUSD2.withdraw(amount, msg.sender, address(this));
-        emit ReserveRemoved(amount);
+    function pullGlobalFees(address _to) external {
+        require(msg.sender == factory, "Only factory can pull global fees");
+        _mint(_to, accruedGlobalFees);
+        accruedGlobalFees = 0;
     }
 
 }

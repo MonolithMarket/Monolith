@@ -16,21 +16,6 @@ contract Factory {
     address[] public deployments;
     mapping(address => bool) public isDeployed;
 
-    // constructor(address _collateral, address _feed, address _operator) {
-    //     usd2 = CREATE3.getDeployed(keccak256("USD2"));
-    //     susd2 = CREATE3.getDeployed(keccak256("SUSD2"));
-    //     CREATE3.deploy(
-    //         keccak256("USD2"),
-    //         abi.encodePacked(type(USD2).creationCode, abi.encode(susd2, _collateral, _feed, _operator)),
-    //         0
-    //     );
-    //     CREATE3.deploy(
-    //         keccak256("SUSD2"),
-    //         abi.encodePacked(type(SUSD2).creationCode, abi.encode(_operator, usd2)),
-    //         0
-    //     );
-    // }
-
     constructor(address _operator) {
         operator = _operator;
     }
@@ -63,9 +48,10 @@ contract Factory {
         feeBps = _feeBps;
     }
 
-    function sweep(address _token) external {
-        require(msg.sender == feeRecipient || msg.sender == operator, "Only fee recipient or operator can sweep");
-        IERC20(_token).transfer(feeRecipient, IERC20(_token).balanceOf(address(this)));
+    function pullFees(address _deployment) external {
+        require(msg.sender == feeRecipient, "Only fee recipient can pull fees");
+        require(isDeployed[_deployment], "Deployment not found");
+        USD2(_deployment).pullGlobalFees(msg.sender);
     }
 
     function deploy(
