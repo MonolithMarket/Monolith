@@ -70,7 +70,7 @@ contract Factory {
 
         CREATE3.deploy(
             coreHash,
-            abi.encodePacked(type(USD2).creationCode, abi.encode(_name, _symbol, staked, _collateral, _feed, _operator, _collateralFactor)),
+            abi.encodePacked(type(USD2).creationCode, abi.encode(_name, _symbol, staked, _collateral, _feed, address(this), _operator, _collateralFactor)),
             0
         );
         CREATE3.deploy(

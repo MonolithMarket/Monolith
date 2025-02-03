@@ -53,13 +53,11 @@ contract FactoryTest is Test {
         assertEq(USD2(core).symbol(), "USD2");
         assertEq(USD2(core).operator(), operator);
 
-        // Add remaining asserts
         assertEq(USD2(core).name(), "TestUSD");
         assertEq(USD2(core).COLLATERAL_FACTOR_BPS(), collateralFactor);
-        
+        assertEq(USD2(core).factory(), address(factory));
         assertEq(SUSD2(staked).symbol(), "sUSD2");
 
-        // Verify factory state updates
         assertEq(factory.deploymentsLength(), 1);
         assertTrue(factory.isDeployed(core));
     }

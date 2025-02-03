@@ -85,11 +85,12 @@ contract USD2 is ERC20 {
         address _sUSD2,
         address _collateral,
         address _feed,
+        address _factory,
         address _operator,
         uint _collateralFactor
     ) ERC20(_name, _symbol, 18) {
         require(_collateralFactor <= 10000, "USD2: invalid collateral factor");
-        factory = msg.sender;
+        factory = _factory;
         COLLATERAL_FACTOR_BPS = _collateralFactor;
         sUSD2 = IsUSD2(_sUSD2);
         collateral = ICollateral(_collateral);
