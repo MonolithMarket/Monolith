@@ -2,7 +2,6 @@
 pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC4626.sol";
-import "lib/solmate/src/utils/FixedPointMathLib.sol";
 
 /// @title USD2 Interface
 /// @notice Interface for USD2 token's interest accrual functionality
@@ -14,10 +13,6 @@ interface IUSD2 {
 /// @notice A tokenized vault for USD2, implementing the ERC4626 standard
 /// @dev Allows staking of USD2 tokens
 contract SUSD2 is ERC4626 {
-    using FixedPointMathLib for uint256;
-    
-    /// @notice Total assets held by the vault
-    uint240 internal _totalAssets;
 
     /// @param _name Name of the token. Prepended with "Staked "
     /// @param _symbol Symbol of the token. Prepended with "s"
@@ -32,27 +27,10 @@ contract SUSD2 is ERC4626 {
         string.concat("s", _symbol)
     ) {}
 
-    /// @notice Hook called before assets are withdrawn
-    /// @param assets Amount of assets being withdrawn
-    function beforeWithdraw(uint256 assets, uint256) internal override {
-        _totalAssets -= uint240(assets);
-    }
-
-    /// @notice Hook called after assets are deposited
-    /// @param assets Amount of assets being deposited
-    function afterDeposit(uint256 assets, uint256) internal override {
-        _totalAssets += uint240(assets);
-    }
-
-    /// @notice Accrues interest and collects fees
-    function accrueInterest() public {
-        IUSD2(address(asset)).accrueInterest();
-    }
-
     /// @notice Returns the total amount of assets in the vault
     /// @return Total assets
     function totalAssets() public view override returns (uint256) {
-        return _totalAssets;
+        return asset.balanceOf(address(this));
     }
 
     /// @notice Deposits assets into the vault
@@ -60,7 +38,7 @@ contract SUSD2 is ERC4626 {
     /// @param receiver Address to receive the shares
     /// @return shares Amount of shares minted
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
-        accrueInterest();
+        IUSD2(address(asset)).accrueInterest();
         shares = super.deposit(assets, receiver);
     }
 
@@ -69,7 +47,7 @@ contract SUSD2 is ERC4626 {
     /// @param receiver Address to receive the shares
     /// @return assets Amount of assets deposited
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
-        accrueInterest();
+        IUSD2(address(asset)).accrueInterest();
         assets = super.mint(shares, receiver);
     }
 
@@ -83,7 +61,7 @@ contract SUSD2 is ERC4626 {
         address receiver,
         address owner
     ) public override returns (uint256 shares) {
-        accrueInterest();
+        IUSD2(address(asset)).accrueInterest();
         shares = super.withdraw(assets, receiver, owner);
     }
 
@@ -97,7 +75,7 @@ contract SUSD2 is ERC4626 {
         address receiver,
         address owner
     ) public override returns (uint256 assets) {
-        accrueInterest();
+        IUSD2(address(asset)).accrueInterest();
         assets = super.redeem(shares, receiver, owner);
     }
 }
