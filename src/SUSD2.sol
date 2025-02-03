@@ -12,7 +12,7 @@ interface IUSD2 {
 
 /// @title Staked USD2 (sUSD2)
 /// @notice A tokenized vault for USD2, implementing the ERC4626 standard
-/// @dev Allows staking of USD2 tokens with fee collection mechanism
+/// @dev Allows staking of USD2 tokens
 contract SUSD2 is ERC4626 {
     using FixedPointMathLib for uint256;
     
@@ -45,7 +45,6 @@ contract SUSD2 is ERC4626 {
     }
 
     /// @notice Accrues interest and collects fees
-    /// @dev Mints shares to fee recipient if there are fees to collect
     function accrueInterest() public {
         IUSD2(address(asset)).accrueInterest();
     }

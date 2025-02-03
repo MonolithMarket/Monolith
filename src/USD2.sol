@@ -126,6 +126,7 @@ contract USD2 is ERC20 {
     }
 
     function setInterestFeeBps(uint _feeBps) external onlyOperator {
+        accrueInterest();
         require(_feeBps <= MAX_FEE_BPS, "USD2: invalid fee");
         feeBps = uint16(_feeBps);
         emit InterestFeeUpdated(_feeBps);
@@ -637,11 +638,13 @@ contract USD2 is ERC20 {
     }
 
     function pullLocalFees() external onlyOperator {
+        accrueInterest();
         _mint(msg.sender, accruedLocalFees);
         accruedLocalFees = 0;
     }
 
     function pullGlobalFees(address _to) external {
+        accrueInterest();
         require(msg.sender == factory, "Only factory can pull global fees");
         _mint(_to, accruedGlobalFees);
         accruedGlobalFees = 0;
