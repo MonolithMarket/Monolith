@@ -23,6 +23,12 @@ interface IsUSD2 {
     function totalAssets() external view returns (uint256);
 }
 
+library CollateralManagerDeployer {
+    function deploy(address _collateral) external returns (CollateralManager) {
+        return new CollateralManager(_collateral, address(this));
+    }
+}
+
 /// @title USD2 - An autonomous collateralized debt position (CDP) protocol
 /// @notice Allows users to borrow USD2 stablecoins against collateral
 /// @dev Implements a dual debt system with free (redeemable) and paid debt
@@ -97,7 +103,7 @@ contract USD2 is ERC20 {
         feed = IChainlinkFeed(_feed);
         operator = _operator;
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
-        collateralManager = new CollateralManager(_collateral);
+        collateralManager = CollateralManagerDeployer.deploy(_collateral);
         lastAccrue = uint40(block.timestamp);
     }
 

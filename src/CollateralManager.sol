@@ -25,9 +25,9 @@ contract CollateralManager {
     mapping(address => uint256) public lastShareMergeCount;
 
     /// @param _asset The address of the ERC20 token used as collateral
-    constructor(address _asset) {
+    constructor(address _asset, address _usd2) {
         asset = IERC20(_asset);
-        usd2 = msg.sender;
+        usd2 = _usd2;
     }
 
     /// @notice Restricts function access to only USD2 contract

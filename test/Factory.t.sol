@@ -2,7 +2,7 @@
 pragma solidity 0.8.13;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Factory} from "src/Factory.sol";
+import "src/Factory.sol";
 import  "lib/solmate/src/tokens/ERC20.sol";
 import {USD2} from "src/USD2.sol";
 import {SUSD2} from "src/SUSD2.sol";
@@ -12,7 +12,6 @@ contract MockCollateral is ERC20 {
 }
 
 contract FactoryTest is Test {
-    
     Factory factory;
     address operator = address(1);
     address feeRecipient = address(2);
@@ -21,7 +20,7 @@ contract FactoryTest is Test {
         factory = new Factory(operator);
     }
 
-    function test_constructor() public {
+    function test_constructor() public view {
         assertEq(factory.operator(), operator);
         assertEq(factory.feeRecipient(), address(0));
         assertEq(factory.feeBps(), 0);
@@ -31,7 +30,7 @@ contract FactoryTest is Test {
         address collateral = address(new MockCollateral());
         address feed = address(1);
         uint collateralFactor = 5000;
-        address operator = address(2);
+        address localOperator = address(2);
         
         (address core, address staked) = factory.deploy(
             "TestUSD",
@@ -39,7 +38,7 @@ contract FactoryTest is Test {
             collateral,
             feed,
             collateralFactor,
-            operator
+            localOperator
         );
 
         assertNotEq(core, address(0));
@@ -51,7 +50,7 @@ contract FactoryTest is Test {
         assertEq(address(USD2(core).collateral()), collateral);
         assertEq(address(USD2(core).feed()), feed);
         assertEq(USD2(core).symbol(), "USD2");
-        assertEq(USD2(core).operator(), operator);
+        assertEq(USD2(core).operator(), localOperator);
 
         assertEq(USD2(core).name(), "TestUSD");
         assertEq(USD2(core).COLLATERAL_FACTOR_BPS(), collateralFactor);
@@ -63,7 +62,6 @@ contract FactoryTest is Test {
     }
 
     function test_deploy_duplicate() public {
-        address collateral = address(new MockCollateral());
         (address core1, address staked1) = _deployTestToken();
         (address core2, address staked2) = _deployTestToken();
         

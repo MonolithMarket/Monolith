@@ -20,10 +20,10 @@ contract CollateralManagerTest is Test {
 
     function setUp() public {
         collateral = new MockCollateral();
-        collateralManager = new CollateralManager(address(collateral));
+        collateralManager = new CollateralManager(address(collateral), address(this));
     }
 
-    function test_constructor() public {
+    function test_constructor() public view {
         assertEq(address(collateralManager.asset()), address(collateral));
         assertEq(collateralManager.usd2(), address(this));
     }

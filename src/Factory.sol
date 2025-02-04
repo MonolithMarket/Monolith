@@ -5,6 +5,34 @@ import "lib/solmate/src/utils/CREATE3.sol";
 import "src/USD2.sol";
 import "src/SUSD2.sol";
 
+library USD2Deployer {
+    function getHash(address caller, uint nonce) internal view returns (bytes32) {
+        return keccak256(abi.encode("core", block.chainid, address(this), caller, nonce));
+    }
+
+    function getAddress(address caller, uint nonce) external view returns (address) {
+        return CREATE3.getDeployed(getHash(caller, nonce));
+    }
+
+    function deployUSD2(address caller, uint nonce, bytes memory data) external {
+        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(USD2).creationCode, data), 0);
+    }
+}
+
+library SUSD2Deployer {
+    function getHash(address caller, uint nonce) internal view returns (bytes32) {
+        return keccak256(abi.encode("staked", block.chainid, address(this), caller, nonce));
+    }
+
+    function getAddress(address caller, uint nonce) external view returns (address) {
+        return CREATE3.getDeployed(getHash(caller, nonce));
+    }
+
+    function deploySUSD2(address caller, uint nonce, bytes memory data) external {
+        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(SUSD2).creationCode, data), 0);
+    }
+}
+
 contract Factory {
 
     address public pendingOperator;
@@ -62,22 +90,10 @@ contract Factory {
         uint256 _collateralFactor,
         address _operator
     ) external returns (address core, address staked) {
-        bytes32 coreHash = keccak256(abi.encode(block.chainid, address(this), msg.sender, "core", deployments.length));
-        bytes32 stakedHash = keccak256(abi.encode(block.chainid, address(this), msg.sender, "staked", deployments.length));
-        
-        core = CREATE3.getDeployed(coreHash);
-        staked = CREATE3.getDeployed(stakedHash);
-
-        CREATE3.deploy(
-            coreHash,
-            abi.encodePacked(type(USD2).creationCode, abi.encode(_name, _symbol, staked, _collateral, _feed, address(this), _operator, _collateralFactor)),
-            0
-        );
-        CREATE3.deploy(
-            stakedHash,
-            abi.encodePacked(type(SUSD2).creationCode, abi.encode(_name, _symbol, core)),
-            0
-        );
+        core = USD2Deployer.getAddress(msg.sender, deployments.length);
+        staked = SUSD2Deployer.getAddress(msg.sender, deployments.length);
+        USD2Deployer.deployUSD2(msg.sender, deployments.length, abi.encode(_name, _symbol, staked, _collateral, _feed, address(this), _operator, _collateralFactor));
+        SUSD2Deployer.deploySUSD2(msg.sender, deployments.length, abi.encode(_name, _symbol, core));
 
         deployments.push(core);
         isDeployed[core] = true;
