@@ -159,9 +159,9 @@ contract USD2Test is Test {
 
     function test_setTargetFreeDebtRatioRangeBps() public {
         vm.prank(operator);
-        usd2.setTargetFreeDebtRatioRangeBps(0, 10000);
-        assertEq(usd2.targetFreeDebtRatioStartBps(), 0);
-        assertEq(usd2.targetFreeDebtRatioEndBps(), 10000);
+        usd2.setTargetFreeDebtRatioRangeBps(500, 9500);
+        assertEq(usd2.targetFreeDebtRatioStartBps(), 500);
+        assertEq(usd2.targetFreeDebtRatioEndBps(), 9500);
     }
 
     function test_setTargetFreeDebtRatioRangeBps_notOperator() public {
@@ -198,8 +198,8 @@ contract USD2Test is Test {
 
     function test_setRedeemFeeBps() public {
         vm.prank(operator);
-        usd2.setRedeemFeeBps(5000);
-        assertEq(usd2.redeemFeeBps(), 5000);
+        usd2.setRedeemFeeBps(100);
+        assertEq(usd2.redeemFeeBps(), 100);
     }
 
     function test_setRedeemFeeBps_notOperator() public {

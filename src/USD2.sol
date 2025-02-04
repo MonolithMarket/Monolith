@@ -57,6 +57,11 @@ contract USD2 is ERC20 {
     // immutables and constants
     address public immutable factory;
     uint public constant MAX_FEE_BPS = 1000;
+    uint public constant MAX_REDEEM_FEE_BPS = 100; // 1%
+    uint public constant MIN_HALF_LIFE = 12 hours;
+    uint public constant MAX_HALF_LIFE = 30 days;
+    uint public constant MIN_TARGET_FREE_DEBT_RATIO_START_BPS = 500; // 5%
+    uint public constant MAX_TARGET_FREE_DEBT_RATIO_END_BPS = 9500; // 95%
     uint public immutable IMMUTABILITY_DEADLINE;
     uint public immutable COLLATERAL_FACTOR_BPS;
     uint internal constant MAX_UINT256 = 2**256 - 1;
@@ -126,8 +131,7 @@ contract USD2 is ERC20 {
     /// @notice Updates the operator address
     /// @param _operator The new operator address
     /// @dev Can only be called by the current operator
-    function setOperator(address _operator) external {
-        require(msg.sender == operator, "USD2: not operator");
+    function setOperator(address _operator) external onlyOperator {
         operator = _operator;
         emit OperatorUpdated(_operator);
     }
@@ -144,7 +148,7 @@ contract USD2 is ERC20 {
     /// @dev Can only be called by operator before immutability deadline
     function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline {
         accrueInterest();
-        require(_halfLife > 0, "USD2: invalid half-life");
+        require(_halfLife >= MIN_HALF_LIFE && _halfLife <= MAX_HALF_LIFE, "USD2: invalid half-life");
         expRate = uint64(WAD_LN2 / _halfLife);
         emit HalfLifeUpdated(_halfLife);
     }
@@ -154,8 +158,9 @@ contract USD2 is ERC20 {
     /// @param _end The upper bound of target range in basis points
     /// @dev Can only be called by operator before immutability deadline
     function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline {
+        require(_start >= MIN_TARGET_FREE_DEBT_RATIO_START_BPS, "USD2: invalid target free debt ratio range");
         require(_start <= _end, "USD2: invalid target free debt ratio range");
-        require(_end <= 10000, "USD2: invalid target free debt ratio range");
+        require(_end <= MAX_TARGET_FREE_DEBT_RATIO_END_BPS, "USD2: invalid target free debt ratio range");
         accrueInterest();
         targetFreeDebtRatioStartBps = uint16(_start);
         targetFreeDebtRatioEndBps = uint16(_end);
@@ -166,7 +171,7 @@ contract USD2 is ERC20 {
     /// @param _redeemFeeBps The new redeem fee in basis points (100 = 1%)
     /// @dev Can only be called by operator before immutability deadline
     function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
-        require(_redeemFeeBps < 10000, "USD2: invalid redeem fee");
+        require(_redeemFeeBps <= MAX_REDEEM_FEE_BPS, "USD2: invalid redeem fee");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeUpdated(_redeemFeeBps);
     }
