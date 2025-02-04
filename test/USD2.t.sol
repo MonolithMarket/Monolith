@@ -667,6 +667,37 @@ contract USD2Test is Test {
         assertEq(integral, expectedIntegral);
         assertEq(expectedDebt, initialDebt + initialDebt * integral / 1e18);
     }
-        
 
+    function test_liquidate() public {
+        address BORROWER = address(this);
+        address LIQUIDATOR = address(1);
+
+        // Deposit collateral and borrow
+        uint collateralAmount = 1000e18;
+        uint borrowAmount = 900e18;
+        MockCollateral(collateral).__mint(BORROWER, collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.adjust(BORROWER, int(collateralAmount), int(borrowAmount));
+
+        // Lower collateral price to make position undercollateralized
+        MockFeed(feed).__setPrice(0.5e18);
+
+        // Get liquidatable debt
+        uint liquidatableDebt = usd2.getLiquidatableDebt(BORROWER);
+        assertEq(liquidatableDebt, borrowAmount, "Entire debt should be liquidatable");
+
+        // Fund liquidator and approve
+        usd2.__mint(LIQUIDATOR, liquidatableDebt);
+        vm.startPrank(LIQUIDATOR);
+        usd2.approve(address(usd2), liquidatableDebt);
+
+        // Execute liquidation
+        uint collateralOut = usd2.liquidate(BORROWER, liquidatableDebt, 0);
+
+        // Verify state changes
+        assertEq(usd2.getDebtOf(BORROWER), 0, "Debt should be fully repaid");
+        assertEq(collateralOut, collateralAmount, "Liquidator should receive all collateral");
+        assertEq(MockCollateral(collateral).balanceOf(LIQUIDATOR), collateralOut, "Collateral transferred");
+        assertEq(usd2.balanceOf(LIQUIDATOR), 0, "USD2 should be burned");
+    }
 }
