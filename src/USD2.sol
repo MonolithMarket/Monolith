@@ -662,4 +662,20 @@ contract USD2 is ERC20 {
         accruedGlobalFees = 0;
     }
 
+    /// @notice Returns current borrow rate
+    /// @dev lastBorrowRateMantissa is a stored value while getCurrentRate gives the real-time rate
+    function getCurrentRate() public view returns(uint) {
+        uint timeElapsed = block.timestamp - lastAccrue;
+        if(timeElapsed == 0) return lastBorrowRateMantissa;
+
+        (uint currBorrowRate,) = calculateRate(
+            lastBorrowRateMantissa,
+            timeElapsed,
+            expRate,
+            getFreeDebtRatio(),
+            targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps
+        );
+        return currBorrowRate;
+    }
 }
