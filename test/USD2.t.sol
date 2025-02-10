@@ -6,7 +6,7 @@ import "lib/solmate/src/utils/SignedWadMath.sol";
 import "lib/solmate/src/utils/CREATE3.sol";
 import {USD2, IChainlinkFeed} from "src/USD2.sol";
 import {SUSD2} from "src/SUSD2.sol";
-import  "lib/solmate/src/tokens/ERC20.sol";
+import "lib/solmate/src/tokens/ERC20.sol";
 import {CollateralManager} from "src/CollateralManager.sol";
 
 contract MockCollateral is ERC20 {
@@ -18,7 +18,6 @@ contract MockCollateral is ERC20 {
 }
 
 contract MockFeed is IChainlinkFeed {
-
     uint price;
 
     constructor() {
@@ -29,7 +28,11 @@ contract MockFeed is IChainlinkFeed {
         return 18;
     }
 
-    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+    function latestRoundData()
+        external
+        view
+        returns (uint80, int256, uint256, uint256, uint80)
+    {
         return (0, int(price), 1e18, 1e18, 0);
     }
 
@@ -39,7 +42,6 @@ contract MockFeed is IChainlinkFeed {
 }
 
 contract USD2Wrapper is USD2 {
-
     constructor(
         string memory _name,
         string memory _symbol,
@@ -48,25 +50,44 @@ contract USD2Wrapper is USD2 {
         address _feed,
         address _factory,
         address _operator
-    ) USD2(_name, _symbol, _sUSD2, _collateral, _feed, _factory, _operator, 9000) {}
+    )
+        USD2(
+            _name,
+            _symbol,
+            _sUSD2,
+            _collateral,
+            _feed,
+            _factory,
+            _operator,
+            9000
+        )
+    {}
 
-    function _calculateRate(uint _lastRate,
+    function _calculateRate(
+        uint _lastRate,
         uint _timeElapsed,
         uint _expRate,
         uint _lastFreeDebtRatioBps,
         uint _targetFreeDebtRatioStartBps,
-        uint _targetFreeDebtRatioEndBps) public pure returns (uint currBorrowRate, uint integral) {
-        return calculateRate(_lastRate, _timeElapsed, _expRate, _lastFreeDebtRatioBps, _targetFreeDebtRatioStartBps, _targetFreeDebtRatioEndBps);
+        uint _targetFreeDebtRatioEndBps
+    ) public pure returns (uint currBorrowRate, uint integral) {
+        return
+            calculateRate(
+                _lastRate,
+                _timeElapsed,
+                _expRate,
+                _lastFreeDebtRatioBps,
+                _targetFreeDebtRatioStartBps,
+                _targetFreeDebtRatioEndBps
+            );
     }
 
     function __mint(address _to, uint _amount) external {
         _mint(_to, _amount);
     }
-
 }
 
 contract USD2Test is Test {
-
     USD2Wrapper usd2;
     address collateral = address(new MockCollateral());
     address feed = address(new MockFeed());
@@ -79,12 +100,27 @@ contract USD2Test is Test {
         sUSD2 = CREATE3.getDeployed(keccak256("SUSD2"));
         CREATE3.deploy(
             keccak256("USD2"),
-            abi.encodePacked(type(USD2Wrapper).creationCode, abi.encode("TestUSD", "TUSD", sUSD2, collateral, feed, address(this), operator, 9000)),
+            abi.encodePacked(
+                type(USD2Wrapper).creationCode,
+                abi.encode(
+                    "TestUSD",
+                    "TUSD",
+                    sUSD2,
+                    collateral,
+                    feed,
+                    address(this),
+                    operator,
+                    9000
+                )
+            ),
             0
         );
         CREATE3.deploy(
             keccak256("SUSD2"),
-            abi.encodePacked(type(SUSD2).creationCode, abi.encode("Staked TestUSD", "sUSD2", address(usd2))),
+            abi.encodePacked(
+                type(SUSD2).creationCode,
+                abi.encode("Staked TestUSD", "sUSD2", address(usd2))
+            ),
             0
         );
         // just to show collateralManager on the forge debugger source maps
@@ -98,12 +134,20 @@ contract USD2Test is Test {
 
     function test_constructor() public view {
         assertEq(usd2.factory(), address(this), "factory");
-        assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days, "expRate");
+        assertEq(usd2.expRate(), uint(wadLn(2 * 1e18)) / 7 days, "expRate");
         assertEq(address(usd2.collateral()), collateral, "collateral");
         assertEq(address(usd2.feed()), feed, "feed");
         assertEq(usd2.operator(), operator, "operator");
-        assertEq(usd2.IMMUTABILITY_DEADLINE(), block.timestamp + 365 days, "IMMUTABILITY_DEADLINE");
-        assertNotEq(address(usd2.collateralManager()), address(0), "collateralManager");
+        assertEq(
+            usd2.IMMUTABILITY_DEADLINE(),
+            block.timestamp + 365 days,
+            "IMMUTABILITY_DEADLINE"
+        );
+        assertNotEq(
+            address(usd2.collateralManager()),
+            address(0),
+            "collateralManager"
+        );
     }
 
     function test_burn(uint amount) public {
@@ -113,7 +157,7 @@ contract USD2Test is Test {
         // burn
         usd2.burn(amount);
         assertEq(usd2.balanceOf(address(this)), 0);
-        
+
         // underflow
         vm.expectRevert();
         usd2.burn(1);
@@ -133,20 +177,20 @@ contract USD2Test is Test {
     function test_setHalfLife() public {
         vm.prank(operator);
         usd2.setHalfLife(1 days);
-        assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 1 days);
+        assertEq(usd2.expRate(), uint(wadLn(2 * 1e18)) / 1 days);
     }
 
     function test_setHalfLife_notOperator() public {
         vm.expectRevert("USD2: not operator");
         usd2.setHalfLife(1 days);
-        assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
+        assertEq(usd2.expRate(), uint(wadLn(2 * 1e18)) / 7 days);
     }
 
     function test_setHalfLife_invalidHalfLife() public {
         vm.prank(operator);
         vm.expectRevert("USD2: invalid half-life");
         usd2.setHalfLife(0);
-        assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
+        assertEq(usd2.expRate(), uint(wadLn(2 * 1e18)) / 7 days);
     }
 
     function test_setHalfLife_afterDeadline() public {
@@ -154,7 +198,7 @@ contract USD2Test is Test {
         vm.prank(operator);
         vm.expectRevert("USD2: immutability deadline passed");
         usd2.setHalfLife(1 days);
-        assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
+        assertEq(usd2.expRate(), uint(wadLn(2 * 1e18)) / 7 days);
     }
 
     function test_setTargetFreeDebtRatioRangeBps() public {
@@ -229,7 +273,12 @@ contract USD2Test is Test {
         usd2.adjust(address(this), 1000, 0);
         assertEq(usd2.collateralManager().collateralOf(address(this)), 1000);
         assertEq(MockCollateral(collateral).balanceOf(address(this)), 0);
-        assertEq(MockCollateral(collateral).balanceOf(address(usd2.collateralManager())), 1000);
+        assertEq(
+            MockCollateral(collateral).balanceOf(
+                address(usd2.collateralManager())
+            ),
+            1000
+        );
     }
 
     function test_adjust_depositCollateral_isRedeemable() public {
@@ -239,7 +288,12 @@ contract USD2Test is Test {
         usd2.adjust(address(this), 1000, 0);
         assertEq(usd2.collateralManager().collateralOf(address(this)), 1000);
         assertEq(MockCollateral(collateral).balanceOf(address(this)), 0);
-        assertEq(MockCollateral(collateral).balanceOf(address(usd2.collateralManager())), 1000);
+        assertEq(
+            MockCollateral(collateral).balanceOf(
+                address(usd2.collateralManager())
+            ),
+            1000
+        );
     }
 
     function test_adjust_depositCollateral_onBehalf() public {
@@ -248,7 +302,12 @@ contract USD2Test is Test {
         usd2.adjust(address(1), 1000, 0);
         assertEq(usd2.collateralManager().collateralOf(address(1)), 1000);
         assertEq(MockCollateral(collateral).balanceOf(address(this)), 0);
-        assertEq(MockCollateral(collateral).balanceOf(address(usd2.collateralManager())), 1000);
+        assertEq(
+            MockCollateral(collateral).balanceOf(
+                address(usd2.collateralManager())
+            ),
+            1000
+        );
     }
 
     function test_adjust_withdrawCollateral() public {
@@ -256,7 +315,12 @@ contract USD2Test is Test {
         usd2.adjust(address(this), -1000, 0);
         assertEq(usd2.collateralManager().collateralOf(address(this)), 0);
         assertEq(MockCollateral(collateral).balanceOf(address(this)), 1000);
-        assertEq(MockCollateral(collateral).balanceOf(address(usd2.collateralManager())), 0);
+        assertEq(
+            MockCollateral(collateral).balanceOf(
+                address(usd2.collateralManager())
+            ),
+            0
+        );
     }
 
     function test_adjust_withdrawCollateral_notEnoughCollateral() public {
@@ -270,10 +334,17 @@ contract USD2Test is Test {
         usd2.adjust(address(this), -1000, 0);
         assertEq(usd2.collateralManager().collateralOf(address(this)), 0);
         assertEq(MockCollateral(collateral).balanceOf(address(this)), 1000);
-        assertEq(MockCollateral(collateral).balanceOf(address(usd2.collateralManager())), 0);
+        assertEq(
+            MockCollateral(collateral).balanceOf(
+                address(usd2.collateralManager())
+            ),
+            0
+        );
     }
 
-    function test_adjust_withdrawCollateral_notEnoughCollateral_isRedeemable() public {
+    function test_adjust_withdrawCollateral_notEnoughCollateral_isRedeemable()
+        public
+    {
         test_adjust_depositCollateral_isRedeemable();
         vm.expectRevert();
         usd2.adjust(address(this), -1001, 0);
@@ -286,7 +357,12 @@ contract USD2Test is Test {
         usd2.adjust(address(this), -1000, 0);
         assertEq(usd2.collateralManager().collateralOf(address(this)), 0);
         assertEq(MockCollateral(collateral).balanceOf(address(1)), 1000); // delegate receives collateral
-        assertEq(MockCollateral(collateral).balanceOf(address(usd2.collateralManager())), 0);
+        assertEq(
+            MockCollateral(collateral).balanceOf(
+                address(usd2.collateralManager())
+            ),
+            0
+        );
     }
 
     function test_adjust_withdrawCollateral_onBehalf_notDelegate() public {
@@ -410,7 +486,10 @@ contract USD2Test is Test {
         usd2.redeem(redeemAmount, minAmountOut);
         assertEq(usd2.balanceOf(REDEEMER), 0); // redeemeer's entire balance is redeemed
         assertEq(usd2.getDebtOf(BORROWER), loan - redeemAmount); // borrower's debt decreases by redeem amount
-        assertEq(usd2.collateralManager().collateralOf(BORROWER), collateralAmount - minAmountOut); // collateral decreases by minAmountOut
+        assertEq(
+            usd2.collateralManager().collateralOf(BORROWER),
+            collateralAmount - minAmountOut
+        ); // collateral decreases by minAmountOut
         assertEq(usd2.totalFreeDebt(), loan - redeemAmount);
         assertEq(usd2.totalSupply(), loan - redeemAmount);
     }
@@ -484,12 +563,21 @@ contract USD2Test is Test {
         // at $0.5 price per collateral, 1000 collateral is worth $500. $350 of debt needs to go.
         assertApproxEqAbs(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 500e18, 1);
         // collateral remains unchanged
-        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000e18);
+        assertEq(
+            usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER),
+            1000e18
+        );
         // assert other borrowers receive 350 of the written off borrower's debt (850 - 500)
         assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850e18 + (350e18 / 2));
-        assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850e18 + (350e18 / 2));
+        assertEq(
+            usd2.getDebtOf(NON_REDEEMABLE_BORROWER),
+            850e18 + (350e18 / 2)
+        );
         // assert total debt is unchanged
-        assertEq(usd2.totalFreeDebt() + usd2.totalPaidDebt(), prevFreeDebt + prevPaidDebt);
+        assertEq(
+            usd2.totalFreeDebt() + usd2.totalPaidDebt(),
+            prevFreeDebt + prevPaidDebt
+        );
     }
 
     function test_writeOff_safePosition() public {
@@ -501,7 +589,10 @@ contract USD2Test is Test {
         usd2.writeOff(WRITTEN_OFF_BORROWER);
         // assert written off borrower's debt and collateral are the same as before
         assertEq(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 850);
-        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000);
+        assertEq(
+            usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER),
+            1000
+        );
     }
 
     function test_getRedeemAmountOut() public {
@@ -513,7 +604,7 @@ contract USD2Test is Test {
         usd2.adjust(address(this), int(collateralAmount), int(loanAmount));
         uint amountIn = 1e18;
         uint redeemFeeBps = 30;
-        uint expectedAmountOut = 1e18 * (10000 - redeemFeeBps) / 10000;
+        uint expectedAmountOut = (1e18 * (10000 - redeemFeeBps)) / 10000;
         assertEq(usd2.getRedeemAmountOut(amountIn), expectedAmountOut);
     }
 
@@ -546,15 +637,19 @@ contract USD2Test is Test {
         uint expectedRate = lastRate;
         uint expectedIntegral = 0;
         uint expectedDebt = initialDebt;
-        for(uint i = 0; i < timeElapsed; i++) {
+        for (uint i = 0; i < timeElapsed; i++) {
             uint growthDecay = uint(wadExp(int(expRate)));
-            expectedRate = expectedRate * growthDecay / 1e18;
+            expectedRate = (expectedRate * growthDecay) / 1e18;
             expectedIntegral += expectedRate / 365 days;
-            expectedDebt += expectedDebt * expectedRate / 1e18 / 365 days;
+            expectedDebt += (expectedDebt * expectedRate) / 1e18 / 365 days;
         }
         assertApproxEqAbs(currBorrowRate, expectedRate, 1e8);
         assertApproxEqAbs(integral, expectedIntegral, 1e16);
-        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
+        assertApproxEqAbs(
+            expectedDebt,
+            initialDebt + (initialDebt * integral) / 1e18,
+            1e16
+        );
     }
 
     function test_calculateRate_decay() public view {
@@ -576,15 +671,19 @@ contract USD2Test is Test {
         uint expectedRate = lastRate;
         uint expectedIntegral = 0;
         uint expectedDebt = initialDebt;
-        for(uint i = 0; i < timeElapsed; i++) {
+        for (uint i = 0; i < timeElapsed; i++) {
             uint growthDecay = uint(wadExp(int(expRate)));
-            expectedRate = expectedRate * 1e18 / growthDecay;
+            expectedRate = (expectedRate * 1e18) / growthDecay;
             expectedIntegral += expectedRate / 365 days;
-            expectedDebt += expectedDebt * expectedRate / 1e18 / 365 days;
+            expectedDebt += (expectedDebt * expectedRate) / 1e18 / 365 days;
         }
         assertApproxEqAbs(currBorrowRate, expectedRate, 1e8);
         assertApproxEqAbs(integral, expectedIntegral, 1e16);
-        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
+        assertApproxEqAbs(
+            expectedDebt,
+            initialDebt + (initialDebt * integral) / 1e18,
+            1e16
+        );
     }
 
     function test_calculateRate_decay_minRate_to_minRate() public view {
@@ -604,10 +703,17 @@ contract USD2Test is Test {
             targetFreeDebtRatioEndBps
         );
         uint initialDebt = 1e18;
-        uint expectedDebt = initialDebt + initialDebt * minRate * timeElapsed / 1e18 / 365 days;
+        uint expectedDebt = initialDebt +
+            (initialDebt * minRate * timeElapsed) /
+            1e18 /
+            365 days;
         assertEq(currBorrowRate, minRate);
-        assertEq(integral, minRate * timeElapsed / 365 days);
-        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
+        assertEq(integral, (minRate * timeElapsed) / 365 days);
+        assertApproxEqAbs(
+            expectedDebt,
+            initialDebt + (initialDebt * integral) / 1e18,
+            1e16
+        );
     }
 
     function test_calculateRate_decay_to_minRate() public view {
@@ -630,18 +736,22 @@ contract USD2Test is Test {
         uint expectedRate = lastRate;
         uint expectedIntegral = 0;
         uint expectedDebt = initialDebt;
-        for(uint i = 0; i < timeElapsed; i++) {
+        for (uint i = 0; i < timeElapsed; i++) {
             uint growthDecay = uint(wadExp(int(expRate)));
-            expectedRate = expectedRate * 1e18 / growthDecay;
-            if(expectedRate < minRate) {
+            expectedRate = (expectedRate * 1e18) / growthDecay;
+            if (expectedRate < minRate) {
                 expectedRate = minRate;
             }
             expectedIntegral += expectedRate / 365 days;
-            expectedDebt += expectedDebt * expectedRate / 1e18 / 365 days;
+            expectedDebt += (expectedDebt * expectedRate) / 1e18 / 365 days;
         }
         assertApproxEqAbs(currBorrowRate, expectedRate, 1e8);
         assertApproxEqAbs(integral, expectedIntegral, 1e16);
-        assertApproxEqAbs(expectedDebt, initialDebt + initialDebt * integral / 1e18, 1e16);
+        assertApproxEqAbs(
+            expectedDebt,
+            initialDebt + (initialDebt * integral) / 1e18,
+            1e16
+        );
     }
 
     function test_calculateRate_unchanged() public view {
@@ -661,11 +771,14 @@ contract USD2Test is Test {
         );
         uint initialDebt = 1e18;
         uint expectedRate = lastRate;
-        uint expectedIntegral = lastRate * timeElapsed / 365 days;
-        uint expectedDebt = initialDebt + initialDebt * lastRate * timeElapsed / 1e18 / 365 days;
+        uint expectedIntegral = (lastRate * timeElapsed) / 365 days;
+        uint expectedDebt = initialDebt +
+            (initialDebt * lastRate * timeElapsed) /
+            1e18 /
+            365 days;
         assertEq(currBorrowRate, expectedRate);
         assertEq(integral, expectedIntegral);
-        assertEq(expectedDebt, initialDebt + initialDebt * integral / 1e18);
+        assertEq(expectedDebt, initialDebt + (initialDebt * integral) / 1e18);
     }
 
     function test_liquidate() public {
@@ -684,7 +797,11 @@ contract USD2Test is Test {
 
         // Get liquidatable debt
         uint liquidatableDebt = usd2.getLiquidatableDebt(BORROWER);
-        assertEq(liquidatableDebt, borrowAmount, "Entire debt should be liquidatable");
+        assertEq(
+            liquidatableDebt,
+            borrowAmount,
+            "Entire debt should be liquidatable"
+        );
 
         // Fund liquidator and approve
         usd2.__mint(LIQUIDATOR, liquidatableDebt);
@@ -696,8 +813,143 @@ contract USD2Test is Test {
 
         // Verify state changes
         assertEq(usd2.getDebtOf(BORROWER), 0, "Debt should be fully repaid");
-        assertEq(collateralOut, collateralAmount, "Liquidator should receive all collateral");
-        assertEq(MockCollateral(collateral).balanceOf(LIQUIDATOR), collateralOut, "Collateral transferred");
+        assertEq(
+            collateralOut,
+            collateralAmount,
+            "Liquidator should receive all collateral"
+        );
+        assertEq(
+            MockCollateral(collateral).balanceOf(LIQUIDATOR),
+            collateralOut,
+            "Collateral transferred"
+        );
         assertEq(usd2.balanceOf(LIQUIDATOR), 0, "USD2 should be burned");
+    }
+    function test_frontrun_liq_with_writeOff() public {
+        address BORROWER = address(this);
+
+        // Deposit collateral and borrow
+        uint collateralAmount = 1000e18;
+        uint borrowAmount = 900e18;
+        MockCollateral(collateral).__mint(BORROWER, collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.adjust(BORROWER, int(collateralAmount), int(borrowAmount), false);
+
+        // Lower collateral price to make position undercollateralized
+        MockFeed(feed).__setPrice(0.5e18);
+
+        // Get liquidatable debt
+        uint liquidatableDebt = usd2.getLiquidatableDebt(BORROWER);
+        // User could be fully liquidated
+        assertEq(
+            liquidatableDebt,
+            borrowAmount,
+            "Entire debt should be liquidatable"
+        );
+
+        uint256 collateralBalanceBefore = collateralManager.collateralOf(
+            BORROWER
+        );
+        uint256 debtBefore = usd2.getDebtOf(BORROWER);
+
+        assertEq(usd2.totalPaidDebt(), borrowAmount, "paid debt");
+
+        // Frontrun liquidator by writing off the debt
+        usd2.writeOff(BORROWER);
+        uint256 debtAfter = usd2.getDebtOf(BORROWER);
+
+        assertEq(usd2.totalPaidDebt(), debtAfter, "debt after write off");
+
+        assertLt(debtAfter, debtBefore, "not less debt");
+
+        assertEq(
+            collateralManager.collateralOf(BORROWER),
+            collateralBalanceBefore
+        );
+        uint256 liquidatableDebt2 = usd2.getLiquidatableDebt(BORROWER);
+        assertEq(liquidatableDebt2, debtAfter, "liquidatable debt");
+
+        // Repay new debt
+        usd2.approve(address(usd2), debtAfter);
+        usd2.adjust(
+            BORROWER,
+            -int(collateralManager.collateralOf(BORROWER)),
+            -int(debtAfter)
+        );
+        // Borrower got all his collateral back
+        assertEq(
+            MockCollateral(collateral).balanceOf(BORROWER),
+            collateralAmount
+        );
+        // Borrower's debt is fully repaid
+        assertEq(usd2.getDebtOf(BORROWER), 0);
+        assertEq(usd2.totalPaidDebt(), 0, "totalPaidDebt");
+        assertEq(usd2.totalFreeDebt(), 0, "totalFreeDebt");
+        // Still has USD2
+        assertGt(usd2.balanceOf(BORROWER), 0);
+        assertEq(usd2.balanceOf(BORROWER), debtBefore - debtAfter, "profit");
+    }
+
+    function test_liquidate_frontrun_min_the_writeoff() public {
+        address BORROWER = address(this);
+
+        // Deposit collateral and borrow
+        uint collateralAmount = 1000e18;
+        uint borrowAmount = 900e18;
+        MockCollateral(collateral).__mint(BORROWER, collateralAmount);
+        MockCollateral(collateral).approve(address(usd2), collateralAmount);
+        usd2.adjust(BORROWER, int(collateralAmount), int(borrowAmount));
+
+        // Lower collateral price to make position undercollateralized
+        MockFeed(feed).__setPrice(0.5e18);
+
+        // Get liquidatable debt
+        uint liquidatableDebt = usd2.getLiquidatableDebt(BORROWER);
+        assertEq(
+            liquidatableDebt,
+            borrowAmount,
+            "Entire debt should be liquidatable"
+        );
+
+        usd2.approve(address(usd2), type(uint256).max);
+        // Self-Execute liquidation with small amount
+        uint repayAmount = 1e18;
+        uint collateralOut = usd2.liquidate(BORROWER, repayAmount, 0);
+
+        // Verify state changes
+        uint256 debtLeft = usd2.getDebtOf(BORROWER);
+        assertGt(debtLeft, 0, "Debt should not be fully repaid");
+        console.log(collateralOut, "collateralOut");
+        console.log(debtLeft, "debtLeft");
+        assertApproxEqAbs(
+            collateralOut,
+            repayAmount,
+            0.12e18,
+            "Liquidator should receive collateral"
+        );
+        assertEq(
+            MockCollateral(collateral).balanceOf(BORROWER),
+            collateralOut,
+            "Collateral transferred"
+        );
+
+        usd2.approve(address(usd2), debtLeft);
+        usd2.adjust(
+            BORROWER,
+            -int(collateralManager.collateralOf(BORROWER)),
+            -int(debtLeft)
+        );
+        // Borrower got all his collateral back
+        assertEq(
+            MockCollateral(collateral).balanceOf(BORROWER),
+            collateralAmount
+        );
+        assertEq(usd2.getDebtOf(BORROWER), 0);
+        // Keep some USD2
+        assertGt(usd2.balanceOf(BORROWER), 0);
+        assertEq(
+            usd2.balanceOf(BORROWER),
+            borrowAmount - debtLeft - repayAmount
+        );
     }
 }
