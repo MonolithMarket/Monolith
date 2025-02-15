@@ -123,16 +123,16 @@ contract FactoryTest is Test {
         factory.setFeeBps(1001);
     }
 
-    function test_pullFees_notDeployed() public {
+    function test_pullReserves_notDeployed() public {
         vm.prank(operator);
         factory.setFeeRecipient(address(this));
         vm.expectRevert("Deployment not found");
-        factory.pullFees(address(0xdead));
+        factory.pullReserves(address(0xdead));
     }
 
-    function test_pullFees_notFeeRecipient() public {
-        vm.expectRevert("Only fee recipient can pull fees");
-        factory.pullFees(address(0xdead));
+    function test_pullReserves_notFeeRecipient() public {
+        vm.expectRevert("Only fee recipient can pull reserves");
+        factory.pullReserves(address(0xdead));
     }
 
     // Helper function for repeated deployments

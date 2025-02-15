@@ -16,7 +16,13 @@ interface ICollateral {
 
 interface IChainlinkFeed {
     function decimals() external view returns (uint8);
-    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
+    function latestRoundData() external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
 }
 
 interface IsUSD2 {
@@ -44,8 +50,8 @@ contract USD2 is ERC20 {
     uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
 
     // single 256-bit slot
-    uint128 public accruedLocalFees;
-    uint128 public accruedGlobalFees;
+    uint128 public accruedLocalReserves;
+    uint128 public accruedGlobalReserves;
 
     // other slots
     uint public totalFreeDebt;
@@ -56,6 +62,8 @@ contract USD2 is ERC20 {
 
     // immutables and constants
     address public immutable factory;
+    uint public constant STALENESS_THRESHOLD = 60 minutes;
+    uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MAX_FEE_BPS = 1000;
     uint public constant MAX_REDEEM_FEE_BPS = 100; // 1%
     uint public constant MIN_HALF_LIFE = 12 hours;
@@ -241,10 +249,23 @@ contract USD2 is ERC20 {
     /// @notice Gets the current price of the collateral asset
     /// @return The price in USD with 18 decimals
     function getCollateralPrice() public view returns (uint) {
-        (,int256 price,,,) = feed.latestRoundData();
-        // We assume the collateral token is 18 decimals AND that the feed is 18 decimals or lower.
+        (,int256 price,,uint256 updatedAt,) = feed.latestRoundData();
         uint8 decimals = 18 - feed.decimals();
-        return uint(price) * (10**decimals);
+        uint adjustedPrice = uint(price) * (10**decimals);
+        
+        uint currentTime = block.timestamp;
+        uint timeElapsed = currentTime >= updatedAt ? currentTime - updatedAt : 0;
+
+        if (timeElapsed > STALENESS_THRESHOLD) {
+            uint stalenessDuration = timeElapsed - STALENESS_THRESHOLD;
+            if (stalenessDuration >= STALENESS_UNWIND_DURATION) {
+                adjustedPrice = 0;
+            } else {
+                adjustedPrice = adjustedPrice * (STALENESS_UNWIND_DURATION - stalenessDuration) / STALENESS_UNWIND_DURATION;
+            }
+        }
+        
+        return adjustedPrice;
     }
 
     /// @notice Converts shares to assets
@@ -332,11 +353,11 @@ contract USD2 is ERC20 {
         );
     
         uint interest = totalPaidDebt * rateIntegral / 1e18;
-        uint128 localFee = uint128(interest * IFactory(factory).feeBps() / 10000);
-        uint128 globalFee = uint128(interest * feeBps / 10000);
-        accruedLocalFees += localFee;
-        accruedGlobalFees += globalFee;
-        interest -= (localFee + globalFee);
+        uint128 localReserve = uint128(interest * IFactory(factory).feeBps() / 10000);
+        uint128 globalReserve = uint128(interest * feeBps / 10000);
+        accruedLocalReserves += localReserve;
+        accruedGlobalReserves += globalReserve;
+        interest -= (localReserve + globalReserve);
 
         if(interest > 0) {
             uint totalStaked = sUSD2.totalAssets();
@@ -345,7 +366,7 @@ contract USD2 is ERC20 {
                 uint stakedInterest = interest * stakedDebt / totalPaidDebt;
                 _mint(address(sUSD2), stakedInterest);
                 uint remainingInterest = interest - stakedInterest;
-                accruedLocalFees += uint128(remainingInterest);
+                accruedLocalReserves += uint128(remainingInterest);
 
             } else {
                 _mint(address(sUSD2), interest);
@@ -649,17 +670,17 @@ contract USD2 is ERC20 {
         // redemption status events are tracked in CollateralManager
     }
 
-    function pullLocalFees() external onlyOperator {
+    function pullLocalReserves() external onlyOperator {
         accrueInterest();
-        _mint(msg.sender, accruedLocalFees);
-        accruedLocalFees = 0;
+        _mint(msg.sender, accruedLocalReserves);
+        accruedLocalReserves = 0;
     }
 
-    function pullGlobalFees(address _to) external {
+    function pullGlobalReserves(address _to) external {
         accrueInterest();
-        require(msg.sender == factory, "Only factory can pull global fees");
-        _mint(_to, accruedGlobalFees);
-        accruedGlobalFees = 0;
+        require(msg.sender == factory, "Only factory can pull global reserves");
+        _mint(_to, accruedGlobalReserves);
+        accruedGlobalReserves = 0;
     }
 
 }

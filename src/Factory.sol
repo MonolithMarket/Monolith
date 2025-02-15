@@ -76,10 +76,10 @@ contract Factory {
         feeBps = _feeBps;
     }
 
-    function pullFees(address _deployment) external {
-        require(msg.sender == feeRecipient, "Only fee recipient can pull fees");
+    function pullReserves(address _deployment) external {
+        require(msg.sender == feeRecipient, "Only fee recipient can pull reserves");
         require(isDeployed[_deployment], "Deployment not found");
-        USD2(_deployment).pullGlobalFees(msg.sender);
+        USD2(_deployment).pullGlobalReserves(msg.sender);
     }
 
     function deploy(

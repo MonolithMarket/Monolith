@@ -700,4 +700,8 @@ contract USD2Test is Test {
         assertEq(MockCollateral(collateral).balanceOf(LIQUIDATOR), collateralOut, "Collateral transferred");
         assertEq(usd2.balanceOf(LIQUIDATOR), 0, "USD2 should be burned");
     }
+
+    function test_getCollateralPrice_stale() public {
+        
+    }
 }
