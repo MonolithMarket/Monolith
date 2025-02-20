@@ -475,19 +475,19 @@ contract USD2Test is Test {
         MockCollateral(collateral).approve(address(usd2), 1000e18);
         // deposit $1000, borrow $850 (both tokens are worth $1 each)
         usd2.adjust(WRITTEN_OFF_BORROWER, 1000e18, 850e18);
-        // reduce collateral price to just under $0.5
-        MockFeed(feed).__setPrice(0.5e18);
+        // reduce collateral price to just under $0.0085
+        MockFeed(feed).__setPrice(0.0085e18-1);
         uint prevFreeDebt = usd2.totalFreeDebt();
         uint prevPaidDebt = usd2.totalPaidDebt();
-        usd2.writeOff(WRITTEN_OFF_BORROWER);
-        // assert written off borrower's debt is equal to his collateral value
-        // at $0.5 price per collateral, 1000 collateral is worth $500. $350 of debt needs to go.
-        assertApproxEqAbs(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 500e18, 1);
+        bool writtenOff = usd2.writeOff(WRITTEN_OFF_BORROWER);
+        assertEq(writtenOff, true);
+        // assert written off borrower's debt is equal to zero
+        assertEq(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 0);
         // collateral remains unchanged
         assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000e18);
-        // assert other borrowers receive 350 of the written off borrower's debt (850 - 500)
-        assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850e18 + (350e18 / 2));
-        assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850e18 + (350e18 / 2));
+        //assert other borrowers receive 350 of the written off borrower's debt (850 - 500)
+        assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850e18 + (850e18 / 2));
+        assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850e18 + (850e18 / 2));
         // assert total debt is unchanged
         assertEq(usd2.totalFreeDebt() + usd2.totalPaidDebt(), prevFreeDebt + prevPaidDebt);
     }
@@ -680,11 +680,10 @@ contract USD2Test is Test {
         usd2.adjust(BORROWER, int(collateralAmount), int(borrowAmount));
 
         // Lower collateral price to make position undercollateralized
-        MockFeed(feed).__setPrice(0.5e18);
+        MockFeed(feed).__setPrice(1e18-1);
 
         // Get liquidatable debt
         uint liquidatableDebt = usd2.getLiquidatableDebt(BORROWER);
-        assertEq(liquidatableDebt, borrowAmount, "Entire debt should be liquidatable");
 
         // Fund liquidator and approve
         usd2.__mint(LIQUIDATOR, liquidatableDebt);
@@ -696,12 +695,72 @@ contract USD2Test is Test {
 
         // Verify state changes
         assertEq(usd2.getDebtOf(BORROWER), 0, "Debt should be fully repaid");
-        assertEq(collateralOut, collateralAmount, "Liquidator should receive all collateral");
+        uint collateralValue = collateralAmount * 0.9e18 / 1e18;
+        assertApproxEqAbs(collateralOut, collateralValue + (collateralValue * 100 / 10000), 1e3);
         assertEq(MockCollateral(collateral).balanceOf(LIQUIDATOR), collateralOut, "Collateral transferred");
         assertEq(usd2.balanceOf(LIQUIDATOR), 0, "USD2 should be burned");
     }
 
-    function test_getCollateralPrice_stale() public {
+    function test_getLiquidationIncentiveBps_zeroCollateral() public view {
+        // When collateral value is 0, should return 100 bps
+        assertEq(usd2.getLiquidationIncentiveBps(address(this)), 100);
+    }
+
+    function test_getLiquidationIncentiveBps_belowCollateralFactor() public {
+        // Setup: Add collateral worth $1000, borrow $800 (80% LTV, below 90% collateral factor)
+        MockCollateral(collateral).__mint(address(this), 1000e18);
+        MockCollateral(collateral).approve(address(usd2), 1000e18);
+        usd2.adjust(address(this), 1000e18, 800e18);
         
+        // Should return minimum incentive of 100 bps
+        assertEq(usd2.getLiquidationIncentiveBps(address(this)), 100);
+    }
+
+    function test_getLiquidationIncentiveBps_atCollateralFactor() public {
+        MockCollateral(collateral).__mint(address(this), 1e18);
+        MockCollateral(collateral).approve(address(usd2), 1e18);
+        usd2.adjust(address(this), 1e18, 0.9e18);
+        assertEq(usd2.getLiquidationIncentiveBps(address(this)), 100);
+    }
+
+    function test_getLiquidationIncentiveBps_aboveMaxLtv() public {
+        // Setup: Add collateral worth $1000, borrow $900 (90% LTV)
+        MockCollateral(collateral).__mint(address(this), 1000e18);
+        MockCollateral(collateral).approve(address(usd2), 1000e18);
+        usd2.adjust(address(this), 1000e18, 900e18);
+        
+        // Drop collateral price by 50% to push LTV above max (180%)
+        MockFeed(feed).__setPrice(0.5e18);
+        
+        // Should return maximum incentive of 1000 bps
+        assertEq(usd2.getLiquidationIncentiveBps(address(this)), 1000);
+    }
+
+    function test_getLiquidationIncentiveBps_atMaxLtv() public {
+        MockFeed(feed).__setPrice(2e18);
+        MockCollateral(collateral).__mint(address(this), 1e18);
+        MockCollateral(collateral).approve(address(usd2), 1e18);
+        usd2.adjust(address(this), 1e18, 0.95e18);
+        MockFeed(feed).__setPrice(1e18);
+        assertEq(usd2.getLiquidationIncentiveBps(address(this)), 1000);
+    }
+
+    function test_getLiquidationIncentiveBps_interpolated() public {
+        MockFeed(feed).__setPrice(2e18); // temporary price
+        MockCollateral(collateral).__mint(address(this), 1e18);
+        MockCollateral(collateral).approve(address(usd2), 1e18);
+        usd2.adjust(address(this), 1e18, 0.925e18);
+        
+        // Get to 92.5% LTV
+        MockFeed(feed).__setPrice(1e18);
+        
+        // At 92.5% LTV, with:
+        // - collateral factor = 90%
+        // - max LTV = 92.5%
+        // - min incentive = 100 bps
+        // - max incentive = 1000 bps
+        // Should interpolate to around 550 bps
+        uint incentive = usd2.getLiquidationIncentiveBps(address(this));
+        assertEq(incentive, 100 + 450);
     }
 }

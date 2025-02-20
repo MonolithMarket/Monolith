@@ -489,6 +489,25 @@ contract USD2 is ERC20 {
         if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debtBalance < MIN_LIQUIDATION_DEBT ? debtBalance : MIN_LIQUIDATION_DEBT;
     }
 
+    /// @notice Calculates the liquidation incentive in basis points
+    /// @param borrower The account to calculate the liquidation incentive for
+    /// @return The liquidation incentive in basis points
+    function getLiquidationIncentiveBps(address borrower) public view returns (uint) {
+        uint collateralValue = collateralManager.collateralOf(borrower) * getCollateralPrice() / 1e18;
+        if (collateralValue == 0) return 100; // avoid division by zero
+        uint ltvBps = getDebtOf(borrower) * 10000 / collateralValue;
+        uint maxLtvBps = COLLATERAL_FACTOR_BPS + 500;
+
+        if (ltvBps <= COLLATERAL_FACTOR_BPS) {
+            return 100; // 100 bps
+        } else if (ltvBps >= maxLtvBps) {
+            return 1000; // 1000 bps
+        } else {
+            // linear interpolation between 100 bps and 1000 bps
+            return 100 + (ltvBps - COLLATERAL_FACTOR_BPS) * 900 / (maxLtvBps - COLLATERAL_FACTOR_BPS);
+        }
+    }
+
     /// @notice Liquidates an unsafe position
     /// @param borrower The account to be liquidated
     /// @param repayAmount The amount of debt to repay
@@ -501,10 +520,12 @@ contract USD2 is ERC20 {
 
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(borrower);
-        require(liquidatableDebt >= repayAmount, "USD2: insufficient liquidatable debt");
-
-        // record debt before repayment
-        uint debtBefore = getDebtOf(borrower);
+        if(repayAmount == type(uint256).max) {
+            require(liquidatableDebt > 0, "USD2: no liquidatable debt");
+            repayAmount = liquidatableDebt;
+        } else {
+            require(liquidatableDebt >= repayAmount, "USD2: insufficient liquidatable debt");
+        }
 
         // apply repayment
         if(collateralManager.isRedeemable(borrower)) {
@@ -522,25 +543,27 @@ contract USD2 is ERC20 {
         }
 
         // calculate collateral reward
-        uint collateralBalance = collateralManager.collateralOf(borrower);
-        // liquidator gets the same % of collateral as the debt they repay (e.g. repaying 1% of debt gets them 1% of collateral)
-        uint collateralReward = collateralBalance * repayAmount / debtBefore;
+        uint liqIncentiveBps = getLiquidationIncentiveBps(borrower);
+        uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
+        uint price = getCollateralPrice();
+        uint collateralReward = collateralRewardValue * 1e18 / price;
         require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
 
         if(collateralReward > 0) {
             collateralManager.withdraw(collateralReward, msg.sender, borrower);
         }
         _burn(msg.sender, repayAmount);
-        // try to write off remaining debt
-        writeOff(borrower);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
+        // try to write off remaining debt. Call externally and catch error to prevent liquidation failure
+        try this.writeOff(borrower) {} catch {}
         return collateralReward;
     }
 
     /// @notice Redistributes excess debt of undercollateralized accounts among other borrowers
     /// @param borrower The account in potentiallyundercollateralized state
+    /// @return writtenOff True if the borrower was written off, false otherwise
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
-    function writeOff(address borrower) public {
+    function writeOff(address borrower) external returns (bool writtenOff) {
         accrueInterest();
         // check for write off
         uint debt = getDebtOf(borrower);
@@ -548,7 +571,8 @@ contract USD2 is ERC20 {
             uint collateralBalance = collateralManager.collateralOf(borrower);
             uint price = getCollateralPrice();
             uint collateralValue = price * collateralBalance / 1e18;
-            if(collateralValue < debt) {
+            // if debt is more than 100 times the collateral value, write off
+            if(debt > collateralValue * 100) {
                 // 1. delete all of the borrower's debt
                 bool isRedeemable = collateralManager.isRedeemable(borrower);
                 if(isRedeemable) {
@@ -564,27 +588,15 @@ contract USD2 is ERC20 {
                 }
                 // 2. redistribute excess debt among remaining borrowers
                 uint256 totalDebt = totalFreeDebt + totalPaidDebt;
-                uint256 excessDebt = debt - collateralValue;
                 if (totalDebt > 0) {
-                    uint256 freeDebtIncrease = excessDebt * totalFreeDebt / totalDebt;
-                    uint256 paidDebtIncrease = excessDebt - freeDebtIncrease;
+                    uint256 freeDebtIncrease = debt * totalFreeDebt / totalDebt;
+                    uint256 paidDebtIncrease = debt - freeDebtIncrease;
 
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
-                // 3. assign the borrower a new debt equal to his collateral value
-                if(isRedeemable) {
-                    uint shares = convertToShares(collateralValue, totalFreeDebt, totalFreeDebtShares);
-                    totalFreeDebtShares += shares;
-                    freeDebtShares[borrower] = shares;
-                    totalFreeDebt += collateralValue;
-                } else {
-                    uint shares = convertToShares(collateralValue, totalPaidDebt, totalPaidDebtShares);
-                    totalPaidDebtShares += shares;
-                    paidDebtShares[borrower] = shares;
-                    totalPaidDebt += collateralValue;
-                }
-                emit WrittenOff(borrower, msg.sender, excessDebt, collateralBalance);
+                emit WrittenOff(borrower, msg.sender, debt, collateralBalance);
+                writtenOff = true;
             }
         }
     }
