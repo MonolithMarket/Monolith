@@ -130,6 +130,14 @@ contract USD2 is ERC20 {
         _;
     }
 
+    modifier tryAccrueInterest() {
+        try this.accrueInterest() {} catch {
+            // if accrueInterest reverts, we don't want to revert the entire function
+            // this is to avoid stuck user funds in case of interest calculation overflows
+        }
+        _;
+    }
+
     /// @notice Burns USD2 tokens without receiving anything in return
     /// @param amount The amount of USD2 tokens to burn
     function burn(uint amount) external {
@@ -154,8 +162,7 @@ contract USD2 is ERC20 {
     /// @notice Sets the half-life period for interest rate adjustments. Half life is the duration needed for the rate to decay by half or double
     /// @param _halfLife The new half-life period in seconds
     /// @dev Can only be called by operator before immutability deadline
-    function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline {
-        accrueInterest();
+    function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline tryAccrueInterest {
         require(_halfLife >= MIN_HALF_LIFE && _halfLife <= MAX_HALF_LIFE, "USD2: invalid half-life");
         expRate = uint64(WAD_LN2 / _halfLife);
         emit HalfLifeUpdated(_halfLife);
@@ -165,11 +172,10 @@ contract USD2 is ERC20 {
     /// @param _start The lower bound of target range in basis points
     /// @param _end The upper bound of target range in basis points
     /// @dev Can only be called by operator before immutability deadline
-    function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline {
+    function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline tryAccrueInterest {
         require(_start >= MIN_TARGET_FREE_DEBT_RATIO_START_BPS, "USD2: invalid target free debt ratio range");
         require(_start <= _end, "USD2: invalid target free debt ratio range");
         require(_end <= MAX_TARGET_FREE_DEBT_RATIO_END_BPS, "USD2: invalid target free debt ratio range");
-        accrueInterest();
         targetFreeDebtRatioStartBps = uint16(_start);
         targetFreeDebtRatioEndBps = uint16(_end);
         emit TargetFreeDebtRatioRangeUpdated(_start, _end);
@@ -391,9 +397,7 @@ contract USD2 is ERC20 {
     /// @param collateralDelta The change in collateral amount (positive for deposit, negative for withdrawal)
     /// @param debtDelta The change in debt amount (positive for borrow, negative for repay)
     /// @dev This function can be called by anyone if it only repays debt and/or adds collateral. If it includes borrowing or withdrawing collateral, it must be called by the account itself or by a delegatee.
-    function adjust(address account, int256 collateralDelta, int256 debtDelta) public {
-        accrueInterest();
-        
+    function adjust(address account, int256 collateralDelta, int256 debtDelta) public tryAccrueInterest {
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Deposit collateral
@@ -513,9 +517,7 @@ contract USD2 is ERC20 {
     /// @param repayAmount The amount of debt to repay
     /// @param minCollateralOut The minimum amount of collateral to receive
     /// @return The amount of collateral received
-    function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
-        accrueInterest();
-
+    function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external tryAccrueInterest returns(uint) {
         require(repayAmount > 0, "USD2: repay amount must be greater than 0");
 
         // check liquidation condition
@@ -563,8 +565,7 @@ contract USD2 is ERC20 {
     /// @param borrower The account in potentiallyundercollateralized state
     /// @return writtenOff True if the borrower was written off, false otherwise
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
-    function writeOff(address borrower) external returns (bool writtenOff) {
-        accrueInterest();
+    function writeOff(address borrower) external tryAccrueInterest returns (bool writtenOff) {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
@@ -616,9 +617,7 @@ contract USD2 is ERC20 {
     /// @param minAmountOut The minimum amount of collateral to receive
     /// @return amountOut The amount of collateral received
     /// @dev Redemptions requires sufficient redeemable collateral to seize and free debt to repay
-    function redeem(uint amountIn, uint minAmountOut) external returns (uint amountOut) {
-        accrueInterest();
-
+    function redeem(uint amountIn, uint minAmountOut) external tryAccrueInterest returns (uint amountOut) {
         // calculate amountOut
         amountOut = getRedeemAmountOut(amountIn);
         require(amountOut >= minAmountOut, "USD2: insufficient amount out");
@@ -637,9 +636,8 @@ contract USD2 is ERC20 {
     /// @notice Opts into the collateral redemption system, converting paid debt to free debt
     /// @param account The account to opt in
     /// @dev This function is called by the account itself or by a delegatee
-    function optInRedemptions(address account) public {
+    function optInRedemptions(address account) public tryAccrueInterest {
         require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
-        accrueInterest();
         collateralManager.setRedeemable(account, true);
 
         // convert paid debt to free debt
@@ -661,9 +659,8 @@ contract USD2 is ERC20 {
     /// @notice Opts out of the collateral redemption system, converting free debt to paid debt
     /// @param account The account to opt out
     /// @dev This function is called by the account itself or by a delegatee
-    function optOutRedemptions(address account) public {
+    function optOutRedemptions(address account) public tryAccrueInterest {
         require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
-        accrueInterest();
         collateralManager.setRedeemable(account, false);
 
         // convert free debt to paid debt
@@ -682,14 +679,12 @@ contract USD2 is ERC20 {
         // redemption status events are tracked in CollateralManager
     }
 
-    function pullLocalReserves() external onlyOperator {
-        accrueInterest();
+    function pullLocalReserves() external onlyOperator tryAccrueInterest {
         _mint(msg.sender, accruedLocalReserves);
         accruedLocalReserves = 0;
     }
 
-    function pullGlobalReserves(address _to) external {
-        accrueInterest();
+    function pullGlobalReserves(address _to) external tryAccrueInterest {
         require(msg.sender == factory, "Only factory can pull global reserves");
         _mint(_to, accruedGlobalReserves);
         accruedGlobalReserves = 0;
