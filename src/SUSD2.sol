@@ -27,6 +27,14 @@ contract SUSD2 is ERC4626 {
         string.concat("s", _symbol)
     ) {}
 
+    modifier tryAccrueInterest() {
+        try IUSD2(address(asset)).accrueInterest() {} catch {
+            // if accrueInterest reverts, we don't want to revert the entire function
+            // this is to avoid stuck user funds in case of interest calculation overflows
+        }
+        _;
+    }
+
     /// @notice Returns the total amount of assets in the vault
     /// @return Total assets
     function totalAssets() public view override returns (uint256) {
@@ -37,8 +45,7 @@ contract SUSD2 is ERC4626 {
     /// @param assets Amount of assets to deposit
     /// @param receiver Address to receive the shares
     /// @return shares Amount of shares minted
-    function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
-        IUSD2(address(asset)).accrueInterest();
+    function deposit(uint256 assets, address receiver) public tryAccrueInterest override returns (uint256 shares) {
         shares = super.deposit(assets, receiver);
     }
 
@@ -46,8 +53,7 @@ contract SUSD2 is ERC4626 {
     /// @param shares Amount of shares to mint
     /// @param receiver Address to receive the shares
     /// @return assets Amount of assets deposited
-    function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
-        IUSD2(address(asset)).accrueInterest();
+    function mint(uint256 shares, address receiver) public tryAccrueInterest override returns (uint256 assets) {
         assets = super.mint(shares, receiver);
     }
 
@@ -60,8 +66,7 @@ contract SUSD2 is ERC4626 {
         uint256 assets,
         address receiver,
         address owner
-    ) public override returns (uint256 shares) {
-        IUSD2(address(asset)).accrueInterest();
+    ) public tryAccrueInterest override returns (uint256 shares) {
         shares = super.withdraw(assets, receiver, owner);
     }
 
@@ -74,8 +79,7 @@ contract SUSD2 is ERC4626 {
         uint256 shares,
         address receiver,
         address owner
-    ) public override returns (uint256 assets) {
-        IUSD2(address(asset)).accrueInterest();
+    ) public tryAccrueInterest override returns (uint256 assets) {
         assets = super.redeem(shares, receiver, owner);
     }
 }
