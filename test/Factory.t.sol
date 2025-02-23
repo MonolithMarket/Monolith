@@ -38,6 +38,7 @@ contract FactoryTest is Test {
             collateral,
             feed,
             collateralFactor,
+            1000e18,
             localOperator
         );
 
@@ -144,6 +145,7 @@ contract FactoryTest is Test {
             collateral,
             address(1),
             5000,
+            1000e18,
             operator
         );
     }

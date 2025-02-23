@@ -72,6 +72,7 @@ contract USD2 is ERC20 {
     uint public constant MAX_TARGET_FREE_DEBT_RATIO_END_BPS = 9500; // 95%
     uint public immutable IMMUTABILITY_DEADLINE;
     uint public immutable COLLATERAL_FACTOR_BPS;
+    uint public immutable MIN_DEBT;
     uint internal constant MAX_UINT256 = 2**256 - 1;
     uint internal constant MIN_RATE = 5e15; // 0.5%
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
@@ -106,11 +107,13 @@ contract USD2 is ERC20 {
         address _feed,
         address _factory,
         address _operator,
-        uint _collateralFactor
+        uint _collateralFactor,
+        uint _minDebt
     ) ERC20(_name, _symbol, 18) {
         require(_collateralFactor <= 10000, "USD2: invalid collateral factor");
         factory = _factory;
         COLLATERAL_FACTOR_BPS = _collateralFactor;
+        MIN_DEBT = _minDebt;
         sUSD2 = IsUSD2(_sUSD2);
         collateral = ICollateral(_collateral);
         feed = IChainlinkFeed(_feed);
@@ -451,12 +454,15 @@ contract USD2 is ERC20 {
             _burn(msg.sender, amount); // we burn from msg.sender to repay the account's credit
         }
 
+        // if debtDelta is non-zero, require debt balance to either be 0 or >= MIN_DEBT
+        uint debtBalance = getDebtOf(account);
+        if(debtDelta != 0) require(debtBalance == 0 || debtBalance >= MIN_DEBT, "USD2: debt below minimum and larger than 0");
+
         // Skip invariants if user does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
 
         // Enforce invariants
         require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
-        uint256 debtBalance = getDebtOf(account);
         if(debtBalance == 0) return;
         uint256 collateralBalance = collateralManager.collateralOf(account);
         uint256 price = getCollateralPrice();

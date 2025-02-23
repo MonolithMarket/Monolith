@@ -47,8 +47,10 @@ contract USD2Wrapper is USD2 {
         address _collateral,
         address _feed,
         address _factory,
-        address _operator
-    ) USD2(_name, _symbol, _sUSD2, _collateral, _feed, _factory, _operator, 9000) {}
+        address _operator,
+        uint _collateralFactor,
+        uint _minDebt
+    ) USD2(_name, _symbol, _sUSD2, _collateral, _feed, _factory, _operator, _collateralFactor, _minDebt) {}
 
     function _calculateRate(uint _lastRate,
         uint _timeElapsed,
@@ -67,6 +69,7 @@ contract USD2Wrapper is USD2 {
 
 contract USD2Test is Test {
 
+    uint constant MIN_DEBT = 100;
     USD2Wrapper usd2;
     address collateral = address(new MockCollateral());
     address feed = address(new MockFeed());
@@ -79,7 +82,7 @@ contract USD2Test is Test {
         sUSD2 = CREATE3.getDeployed(keccak256("SUSD2"));
         CREATE3.deploy(
             keccak256("USD2"),
-            abi.encodePacked(type(USD2Wrapper).creationCode, abi.encode("TestUSD", "TUSD", sUSD2, collateral, feed, address(this), operator, 9000)),
+            abi.encodePacked(type(USD2Wrapper).creationCode, abi.encode("TestUSD", "TUSD", sUSD2, collateral, feed, address(this), operator, 9000, MIN_DEBT)),
             0
         );
         CREATE3.deploy(
@@ -101,6 +104,8 @@ contract USD2Test is Test {
         assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days, "expRate");
         assertEq(address(usd2.collateral()), collateral, "collateral");
         assertEq(address(usd2.feed()), feed, "feed");
+        assertEq(usd2.COLLATERAL_FACTOR_BPS(), 9000, "collateralFactorBps");
+        assertEq(usd2.MIN_DEBT(), MIN_DEBT, "MIN_DEBT");
         assertEq(usd2.operator(), operator, "operator");
         assertEq(usd2.IMMUTABILITY_DEADLINE(), block.timestamp + 365 days, "IMMUTABILITY_DEADLINE");
         assertNotEq(address(usd2.collateralManager()), address(0), "collateralManager");
@@ -303,6 +308,12 @@ contract USD2Test is Test {
         assertEq(usd2.getDebtOf(address(this)), 900);
     }
 
+    function test_adjust_borrow_belowMinDebt() public {
+        test_adjust_depositCollateral(); // 1000 collateral, $1 each
+        vm.expectRevert("USD2: debt below minimum and larger than 0");
+        usd2.adjust(address(this), 0, 99);
+    }
+
     function test_adjust_borrow_isRedeemable() public {
         test_adjust_depositCollateral_isRedeemable(); // 1000 collateral, $1 each
         usd2.adjust(address(this), 0, 900); // 90% collateral factor
@@ -351,6 +362,12 @@ contract USD2Test is Test {
         usd2.adjust(address(this), 0, -900);
         assertEq(usd2.balanceOf(address(this)), 0);
         assertEq(usd2.getDebtOf(address(this)), 0);
+    }
+
+    function test_adjust_repay_belowMinDebt() public {
+        test_adjust_borrow();
+        vm.expectRevert("USD2: debt below minimum and larger than 0");
+        usd2.adjust(address(this), 0, -801);
     }
 
     function test_adjust_repay_onBehalf() public {

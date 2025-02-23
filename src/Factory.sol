@@ -88,11 +88,12 @@ contract Factory {
         address _collateral,
         address _feed,
         uint256 _collateralFactor,
+        uint256 _minDebt,
         address _operator
     ) external returns (address core, address staked) {
         core = USD2Deployer.getAddress(msg.sender, deployments.length);
         staked = SUSD2Deployer.getAddress(msg.sender, deployments.length);
-        USD2Deployer.deployUSD2(msg.sender, deployments.length, abi.encode(_name, _symbol, staked, _collateral, _feed, address(this), _operator, _collateralFactor));
+        USD2Deployer.deployUSD2(msg.sender, deployments.length, abi.encode(_name, _symbol, staked, _collateral, _feed, address(this), _operator, _collateralFactor, _minDebt));
         SUSD2Deployer.deploySUSD2(msg.sender, deployments.length, abi.encode(_name, _symbol, core));
 
         deployments.push(core);
