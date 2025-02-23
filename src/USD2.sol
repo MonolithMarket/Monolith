@@ -3,15 +3,11 @@ pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC20.sol";
 import "lib/solmate/src/utils/SignedWadMath.sol";
+import "lib/solmate/src/utils/SafeTransferLib.sol";
 import "./CollateralManager.sol";
 
 interface IFactory {
     function feeBps() external view returns (uint256);
-}
-
-interface ICollateral {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
 }
 
 interface IChainlinkFeed {
@@ -39,6 +35,8 @@ library CollateralManagerDeployer {
 /// @notice Allows users to borrow USD2 stablecoins against collateral
 /// @dev Implements a dual debt system with free (redeemable) and paid debt
 contract USD2 is ERC20 {
+
+    using SafeTransferLib for ERC20;
 
     // single 256-bit slot
     uint16 public targetFreeDebtRatioStartBps = 2000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
@@ -76,7 +74,7 @@ contract USD2 is ERC20 {
     uint internal constant MAX_UINT256 = 2**256 - 1;
     uint internal constant MIN_RATE = 5e15; // 0.5%
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 USD2
-    ICollateral public immutable collateral;
+    ERC20 public immutable collateral;
     IChainlinkFeed public immutable feed;
     IsUSD2 public immutable sUSD2;
     CollateralManager public immutable collateralManager;
@@ -115,7 +113,7 @@ contract USD2 is ERC20 {
         COLLATERAL_FACTOR_BPS = _collateralFactor;
         MIN_DEBT = _minDebt;
         sUSD2 = IsUSD2(_sUSD2);
-        collateral = ICollateral(_collateral);
+        collateral = ERC20(_collateral);
         feed = IChainlinkFeed(_feed);
         operator = _operator;
         IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
@@ -404,11 +402,11 @@ contract USD2 is ERC20 {
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Deposit collateral
-            require(collateral.transferFrom(
+            collateral.safeTransferFrom(
                 msg.sender, // we deposit from msg.sender to the account
                 address(collateralManager), 
                 uint256(collateralDelta)
-            ), "USD2: collateral transfer failed");
+            );
             collateralManager.deposit(account);
         } else if (collateralDelta < 0) {
             // Withdraw collateral

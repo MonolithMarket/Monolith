@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-interface IERC20 {
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import "lib/solmate/src/utils/SafeTransferLib.sol";
+import "lib/solmate/src/tokens/ERC20.sol";
 
 /// @title CollateralManager
 /// @notice Manages redeemable and non-redeemable collateral shares for USD2
 /// @dev Handles deposits, withdrawals, and redemption switching
 contract CollateralManager {
+
+    using SafeTransferLib for ERC20;
     
     address public immutable usd2;
-    IERC20 public immutable asset;
+    ERC20 public immutable asset;
     uint256 public totalRedeemableShares;
     uint256 public totalRedeemable;
     uint256 public totalNonRedeemableShares;
@@ -26,7 +26,7 @@ contract CollateralManager {
 
     /// @param _asset The address of the ERC20 token used as collateral
     constructor(address _asset, address _usd2) {
-        asset = IERC20(_asset);
+        asset = ERC20(_asset);
         usd2 = _usd2;
     }
 
@@ -74,7 +74,7 @@ contract CollateralManager {
         require(totalRedeemable > assets, "Remaining redeemable collateral cannot be zero");
         totalRedeemable -= assets;
 
-        require(asset.transfer(to, assets), "Asset transfer failed");
+        asset.safeTransfer(to, assets);
 
         emit Seize(to, assets);
 
@@ -127,7 +127,7 @@ contract CollateralManager {
             totalNonRedeemable -= assets;
         }
 
-        require(asset.transfer(receiver, assets), "Asset transfer failed");
+        asset.safeTransfer(receiver, assets);
         emit Withdraw(owner, receiver, shares, assets);
     }
 
