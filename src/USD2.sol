@@ -488,22 +488,34 @@ contract USD2 is ERC20 {
         // check liquidation condition
         uint collateralBalance = collateralManager.collateralOf(borrower);
         uint price = getCollateralPrice();
-        uint borrowingPower = price * collateralBalance * COLLATERAL_FACTOR_BPS / 1e18 / 10000;
         uint debtBalance = getDebtOf(borrower);
-        if(borrowingPower > debtBalance) return 0;
+        liquidatableDebt = _getLiquidatableDebt(collateralBalance, price, debtBalance);
+    }
+
+    function _getLiquidatableDebt(uint collateralBalance, uint price, uint debt) internal view returns(uint liquidatableDebt){
+        uint borrowingPower = price * collateralBalance * COLLATERAL_FACTOR_BPS / 1e18 / 10000;
+        if(borrowingPower > debt) return 0;
         // liquidate only the amount of debt that is above the borrowing power
-        liquidatableDebt = debtBalance - borrowingPower;
+        liquidatableDebt = debt - borrowingPower;
         // liquidate at least MIN_LIQUIDATION_DEBT (or the entire debt if it's less than MIN_LIQUIDATION_DEBT)
-        if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debtBalance < MIN_LIQUIDATION_DEBT ? debtBalance : MIN_LIQUIDATION_DEBT;
+        if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debt < MIN_LIQUIDATION_DEBT ? debt : MIN_LIQUIDATION_DEBT;
     }
 
     /// @notice Calculates the liquidation incentive in basis points
     /// @param borrower The account to calculate the liquidation incentive for
     /// @return The liquidation incentive in basis points
     function getLiquidationIncentiveBps(address borrower) public view returns (uint) {
-        uint collateralValue = collateralManager.collateralOf(borrower) * getCollateralPrice() / 1e18;
+        return _getLiquidationIncentiveBps(
+            collateralManager.collateralOf(borrower),
+            getCollateralPrice(),
+            getDebtOf(borrower)
+        );
+    }
+
+    function _getLiquidationIncentiveBps(uint collateralBalance, uint price, uint debt) internal view returns(uint) {
+        uint collateralValue = collateralBalance * price / 1e18;
         if (collateralValue == 0) return 100; // avoid division by zero
-        uint ltvBps = getDebtOf(borrower) * 10000 / collateralValue;
+        uint ltvBps = debt * 10000 / collateralValue;
         uint maxLtvBps = COLLATERAL_FACTOR_BPS + 500;
 
         if (ltvBps <= COLLATERAL_FACTOR_BPS) {
@@ -523,9 +535,11 @@ contract USD2 is ERC20 {
     /// @return The amount of collateral received
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external tryAccrueInterest returns(uint) {
         require(repayAmount > 0, "USD2: repay amount must be greater than 0");
-
+        uint collateralBalance = collateralManager.collateralOf(borrower);
+        uint price = getCollateralPrice();
+        uint debt = getDebtOf(borrower);
         // check liquidation condition
-        uint liquidatableDebt = getLiquidatableDebt(borrower);
+        uint liquidatableDebt = _getLiquidatableDebt(collateralBalance, price, debt);
         if(repayAmount == type(uint256).max) {
             require(liquidatableDebt > 0, "USD2: no liquidatable debt");
             repayAmount = liquidatableDebt;
@@ -549,9 +563,8 @@ contract USD2 is ERC20 {
         }
 
         // calculate collateral reward
-        uint liqIncentiveBps = getLiquidationIncentiveBps(borrower);
+        uint liqIncentiveBps = _getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
-        uint price = getCollateralPrice();
         uint collateralReward = collateralRewardValue * 1e18 / price;
         require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
 
