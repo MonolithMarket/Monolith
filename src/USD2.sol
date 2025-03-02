@@ -56,6 +56,7 @@ contract USD2 is ERC20 {
     uint public totalFreeDebtShares;
     uint public totalPaidDebt;
     uint public totalPaidDebtShares;
+    uint public immutabilityDeadline;
     address public operator;
 
     // immutables and constants
@@ -68,7 +69,6 @@ contract USD2 is ERC20 {
     uint public constant MAX_HALF_LIFE = 30 days;
     uint public constant MIN_TARGET_FREE_DEBT_RATIO_START_BPS = 500; // 5%
     uint public constant MAX_TARGET_FREE_DEBT_RATIO_END_BPS = 9500; // 95%
-    uint public immutable IMMUTABILITY_DEADLINE;
     uint public immutable COLLATERAL_FACTOR_BPS;
     uint public immutable MIN_DEBT;
     uint internal constant MAX_UINT256 = 2**256 - 1;
@@ -106,9 +106,11 @@ contract USD2 is ERC20 {
         address _factory,
         address _operator,
         uint _collateralFactor,
-        uint _minDebt
+        uint _minDebt,
+        uint _timeUntilImmutability
     ) ERC20(_name, _symbol, 18) {
         require(_collateralFactor <= 10000, "USD2: invalid collateral factor");
+        require(_timeUntilImmutability <= 1460 days, "USD2: max immutability deadline is in 4 years");
         factory = _factory;
         COLLATERAL_FACTOR_BPS = _collateralFactor;
         MIN_DEBT = _minDebt;
@@ -116,7 +118,7 @@ contract USD2 is ERC20 {
         collateral = ERC20(_collateral);
         feed = IChainlinkFeed(_feed);
         operator = _operator;
-        IMMUTABILITY_DEADLINE = block.timestamp + 365 days;
+        immutabilityDeadline = block.timestamp + _timeUntilImmutability;
         collateralManager = CollateralManagerDeployer.deploy(_collateral);
         lastAccrue = uint40(block.timestamp);
     }
@@ -127,7 +129,7 @@ contract USD2 is ERC20 {
     }
 
     modifier beforeDeadline() {
-        require(block.timestamp < IMMUTABILITY_DEADLINE, "USD2: immutability deadline passed");
+        require(block.timestamp < immutabilityDeadline, "USD2: immutability deadline passed");
         _;
     }
 
@@ -705,6 +707,10 @@ contract USD2 is ERC20 {
         require(msg.sender == factory, "Only factory can pull global reserves");
         _mint(_to, accruedGlobalReserves);
         accruedGlobalReserves = 0;
+    }
+
+    function enableImmutabilityNow() external onlyOperator beforeDeadline {
+        immutabilityDeadline = block.timestamp;
     }
 
 }

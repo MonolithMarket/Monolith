@@ -50,7 +50,7 @@ contract USD2Wrapper is USD2 {
         address _operator,
         uint _collateralFactor,
         uint _minDebt
-    ) USD2(_name, _symbol, _sUSD2, _collateral, _feed, _factory, _operator, _collateralFactor, _minDebt) {}
+    ) USD2(_name, _symbol, _sUSD2, _collateral, _feed, _factory, _operator, _collateralFactor, _minDebt, 365 days) {}
 
     function _calculateRate(uint _lastRate,
         uint _timeElapsed,
@@ -107,7 +107,7 @@ contract USD2Test is Test {
         assertEq(usd2.COLLATERAL_FACTOR_BPS(), 9000, "collateralFactorBps");
         assertEq(usd2.MIN_DEBT(), MIN_DEBT, "MIN_DEBT");
         assertEq(usd2.operator(), operator, "operator");
-        assertEq(usd2.IMMUTABILITY_DEADLINE(), block.timestamp + 365 days, "IMMUTABILITY_DEADLINE");
+        assertEq(usd2.immutabilityDeadline(), block.timestamp + 365 days, "IMMUTABILITY_DEADLINE");
         assertNotEq(address(usd2.collateralManager()), address(0), "collateralManager");
     }
 
@@ -155,7 +155,7 @@ contract USD2Test is Test {
     }
 
     function test_setHalfLife_afterDeadline() public {
-        vm.warp(usd2.IMMUTABILITY_DEADLINE() + 1);
+        vm.warp(usd2.immutabilityDeadline() + 1);
         vm.prank(operator);
         vm.expectRevert("USD2: immutability deadline passed");
         usd2.setHalfLife(1 days);
@@ -193,7 +193,7 @@ contract USD2Test is Test {
     }
 
     function test_setTargetFreeDebtRatioRangeBps_afterDeadline() public {
-        vm.warp(usd2.IMMUTABILITY_DEADLINE() + 1);
+        vm.warp(usd2.immutabilityDeadline() + 1);
         vm.prank(operator);
         vm.expectRevert("USD2: immutability deadline passed");
         usd2.setTargetFreeDebtRatioRangeBps(0, 10000);
@@ -221,7 +221,7 @@ contract USD2Test is Test {
     }
 
     function test_setRedeemFeeBps_afterDeadline() public {
-        vm.warp(usd2.IMMUTABILITY_DEADLINE() + 1);
+        vm.warp(usd2.immutabilityDeadline() + 1);
         vm.prank(operator);
         vm.expectRevert("USD2: immutability deadline passed");
         usd2.setRedeemFeeBps(5000);
