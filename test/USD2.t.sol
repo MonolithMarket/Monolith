@@ -500,8 +500,9 @@ contract USD2Test is Test {
         assertEq(writtenOff, true);
         // assert written off borrower's debt is equal to zero
         assertEq(usd2.getDebtOf(WRITTEN_OFF_BORROWER), 0);
-        // collateral remains unchanged
-        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 1000e18);
+        // collateral is transferred to caller
+        assertEq(usd2.collateralManager().collateralOf(WRITTEN_OFF_BORROWER), 0);
+        assertEq(MockCollateral(collateral).balanceOf(address(this)), 1000e18);
         //assert other borrowers receive 350 of the written off borrower's debt (850 - 500)
         assertEq(usd2.getDebtOf(REDEEMABLE_BORROWER), 850e18 + (850e18 / 2));
         assertEq(usd2.getDebtOf(NON_REDEEMABLE_BORROWER), 850e18 + (850e18 / 2));

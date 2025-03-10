@@ -646,6 +646,8 @@ contract USD2 is ERC20 {
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
+                // 3. send collateral to caller
+                collateralManager.withdraw(collateralBalance, msg.sender, borrower);
                 emit WrittenOff(borrower, msg.sender, debt, collateralBalance);
                 writtenOff = true;
             }
