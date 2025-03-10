@@ -267,6 +267,10 @@ contract USD2 is ERC20 {
         try this.getFeedPrice() returns (uint _price, uint _updatedAt) {
             price = _price;
             updatedAt = _updatedAt;
+            if(price == 0) {
+                reduceOnly = true;
+                allowLiquidations = false; // Disable liquidations if price is invalid
+            }
         } catch {
             reduceOnly = true;
             allowLiquidations = false; // Disable liquidations only if the oracle feed is reverting
@@ -279,7 +283,7 @@ contract USD2 is ERC20 {
             reduceOnly = true;
             uint stalenessDuration = timeElapsed - STALENESS_THRESHOLD;
             if (stalenessDuration >= STALENESS_UNWIND_DURATION) {
-                price = 0;
+                price = 1; // avoid division by zero
             } else {
                 price = price * (STALENESS_UNWIND_DURATION - stalenessDuration) / STALENESS_UNWIND_DURATION;
             }
@@ -290,7 +294,7 @@ contract USD2 is ERC20 {
     function getFeedPrice() external view returns (uint price, uint updatedAt) {
         (,int256 feedPrice,,uint256 feedUpdatedAt,) = feed.latestRoundData();
         uint8 decimals = 18 - feed.decimals();
-        price = uint(feedPrice) * (10**decimals);
+        price = feedPrice > 0 ? uint(feedPrice) * (10**decimals) : 0; // convert negative price to uint 0 to signal invalid price
         updatedAt = feedUpdatedAt;
     }
 
