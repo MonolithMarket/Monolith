@@ -258,14 +258,18 @@ contract USD2 is ERC20 {
     /// @notice Gets the current price of the collateral asset
     /// @return price The price in USD with 18 decimals
     /// @return reduceOnly A boolean indicating if reduce only mode is enabled
-    function getCollateralPrice() public view returns (uint price, bool reduceOnly) {
+    /// @return allowLiquidations A boolean indicating if liquidations and write-offs are enabled
+    function getCollateralPrice() public view returns (uint price, bool reduceOnly, bool allowLiquidations) {
         uint updatedAt;
+        allowLiquidations = true; // Default to allowing liquidations
+        
         // call our own getFeedPrice() externally to catch all feed reverts e.g. due to inexistent feed contract, function, etc.
         try this.getFeedPrice() returns (uint _price, uint _updatedAt) {
             price = _price;
             updatedAt = _updatedAt;
         } catch {
             reduceOnly = true;
+            allowLiquidations = false; // Disable liquidations only if the oracle feed is reverting
         }
         
         uint currentTime = block.timestamp;
@@ -482,7 +486,7 @@ contract USD2 is ERC20 {
 
         // Enforce loan health invariant
         uint256 collateralBalance = collateralManager.collateralOf(account);
-        (uint256 price, bool reduceOnly) = getCollateralPrice();
+        (uint256 price, bool reduceOnly,) = getCollateralPrice();
         // cannot withdraw collateral (with positive debt) or borrow during reduce only mode
         require(!reduceOnly, "USD2: reduce only");
         uint256 borrowingPower = price * collateralBalance * COLLATERAL_FACTOR_BPS / 1e18 / 10000;
@@ -508,7 +512,7 @@ contract USD2 is ERC20 {
     function getLiquidatableDebt(address borrower) public view returns (uint liquidatableDebt) {
         // check liquidation condition
         uint collateralBalance = collateralManager.collateralOf(borrower);
-        (uint price,) = getCollateralPrice();
+        (uint price, , ) = getCollateralPrice();
         uint debtBalance = getDebtOf(borrower);
         liquidatableDebt = _getLiquidatableDebt(collateralBalance, price, debtBalance);
     }
@@ -526,7 +530,7 @@ contract USD2 is ERC20 {
     /// @param borrower The account to calculate the liquidation incentive for
     /// @return The liquidation incentive in basis points
     function getLiquidationIncentiveBps(address borrower) public view returns (uint) {
-        (uint price,) = getCollateralPrice();
+        (uint price, , ) = getCollateralPrice();
         return _getLiquidationIncentiveBps(
             collateralManager.collateralOf(borrower),
             price,
@@ -558,8 +562,8 @@ contract USD2 is ERC20 {
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external tryAccrueInterest returns(uint) {
         require(repayAmount > 0, "USD2: repay amount must be greater than 0");
         uint collateralBalance = collateralManager.collateralOf(borrower);
-        (uint price, bool reduceOnly) = getCollateralPrice();
-        require(!reduceOnly, "USD2: reduce only");
+        (uint price,, bool allowLiquidations) = getCollateralPrice();
+        require(allowLiquidations, "USD2: liquidations disabled");
         uint debt = getDebtOf(borrower);
         // check liquidation condition
         uint liquidatableDebt = _getLiquidatableDebt(collateralBalance, price, debt);
@@ -592,7 +596,8 @@ contract USD2 is ERC20 {
         require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
 
         if(collateralReward > 0) {
-            collateralManager.withdraw(collateralReward, msg.sender, borrower);
+            address _borrower = borrower; // avoid stack too deep
+            collateralManager.withdraw(collateralReward, msg.sender, _borrower);
         }
         _burn(msg.sender, repayAmount);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
@@ -610,8 +615,8 @@ contract USD2 is ERC20 {
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
             uint collateralBalance = collateralManager.collateralOf(borrower);
-            (uint price, bool reduceOnly) = getCollateralPrice();
-            require(!reduceOnly, "USD2: reduce only");
+            (uint price,, bool allowLiquidations) = getCollateralPrice();
+            require(allowLiquidations, "USD2: liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
             // if debt is more than 100 times the collateral value, write off
             if(debt > collateralValue * 100) {
@@ -648,8 +653,8 @@ contract USD2 is ERC20 {
     /// @return amountOut The amount of collateral to receive
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
-        (uint price, bool reduceOnly) = getCollateralPrice();
-        require(!reduceOnly, "USD2: reduce only");
+        (uint price,, bool allowLiquidations) = getCollateralPrice();
+        if(!allowLiquidations) return 0;
         // multiply amountIn by price then apply redeem fee to amountIn
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
