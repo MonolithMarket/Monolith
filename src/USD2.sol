@@ -3,6 +3,7 @@ pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC20.sol";
 import "lib/solmate/src/utils/SignedWadMath.sol";
+import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "lib/solmate/src/utils/SafeTransferLib.sol";
 import "./CollateralManager.sol";
 
@@ -37,6 +38,7 @@ library CollateralManagerDeployer {
 contract USD2 is ERC20 {
 
     using SafeTransferLib for ERC20;
+    using FixedPointMathLib for uint256;
 
     // single 256-bit slot
     uint16 public targetFreeDebtRatioStartBps = 2000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
@@ -199,51 +201,6 @@ contract USD2 is ERC20 {
         return totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalFreeDebt + totalPaidDebt);
     }
 
-    /// @notice Performs multiplication and division while rounding down
-    /// @param x First multiplication factor
-    /// @param y Second multiplication factor
-    /// @param denominator The divisor
-    /// @return z The result, rounded down
-    function mulDivDown(
-        uint256 x,
-        uint256 y,
-        uint256 denominator
-    ) internal pure returns (uint256 z) {
-        /// @solidity memory-safe-assembly
-        assembly {
-            // Equivalent to require(denominator != 0 && (y == 0 || x <= type(uint256).max / y))
-            if iszero(mul(denominator, iszero(mul(y, gt(x, div(MAX_UINT256, y)))))) {
-                revert(0, 0)
-            }
-
-            // Divide x * y by the denominator.
-            z := div(mul(x, y), denominator)
-        }
-    }
-
-    /// @notice Performs multiplication and division while rounding up
-    /// @param x First multiplication factor
-    /// @param y Second multiplication factor
-    /// @param denominator The divisor
-    /// @return z The result, rounded up
-    function mulDivUp(
-        uint256 x,
-        uint256 y,
-        uint256 denominator
-    ) internal pure returns (uint256 z) {
-        /// @solidity memory-safe-assembly
-        assembly {
-            // Equivalent to require(denominator != 0 && (y == 0 || x <= type(uint256).max / y))
-            if iszero(mul(denominator, iszero(mul(y, gt(x, div(MAX_UINT256, y)))))) {
-                revert(0, 0)
-            }
-
-            // If x * y modulo the denominator is strictly greater than 0,
-            // 1 is added to round up the division of x * y by the denominator.
-            z := add(gt(mod(mul(x, y), denominator), 0), div(mul(x, y), denominator))
-        }
-    }
-
     /// @notice Gets the total debt of a borrower whether it is free or paid debt
     /// @param borrower The address of the borrower
     /// @return The total debt in USD2
@@ -304,7 +261,7 @@ contract USD2 is ERC20 {
     /// @param sharesSupply The total shares supply
     /// @return The amount of assets
     function convertToAssets(uint shares, uint totalAssets, uint sharesSupply) internal pure returns (uint) {
-        return sharesSupply == 0 ? shares : mulDivDown(shares, totalAssets, sharesSupply);
+        return sharesSupply == 0 ? shares : shares.mulDivDown(totalAssets, sharesSupply);
     }
 
     /// @notice Converts assets to shares
@@ -313,7 +270,7 @@ contract USD2 is ERC20 {
     /// @param sharesSupply The total shares supply
     /// @return The number of shares
     function convertToShares(uint assets, uint totalAssets, uint sharesSupply) internal pure returns (uint) {
-        return sharesSupply == 0 ? assets : mulDivDown(assets, sharesSupply, totalAssets);
+        return sharesSupply == 0 ? assets : assets.mulDivDown(sharesSupply, totalAssets);
     }
 
     /// @notice Calculates the current interest rate and integral of accumulated interest rates per second
@@ -445,13 +402,13 @@ contract USD2 is ERC20 {
             // Borrow
             if(collateralManager.isRedeemable(account)) {
                 uint256 amount = uint256(debtDelta);
-                uint256 shares = totalFreeDebtShares == 0 ? amount : mulDivUp(amount, totalFreeDebtShares, totalFreeDebt);
+                uint256 shares = totalFreeDebtShares == 0 ? amount : amount.mulDivUp(totalFreeDebtShares, totalFreeDebt);
                 freeDebtShares[account] += shares;
                 totalFreeDebt += amount;
                 totalFreeDebtShares += shares;
             } else {
                 uint256 amount = uint256(debtDelta);
-                uint256 shares = totalPaidDebtShares == 0 ? amount : mulDivUp(amount, totalPaidDebtShares, totalPaidDebt);
+                uint256 shares = totalPaidDebtShares == 0 ? amount : amount.mulDivUp(totalPaidDebtShares, totalPaidDebt);
                 paidDebtShares[account] += shares;
                 totalPaidDebt += amount;
                 totalPaidDebtShares += shares;
@@ -696,13 +653,13 @@ contract USD2 is ERC20 {
         // convert paid debt to free debt
         uint paidShares = paidDebtShares[account];
         if(paidShares == 0) return;
-        uint debt = mulDivUp(paidShares, totalPaidDebt, totalPaidDebtShares);
+        uint debt = paidShares.mulDivUp(totalPaidDebt, totalPaidDebtShares);
         require(debt > 0, "USD2: insufficient debt");
         paidDebtShares[account] = 0;
         totalPaidDebt -= debt;
         totalPaidDebtShares -= paidShares;
         uint freeDebtSupply = totalFreeDebtShares; // Saves an extra SLOAD if totalFreeDebtShares is non-zero.
-        uint freeShares = freeDebtSupply == 0 ? debt : mulDivUp(debt, freeDebtSupply, totalFreeDebt);
+        uint freeShares = freeDebtSupply == 0 ? debt : debt.mulDivUp(freeDebtSupply, totalFreeDebt);
         freeDebtShares[account] += freeShares;
         totalFreeDebt += debt;
         totalFreeDebtShares += freeShares;
@@ -719,13 +676,13 @@ contract USD2 is ERC20 {
         // convert free debt to paid debt
         uint freeShares = freeDebtShares[account];
         if(freeShares == 0) return;
-        uint debt = mulDivDown(freeShares, totalFreeDebt, totalFreeDebtShares);
+        uint debt = freeShares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
         require(debt > 0, "USD2: insufficient debt");
         freeDebtShares[account] = 0;
         totalFreeDebt -= debt;
         totalFreeDebtShares -= freeShares;
         uint paidDebtSupply = totalPaidDebtShares; // Saves an extra SLOAD if totalPaidDebtShares is non-zero.
-        uint paidShares = paidDebtSupply == 0 ? debt : mulDivUp(debt, paidDebtSupply, totalPaidDebt);
+        uint paidShares = paidDebtSupply == 0 ? debt : debt.mulDivUp(paidDebtSupply, totalPaidDebt);
         paidDebtShares[account] += paidShares;
         totalPaidDebt += debt;
         totalPaidDebtShares += paidShares;
