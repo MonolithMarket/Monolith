@@ -131,7 +131,7 @@ contract USD2Test is Test {
     }
 
     function test_setOperator_notOperator() public {
-        vm.expectRevert("USD2: not operator");
+        vm.expectRevert(USD2.NotOperator.selector);
         usd2.setOperator(address(1));
     }
 
@@ -142,14 +142,14 @@ contract USD2Test is Test {
     }
 
     function test_setHalfLife_notOperator() public {
-        vm.expectRevert("USD2: not operator");
+        vm.expectRevert(USD2.NotOperator.selector);
         usd2.setHalfLife(1 days);
         assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
     }
 
     function test_setHalfLife_invalidHalfLife() public {
         vm.prank(operator);
-        vm.expectRevert("USD2: invalid half-life");
+        vm.expectRevert(USD2.InvalidHalfLife.selector);
         usd2.setHalfLife(0);
         assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
     }
@@ -157,7 +157,7 @@ contract USD2Test is Test {
     function test_setHalfLife_afterDeadline() public {
         vm.warp(usd2.immutabilityDeadline() + 1);
         vm.prank(operator);
-        vm.expectRevert("USD2: immutability deadline passed");
+        vm.expectRevert(USD2.ImmutabilityDeadlinePassed.selector);
         usd2.setHalfLife(1 days);
         assertEq(usd2.expRate(), uint(wadLn(2*1e18)) / 7 days);
     }
@@ -170,7 +170,7 @@ contract USD2Test is Test {
     }
 
     function test_setTargetFreeDebtRatioRangeBps_notOperator() public {
-        vm.expectRevert("USD2: not operator");
+        vm.expectRevert(USD2.NotOperator.selector);
         usd2.setTargetFreeDebtRatioRangeBps(0, 10000);
         assertEq(usd2.targetFreeDebtRatioStartBps(), 2000);
         assertEq(usd2.targetFreeDebtRatioEndBps(), 4000);
@@ -178,16 +178,16 @@ contract USD2Test is Test {
 
     function test_setTargetFreeDebtRatioRangeBps_invalidStartBps() public {
         vm.prank(operator);
-        vm.expectRevert("USD2: invalid target free debt ratio range");
-        usd2.setTargetFreeDebtRatioRangeBps(10001, 10000);
+        vm.expectRevert(USD2.InvalidTargetFreeDebtRatioStart.selector);
+        usd2.setTargetFreeDebtRatioRangeBps(0, 10000);
         assertEq(usd2.targetFreeDebtRatioStartBps(), 2000);
         assertEq(usd2.targetFreeDebtRatioEndBps(), 4000);
     }
 
     function test_setTargetFreeDebtRatioRangeBps_invalidEndBps() public {
         vm.prank(operator);
-        vm.expectRevert("USD2: invalid target free debt ratio range");
-        usd2.setTargetFreeDebtRatioRangeBps(0, 10001);
+        vm.expectRevert(USD2.InvalidTargetFreeDebtRatioEnd.selector);
+        usd2.setTargetFreeDebtRatioRangeBps(500, 10001);
         assertEq(usd2.targetFreeDebtRatioStartBps(), 2000);
         assertEq(usd2.targetFreeDebtRatioEndBps(), 4000);
     }
@@ -195,7 +195,7 @@ contract USD2Test is Test {
     function test_setTargetFreeDebtRatioRangeBps_afterDeadline() public {
         vm.warp(usd2.immutabilityDeadline() + 1);
         vm.prank(operator);
-        vm.expectRevert("USD2: immutability deadline passed");
+        vm.expectRevert(USD2.ImmutabilityDeadlinePassed.selector);
         usd2.setTargetFreeDebtRatioRangeBps(0, 10000);
         assertEq(usd2.targetFreeDebtRatioStartBps(), 2000);
         assertEq(usd2.targetFreeDebtRatioEndBps(), 4000);
@@ -208,14 +208,14 @@ contract USD2Test is Test {
     }
 
     function test_setRedeemFeeBps_notOperator() public {
-        vm.expectRevert("USD2: not operator");
+        vm.expectRevert(USD2.NotOperator.selector);
         usd2.setRedeemFeeBps(5000);
         assertEq(usd2.redeemFeeBps(), 30);
     }
 
     function test_setRedeemFeeBps_invalidRedeemFeeBps() public {
         vm.prank(operator);
-        vm.expectRevert("USD2: invalid redeem fee");
+        vm.expectRevert(USD2.InvalidRedeemFee.selector);
         usd2.setRedeemFeeBps(10001);
         assertEq(usd2.redeemFeeBps(), 30);
     }
@@ -223,7 +223,7 @@ contract USD2Test is Test {
     function test_setRedeemFeeBps_afterDeadline() public {
         vm.warp(usd2.immutabilityDeadline() + 1);
         vm.prank(operator);
-        vm.expectRevert("USD2: immutability deadline passed");
+        vm.expectRevert(USD2.ImmutabilityDeadlinePassed.selector);
         usd2.setRedeemFeeBps(5000);
         assertEq(usd2.redeemFeeBps(), 30);
     }
@@ -297,7 +297,7 @@ contract USD2Test is Test {
     function test_adjust_withdrawCollateral_onBehalf_notDelegate() public {
         test_adjust_depositCollateral();
         vm.startPrank(address(1));
-        vm.expectRevert("USD2: not authorized");
+        vm.expectRevert(USD2.NotAuthorized.selector);
         usd2.adjust(address(this), -1000, 0);
     }
 
@@ -310,7 +310,7 @@ contract USD2Test is Test {
 
     function test_adjust_borrow_belowMinDebt() public {
         test_adjust_depositCollateral(); // 1000 collateral, $1 each
-        vm.expectRevert("USD2: debt below minimum and larger than 0");
+        vm.expectRevert(USD2.DebtBelowMinimum.selector);
         usd2.adjust(address(this), 0, 99);
     }
 
@@ -333,13 +333,13 @@ contract USD2Test is Test {
     function test_adjust_borrow_onBehalf_notDelegate() public {
         test_adjust_depositCollateral(); // 1000 collateral, $1 each
         vm.startPrank(address(1));
-        vm.expectRevert("USD2: not authorized");
+        vm.expectRevert(USD2.NotAuthorized.selector);
         usd2.adjust(address(this), 0, 850);
     }
 
     function test_adjust_borrow_unsafe() public {
         test_adjust_depositCollateral(); // 1000 collateral, $1 each
-        vm.expectRevert("USD2: unsafe position");
+        vm.expectRevert(USD2.UnsafePosition.selector);
         usd2.adjust(address(this), 0, 901); // 90.1% collateral factor
     }
 
@@ -347,13 +347,13 @@ contract USD2Test is Test {
         test_adjust_depositCollateral(); // 1000 collateral, $1 each
         usd2.delegate(address(1), true);
         vm.startPrank(address(1));
-        vm.expectRevert("USD2: unsafe position");
+        vm.expectRevert(USD2.UnsafePosition.selector);
         usd2.adjust(address(this), 0, 901); // 90.1% collateral factor
     }
 
     function test_adjust_borrow_repeat() public {
         test_adjust_borrow();
-        vm.expectRevert("USD2: unsafe position");
+        vm.expectRevert(USD2.UnsafePosition.selector);
         usd2.adjust(address(this), 0, 1); // second loan is unsafe
     }
 
@@ -366,7 +366,7 @@ contract USD2Test is Test {
 
     function test_adjust_repay_belowMinDebt() public {
         test_adjust_borrow();
-        vm.expectRevert("USD2: debt below minimum and larger than 0");
+        vm.expectRevert(USD2.DebtBelowMinimum.selector);
         usd2.adjust(address(this), 0, -801);
     }
 
@@ -448,7 +448,7 @@ contract USD2Test is Test {
         // redeem
         usd2.transfer(REDEEMER, redeemAmount);
         vm.startPrank(REDEEMER);
-        vm.expectRevert("USD2: insufficient amount out");
+        vm.expectRevert(USD2.InsufficientAmountOut.selector);
         usd2.redeem(redeemAmount, minAmountOut);
     }
 
@@ -467,7 +467,7 @@ contract USD2Test is Test {
         // redeem
         usd2.transfer(REDEEMER, loan);
         vm.startPrank(REDEEMER);
-        vm.expectRevert("USD2: insufficient amount out");
+        vm.expectRevert(USD2.InsufficientAmountOut.selector);
         usd2.redeem(1, 1);
     }
 

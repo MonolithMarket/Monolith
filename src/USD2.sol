@@ -37,6 +37,31 @@ library CollateralManagerDeployer {
 /// @dev Implements a dual debt system with free (redeemable) and paid debt
 contract USD2 is ERC20 {
 
+    // Custom errors
+    error InvalidCollateralFactor();
+    error ImmutabilityTooLong();
+    error NotOperator();
+    error ImmutabilityDeadlinePassed();
+    error InvalidFee();
+    error InvalidHalfLife();
+    error InvalidTargetFreeDebtRatioStart();
+    error InvalidTargetFreeDebtRatioRange();
+    error InvalidTargetFreeDebtRatioEnd();
+    error InvalidRedeemFee();
+    error DebtBelowMinimum();
+    error NotAuthorized();
+    error ReduceOnlyMode();
+    error UnsafePosition();
+    error RepayAmountZero();
+    error LiquidationsDisabled();
+    error NoLiquidatableDebt();
+    error InsufficientLiquidatableDebt();
+    error InsufficientDebtShares();
+    error InsufficientCollateralOut();
+    error InsufficientDebt();
+    error InsufficientAmountOut();
+    error OnlyFactory();
+
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -111,8 +136,8 @@ contract USD2 is ERC20 {
         uint _minDebt,
         uint _timeUntilImmutability
     ) ERC20(_name, _symbol, 18) {
-        require(_collateralFactor <= 10000, "USD2: invalid collateral factor");
-        require(_timeUntilImmutability <= 1460 days, "USD2: max immutability deadline is in 4 years");
+        if(_collateralFactor > 10000) revert InvalidCollateralFactor();
+        if(_timeUntilImmutability > 1460 days) revert ImmutabilityTooLong();
         factory = _factory;
         COLLATERAL_FACTOR_BPS = _collateralFactor;
         MIN_DEBT = _minDebt;
@@ -126,12 +151,12 @@ contract USD2 is ERC20 {
     }
 
     modifier onlyOperator() {
-        require(msg.sender == operator, "USD2: not operator");
+        if(msg.sender != operator) revert NotOperator();
         _;
     }
 
     modifier beforeDeadline() {
-        require(block.timestamp < immutabilityDeadline, "USD2: immutability deadline passed");
+        if(block.timestamp >= immutabilityDeadline) revert ImmutabilityDeadlinePassed();
         _;
     }
 
@@ -159,7 +184,7 @@ contract USD2 is ERC20 {
 
     function setInterestFeeBps(uint _feeBps) external onlyOperator {
         accrueInterest();
-        require(_feeBps <= MAX_FEE_BPS, "USD2: invalid fee");
+        if(_feeBps > MAX_FEE_BPS) revert InvalidFee();
         feeBps = uint16(_feeBps);
         emit InterestFeeUpdated(_feeBps);
     }
@@ -168,7 +193,7 @@ contract USD2 is ERC20 {
     /// @param _halfLife The new half-life period in seconds
     /// @dev Can only be called by operator before immutability deadline
     function setHalfLife(uint _halfLife) external onlyOperator beforeDeadline tryAccrueInterest {
-        require(_halfLife >= MIN_HALF_LIFE && _halfLife <= MAX_HALF_LIFE, "USD2: invalid half-life");
+        if(_halfLife < MIN_HALF_LIFE || _halfLife > MAX_HALF_LIFE) revert InvalidHalfLife();
         expRate = uint64(WAD_LN2 / _halfLife);
         emit HalfLifeUpdated(_halfLife);
     }
@@ -178,9 +203,9 @@ contract USD2 is ERC20 {
     /// @param _end The upper bound of target range in basis points
     /// @dev Can only be called by operator before immutability deadline
     function setTargetFreeDebtRatioRangeBps(uint _start, uint _end) external onlyOperator beforeDeadline tryAccrueInterest {
-        require(_start >= MIN_TARGET_FREE_DEBT_RATIO_START_BPS, "USD2: invalid target free debt ratio range");
-        require(_start <= _end, "USD2: invalid target free debt ratio range");
-        require(_end <= MAX_TARGET_FREE_DEBT_RATIO_END_BPS, "USD2: invalid target free debt ratio range");
+        if(_start < MIN_TARGET_FREE_DEBT_RATIO_START_BPS) revert InvalidTargetFreeDebtRatioStart();
+        if(_start > _end) revert InvalidTargetFreeDebtRatioRange();
+        if(_end > MAX_TARGET_FREE_DEBT_RATIO_END_BPS) revert InvalidTargetFreeDebtRatioEnd();
         targetFreeDebtRatioStartBps = uint16(_start);
         targetFreeDebtRatioEndBps = uint16(_end);
         emit TargetFreeDebtRatioRangeUpdated(_start, _end);
@@ -190,7 +215,7 @@ contract USD2 is ERC20 {
     /// @param _redeemFeeBps The new redeem fee in basis points (100 = 1%)
     /// @dev Can only be called by operator before immutability deadline
     function setRedeemFeeBps(uint _redeemFeeBps) external onlyOperator beforeDeadline {
-        require(_redeemFeeBps <= MAX_REDEEM_FEE_BPS, "USD2: invalid redeem fee");
+        if(_redeemFeeBps > MAX_REDEEM_FEE_BPS) revert InvalidRedeemFee();
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeUpdated(_redeemFeeBps);
     }
@@ -434,13 +459,13 @@ contract USD2 is ERC20 {
 
         // if debtDelta is non-zero, require debt balance to either be 0 or >= MIN_DEBT
         uint debtBalance = getDebtOf(account);
-        if(debtDelta != 0) require(debtBalance == 0 || debtBalance >= MIN_DEBT, "USD2: debt below minimum and larger than 0");
+        if(debtDelta != 0 && debtBalance != 0 && debtBalance < MIN_DEBT) revert DebtBelowMinimum();
 
         // Skip remaining invariants if user does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
 
         // Enforce ownership
-        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
+        if(msg.sender != account && !delegations[account][msg.sender]) revert NotAuthorized();
         
         // Skip remaining invariants if user does not have debt
         if(debtBalance == 0) return;
@@ -449,9 +474,9 @@ contract USD2 is ERC20 {
         uint256 collateralBalance = collateralManager.collateralOf(account);
         (uint256 price, bool reduceOnly,) = getCollateralPrice();
         // cannot withdraw collateral (with positive debt) or borrow during reduce only mode
-        require(!reduceOnly, "USD2: reduce only");
+        if(reduceOnly) revert ReduceOnlyMode();
         uint256 borrowingPower = price * collateralBalance * COLLATERAL_FACTOR_BPS / 1e18 / 10000;
-        require(borrowingPower >= debtBalance, "USD2: unsafe position");
+        if(borrowingPower < debtBalance) revert UnsafePosition();
 
         emit PositionAdjusted(account, collateralDelta, debtDelta);
     }
@@ -521,30 +546,30 @@ contract USD2 is ERC20 {
     /// @param minCollateralOut The minimum amount of collateral to receive
     /// @return The amount of collateral received
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external tryAccrueInterest returns(uint) {
-        require(repayAmount > 0, "USD2: repay amount must be greater than 0");
+        if(repayAmount == 0) revert RepayAmountZero();
         uint collateralBalance = collateralManager.collateralOf(borrower);
         (uint price,, bool allowLiquidations) = getCollateralPrice();
-        require(allowLiquidations, "USD2: liquidations disabled");
+        if(!allowLiquidations) revert LiquidationsDisabled();
         uint debt = getDebtOf(borrower);
         // check liquidation condition
         uint liquidatableDebt = _getLiquidatableDebt(collateralBalance, price, debt);
         if(repayAmount == type(uint256).max) {
-            require(liquidatableDebt > 0, "USD2: no liquidatable debt");
+            if(liquidatableDebt == 0) revert NoLiquidatableDebt();
             repayAmount = liquidatableDebt;
         } else {
-            require(liquidatableDebt >= repayAmount, "USD2: insufficient liquidatable debt");
+            if(liquidatableDebt < repayAmount) revert InsufficientLiquidatableDebt();
         }
 
         // apply repayment
         if(collateralManager.isRedeemable(borrower)) {
             uint shares = convertToShares(repayAmount, totalFreeDebt, totalFreeDebtShares);
-            require(shares > 0, "USD2: insufficient debt shares");
+            if(shares == 0) revert InsufficientDebtShares();
             freeDebtShares[borrower] -= shares;
             totalFreeDebt -= repayAmount;
             totalFreeDebtShares -= shares;
         } else {
             uint shares = convertToShares(repayAmount, totalPaidDebt, totalPaidDebtShares);
-            require(shares > 0, "USD2: insufficient debt shares");
+            if(shares == 0) revert InsufficientDebtShares();
             paidDebtShares[borrower] -= shares;
             totalPaidDebt -= repayAmount;
             totalPaidDebtShares -= shares;
@@ -554,7 +579,7 @@ contract USD2 is ERC20 {
         uint liqIncentiveBps = _getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
         uint collateralReward = collateralRewardValue * 1e18 / price;
-        require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
+        if(collateralReward < minCollateralOut) revert InsufficientCollateralOut();
 
         if(collateralReward > 0) {
             address _borrower = borrower; // avoid stack too deep
@@ -577,7 +602,7 @@ contract USD2 is ERC20 {
         if(debt > 0) {
             uint collateralBalance = collateralManager.collateralOf(borrower);
             (uint price,, bool allowLiquidations) = getCollateralPrice();
-            require(allowLiquidations, "USD2: liquidations disabled");
+            if(!allowLiquidations) revert LiquidationsDisabled();
             uint collateralValue = price * collateralBalance / 1e18;
             // if debt is more than 100 times the collateral value, write off
             if(debt > collateralValue * 100) {
@@ -630,7 +655,7 @@ contract USD2 is ERC20 {
     function redeem(uint amountIn, uint minAmountOut) external tryAccrueInterest returns (uint amountOut) {
         // calculate amountOut
         amountOut = getRedeemAmountOut(amountIn);
-        require(amountOut >= minAmountOut, "USD2: insufficient amount out");
+        if(amountOut < minAmountOut) revert InsufficientAmountOut();
 
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn; // can this be abused in a share inflation attack?
@@ -647,14 +672,14 @@ contract USD2 is ERC20 {
     /// @param account The account to opt in
     /// @dev This function is called by the account itself or by a delegatee
     function optInRedemptions(address account) public tryAccrueInterest {
-        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
+        if(msg.sender != account && !delegations[account][msg.sender]) revert NotAuthorized();
         collateralManager.setRedeemable(account, true);
 
         // convert paid debt to free debt
         uint paidShares = paidDebtShares[account];
         if(paidShares == 0) return;
         uint debt = paidShares.mulDivUp(totalPaidDebt, totalPaidDebtShares);
-        require(debt > 0, "USD2: insufficient debt");
+        if(debt == 0) revert InsufficientDebt();
         paidDebtShares[account] = 0;
         totalPaidDebt -= debt;
         totalPaidDebtShares -= paidShares;
@@ -670,14 +695,14 @@ contract USD2 is ERC20 {
     /// @param account The account to opt out
     /// @dev This function is called by the account itself or by a delegatee
     function optOutRedemptions(address account) public tryAccrueInterest {
-        require(msg.sender == account || delegations[account][msg.sender], "USD2: not authorized");
+        if(msg.sender != account && !delegations[account][msg.sender]) revert NotAuthorized();
         collateralManager.setRedeemable(account, false);
 
         // convert free debt to paid debt
         uint freeShares = freeDebtShares[account];
         if(freeShares == 0) return;
         uint debt = freeShares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
-        require(debt > 0, "USD2: insufficient debt");
+        if(debt == 0) revert InsufficientDebt();
         freeDebtShares[account] = 0;
         totalFreeDebt -= debt;
         totalFreeDebtShares -= freeShares;
@@ -695,7 +720,7 @@ contract USD2 is ERC20 {
     }
 
     function pullGlobalReserves(address _to) external tryAccrueInterest {
-        require(msg.sender == factory, "Only factory can pull global reserves");
+        if(msg.sender != factory) revert OnlyFactory();
         _mint(_to, accruedGlobalReserves);
         accruedGlobalReserves = 0;
     }
