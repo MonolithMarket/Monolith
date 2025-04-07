@@ -153,7 +153,7 @@ contract Lender {
         }
     }
 
-    function adjust(address account, int collateralDelta, int debtDelta) external {
+    function adjust(address account, int collateralDelta, int debtDelta) public {
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Deposit collateral
@@ -200,6 +200,11 @@ contract Lender {
         emit PositionAdjusted(account, collateralDelta, debtDelta);
     }
 
+    function adjust(address account, int collateralDelta, int debtDelta, bool chooseRedeemable) external {
+        setRedemptionStatus(account, chooseRedeemable);
+        adjust(account, collateralDelta, debtDelta);
+    }
+
     /// @notice Allows an account to delegate control of their position to another address (adjustPosition, optInRedemptions, optOutRedemptions functions)
     /// @param delegatee The address to delegate to
     /// @param isDelegatee True to enable delegation, false to revoke
@@ -208,7 +213,7 @@ contract Lender {
         emit DelegationUpdated(msg.sender, delegatee, isDelegatee);
     }
 
-    function setRedemptionStatus(address account, bool chooseRedeemable) external {
+    function setRedemptionStatus(address account, bool chooseRedeemable) public {
         accrueInterest();
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
