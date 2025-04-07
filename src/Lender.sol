@@ -469,7 +469,7 @@ contract Lender {
 
     function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperator beforeDeadline {
         accrueInterest();
-        require(_redeemFeeBps <= 10000, "Invalid redeem fee bps");
+        require(_redeemFeeBps <= 300, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
     }
