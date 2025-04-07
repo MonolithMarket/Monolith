@@ -2,34 +2,56 @@
 pragma solidity 0.8.13;
 
 import "lib/solmate/src/utils/CREATE3.sol";
-import "src/USD2.sol";
-import "src/SUSD2.sol";
+import "src/Lender.sol";
+import "src/Vault.sol";
+import "src/Coin.sol";
+import "src/InterestModel.sol";
 
-library USD2Deployer {
-    function getHash(address caller, uint nonce) internal view returns (bytes32) {
-        return keccak256(abi.encode("core", block.chainid, address(this), caller, nonce));
-    }
-
-    function getAddress(address caller, uint nonce) external view returns (address) {
-        return CREATE3.getDeployed(getHash(caller, nonce));
-    }
-
-    function deployUSD2(address caller, uint nonce, bytes memory data) external {
-        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(USD2).creationCode, data), 0);
+library InterestModelDeployer {
+    function deploy() external returns (address) {
+        return address(new InterestModel());
     }
 }
 
-library SUSD2Deployer {
+library LenderDeployer {
     function getHash(address caller, uint nonce) internal view returns (bytes32) {
-        return keccak256(abi.encode("staked", block.chainid, address(this), caller, nonce));
+        return keccak256(abi.encode("lender", block.chainid, address(this), caller, nonce));
     }
 
     function getAddress(address caller, uint nonce) external view returns (address) {
         return CREATE3.getDeployed(getHash(caller, nonce));
     }
 
-    function deploySUSD2(address caller, uint nonce, bytes memory data) external {
-        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(SUSD2).creationCode, data), 0);
+    function deployLender(address caller, uint nonce, bytes memory data) external {
+        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(Lender).creationCode, data), 0);
+    }
+}
+
+library VaultDeployer {
+    function getHash(address caller, uint nonce) internal view returns (bytes32) {
+        return keccak256(abi.encode("vault", block.chainid, address(this), caller, nonce));
+    }
+
+    function getAddress(address caller, uint nonce) external view returns (address) {
+        return CREATE3.getDeployed(getHash(caller, nonce));
+    }
+
+    function deployVault(address caller, uint nonce, bytes memory data) external {
+        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(Vault).creationCode, data), 0);
+    }
+}
+
+library CoinDeployer {
+    function getHash(address caller, uint nonce) internal view returns (bytes32) {
+        return keccak256(abi.encode("coin", block.chainid, address(this), caller, nonce));
+    }
+
+    function getAddress(address caller, uint nonce) external view returns (address) {
+        return CREATE3.getDeployed(getHash(caller, nonce));
+    }
+
+    function deployCoin(address caller, uint nonce, bytes memory data) external {
+        CREATE3.deploy(getHash(caller, nonce), abi.encodePacked(type(Coin).creationCode, data), 0);
     }
 }
 
@@ -39,6 +61,7 @@ contract Factory {
     address public operator;
     address public feeRecipient;
     uint256 public feeBps;
+    address public immutable interestModel;
     uint256 public constant MAX_FEE_BPS = 1000; // 10%
 
     address[] public deployments;
@@ -46,6 +69,7 @@ contract Factory {
 
     constructor(address _operator) {
         operator = _operator;
+        interestModel = InterestModelDeployer.deploy();
     }
 
     modifier onlyOperator() {
@@ -79,7 +103,7 @@ contract Factory {
     function pullReserves(address _deployment) external {
         require(msg.sender == feeRecipient, "Only fee recipient can pull reserves");
         require(isDeployed[_deployment], "Deployment not found");
-        USD2(_deployment).pullGlobalReserves(msg.sender);
+        Lender(_deployment).pullGlobalReserves(msg.sender);
     }
 
     function deploy(
@@ -91,17 +115,31 @@ contract Factory {
         uint256 _minDebt,
         uint256 _timeUntilImmutability,
         address _operator
-    ) external returns (address core, address staked) {
+    ) external returns (address lender, address coin, address vault) {
         uint id = deployments.length;
-        core = USD2Deployer.getAddress(msg.sender, id);
-        staked = SUSD2Deployer.getAddress(msg.sender, id);
-        // this var avoids stack too deep
-        bytes memory data = abi.encode(_name, _symbol, staked, _collateral, _feed, address(this), _operator, _collateralFactor, _minDebt, _timeUntilImmutability);
-        USD2Deployer.deployUSD2(msg.sender, id, data);
-        SUSD2Deployer.deploySUSD2(msg.sender, id, abi.encode(_name, _symbol, core));
-
-        deployments.push(core);
-        isDeployed[core] = true;
+        lender = LenderDeployer.getAddress(msg.sender, id);
+        vault = VaultDeployer.getAddress(msg.sender, id);
+        coin = CoinDeployer.getAddress(msg.sender, id);
+        // these vars avoid stack too deep
+        bytes memory lenderData = abi.encode(
+            _collateral,
+            _feed,
+            coin,
+            vault,
+            interestModel,
+            address(this),
+            _operator,
+            _collateralFactor,
+            _minDebt,
+            _timeUntilImmutability
+        );
+        bytes memory vaultData = abi.encode(_name, _symbol, lender);    
+        bytes memory coinData = abi.encode(lender, _name, _symbol);
+        LenderDeployer.deployLender(msg.sender, id, lenderData);
+        CoinDeployer.deployCoin(msg.sender, id, coinData);
+        VaultDeployer.deployVault(msg.sender, id, vaultData);
+        deployments.push(lender);
+        isDeployed[lender] = true;
     }
 
 }
