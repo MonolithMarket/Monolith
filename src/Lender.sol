@@ -506,13 +506,11 @@ contract Lender {
         if (timeElapsed > STALENESS_THRESHOLD) {
             reduceOnly = true;
             uint stalenessDuration = timeElapsed - STALENESS_THRESHOLD;
-            if (stalenessDuration >= STALENESS_UNWIND_DURATION) {
-                price = 1; // avoid division by zero
-            } else {
+            if (stalenessDuration < STALENESS_UNWIND_DURATION) {
                 price = price * (STALENESS_UNWIND_DURATION - stalenessDuration) / STALENESS_UNWIND_DURATION;
-            }
+            } // else price is already 0
         }
-    
+        price = price == 0 ? 1 : price; // avoid division by zero in consumer functions
     }
 
     function getFeedPrice() external view returns (uint price, uint updatedAt) {
