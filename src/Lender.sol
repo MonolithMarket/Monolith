@@ -180,7 +180,13 @@ contract Lender {
         } else if (debtDelta < 0) {
             // Repay
             uint amount = uint256(-debtDelta);
-            decreaseDebt(account, amount);
+            uint debt = getDebtOf(account);
+            if(debt < amount) {
+                amount = debt;
+                decreaseDebt(account, type(uint).max);
+            } else {
+                decreaseDebt(account, amount);
+            }
             coin.transferFrom(msg.sender, address(this), amount);
             coin.burn(amount);
         }
