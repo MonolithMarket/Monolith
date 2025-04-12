@@ -159,6 +159,8 @@ contract Lender {
     }
 
     function adjust(address account, int collateralDelta, int debtDelta) public {
+        accrueInterest();
+        updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Deposit collateral
@@ -220,6 +222,7 @@ contract Lender {
 
     function setRedemptionStatus(address account, bool chooseRedeemable) public {
         accrueInterest();
+        updateBorrower(account);
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
         uint prevDebt = getDebtOf(account);
@@ -238,6 +241,7 @@ contract Lender {
     /// @return The amount of collateral received
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
+        updateBorrower(borrower);
         require(repayAmount > 0, "USD2: repay amount must be greater than 0");
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "USD2: liquidations disabled");
@@ -279,6 +283,7 @@ contract Lender {
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
     function writeOff(address borrower) external returns (bool writtenOff) {
         accrueInterest();
+        updateBorrower(borrower);
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
