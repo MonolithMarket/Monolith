@@ -249,18 +249,18 @@ contract Lender {
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
         updateBorrower(borrower);
-        require(repayAmount > 0, "USD2: repay amount must be greater than 0");
+        require(repayAmount > 0, "Repay amount must be greater than 0");
         (uint price,, bool allowLiquidations) = getCollateralPrice();
-        require(allowLiquidations, "USD2: liquidations disabled");
+        require(allowLiquidations, "liquidations disabled");
         uint debt = getDebtOf(borrower);
         uint collateralBalance = _cachedCollateralBalances[borrower];
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
         if(repayAmount == type(uint256).max) {
-            require(liquidatableDebt > 0, "USD2: no liquidatable debt");
+            require(liquidatableDebt > 0, "no liquidatable debt");
             repayAmount = liquidatableDebt;
         } else {
-            require(liquidatableDebt >= repayAmount, "USD2: insufficient liquidatable debt");
+            require(liquidatableDebt >= repayAmount, "insufficient liquidatable debt");
         }
 
         // apply repayment
@@ -270,7 +270,7 @@ contract Lender {
         uint liqIncentiveBps = getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
         uint collateralReward = collateralRewardValue * 1e18 / price;
-        require(collateralReward >= minCollateralOut, "USD2: insufficient collateral out");
+        require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
         if(collateralReward > 0) {
             collateral.safeTransfer(msg.sender, collateralReward);
@@ -296,7 +296,7 @@ contract Lender {
         if(debt > 0) {
             uint collateralBalance = _cachedCollateralBalances[borrower];
             (uint price,, bool allowLiquidations) = getCollateralPrice();
-            require(allowLiquidations, "USD2: liquidations disabled");
+            require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
             // if debt is more than 100 times the collateral value, write off
             if(debt > collateralValue * 100) {
@@ -320,8 +320,8 @@ contract Lender {
         }
     }
 
-    /// @notice Redeems USD2 for collateral at current market price minus a fee
-    /// @param amountIn The amount of USD2 to redeem
+    /// @notice Redeems Coin for collateral at current market price minus a fee
+    /// @param amountIn The amount of Coin to redeem
     /// @param minAmountOut The minimum amount of collateral to receive
     /// @return amountOut The amount of collateral received
     /// @dev Redemptions requires sufficient redeemable collateral to seize and free debt to repay
@@ -329,7 +329,7 @@ contract Lender {
         accrueInterest();
         // calculate amountOut
         amountOut = getRedeemAmountOut(amountIn);
-        require(amountOut >= minAmountOut, "USD2: insufficient amount out");
+        require(amountOut >= minAmountOut, "insufficient amount out");
 
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn;
@@ -522,8 +522,8 @@ contract Lender {
         updatedAt = feedUpdatedAt;
     }
 
-    /// @notice Calculates the amount of collateral received for redeeming USD2
-    /// @param amountIn The amount of USD2 to redeem
+    /// @notice Calculates the amount of collateral received for redeeming Coin
+    /// @param amountIn The amount of Coin to redeem
     /// @return amountOut The amount of collateral to receive
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
