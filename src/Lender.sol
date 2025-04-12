@@ -141,8 +141,7 @@ contract Lender {
                 // if total staked is less than paid debt, giving all interest to stakers would
                 // result in higher supply rate than borrow rate which is undesirable.
                 // we cap the supply rate at the borrow rate and give the rest to local reserves.
-                uint stakedDebt = totalPaidDebt - totalStaked;
-                uint stakedInterest = interestAfterFees * stakedDebt / totalPaidDebt;
+                uint stakedInterest = interestAfterFees * totalStaked / totalPaidDebt;
                 coin.mint(address(vault), stakedInterest);
                 uint remainingInterest = interestAfterFees - stakedInterest;
                 accruedLocalReserves += uint128(remainingInterest);
