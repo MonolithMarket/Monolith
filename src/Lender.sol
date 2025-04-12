@@ -231,11 +231,13 @@ contract Lender {
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
         uint prevDebt = getDebtOf(account);
-        decreaseDebt(account, type(uint).max);
-        isRedeemable[account] = chooseRedeemable;
-        increaseDebt(account, prevDebt);
-        uint currDebt = getDebtOf(account);
-        require(currDebt >= prevDebt, "Debt decreased unexpectedly");
+        if(prevDebt > 0) {
+            decreaseDebt(account, type(uint).max);
+            isRedeemable[account] = chooseRedeemable;
+            increaseDebt(account, prevDebt);
+            uint currDebt = getDebtOf(account);
+            require(currDebt >= prevDebt, "Debt decreased unexpectedly");
+        }
         emit RedemptionStatusUpdated(account, chooseRedeemable);
     }
 
