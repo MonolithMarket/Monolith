@@ -8,9 +8,14 @@ contract FeedMock {
 
     uint8 public decimals = 18;
     bool public shouldRevert;
+    int256 public price = 1e18;  // Default price
 
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
+    }
+    
+    function setPrice(int256 _price) external {
+        price = _price;
     }
 
     function latestRoundData() external view returns (
@@ -24,7 +29,7 @@ contract FeedMock {
             revert("Feed reverted");
         }
         address(this); // silences pure function warning
-        return (0, 1e18, 0, 0, 0);
+        return (0, price, 0, block.timestamp, 0);
     }
 }
 
@@ -1291,6 +1296,333 @@ contract LenderTest is Test {
         assertEq(coin.balanceOf(user), 0, "Remaining coin balance incorrect after repayment with interest");
         
         vm.stopPrank();
+    }
+
+    function test_liquidation_successAfterPriceDecrease() public {
+        // Setup: create a position that will become underwater when price changes
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 20000; // Using 25% of capacity
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Mint coins to liquidator
+        coin.mint(liquidator, borrowAmount); 
+        
+        // Setup: mint collateral to borrower
+        collateral.mint(borrower, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral and borrow
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Make the position underwater by reducing collateral price by 60%
+        feed.setPrice(0.4e18);
+        
+        // Calculate expected liquidation results - we expect about 25% of debt to be repaid
+        uint expectedDebtRepaid = borrowAmount / 4; // 25% of debt
+        
+        // Get position info before liquidation
+        uint preDebt = lender.getDebtOf(borrower);
+        uint preCollateral = lender._cachedCollateralBalances(borrower);
+        
+        // Liquidate the position
+        vm.startPrank(liquidator);
+        coin.approve(address(lender), expectedDebtRepaid);
+        uint collateralReceived = lender.liquidate(borrower, expectedDebtRepaid, 0);
+        vm.stopPrank();
+        
+        // Verify liquidation results
+        assertLt(lender.getDebtOf(borrower), preDebt, "Borrower debt should decrease");
+        assertLt(lender._cachedCollateralBalances(borrower), preCollateral, "Borrower collateral should decrease");
+        
+        // Verify liquidator received the expected collateral
+        assertEq(collateral.balanceOf(liquidator), collateralReceived, "Liquidator should receive collateral");
+        
+        // Verify debt repaid
+        assertEq(preDebt - lender.getDebtOf(borrower), expectedDebtRepaid, "Correct amount of debt should be repaid");
+        
+        // Confirm liquidation bonus was applied (collateral received should be worth more than debt repaid)
+        (uint price, , ) = lender.getCollateralPrice();
+        uint collateralValue = collateralReceived * price / 1e18;
+        assertGt(collateralValue, expectedDebtRepaid, "Liquidator should receive bonus collateral value");
+    }
+    
+    function test_liquidation_maxRepaymentUnderMinLiquidatableDebt() public {
+        // Setup: create a position that will become underwater when price changes
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Mint coins to liquidator (full debt amount)
+        coin.mint(liquidator, borrowAmount); 
+        
+        // Setup: mint collateral to borrower
+        collateral.mint(borrower, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral and borrow
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Make the position severely underwater
+        feed.setPrice(0.5e18-1);
+        
+        // Get position info before liquidation
+        uint preDebt = lender.getDebtOf(borrower);
+        uint preCollateral = lender._cachedCollateralBalances(borrower);
+        
+        // Liquidate using max amount (type(uint256).max)
+        vm.startPrank(liquidator);
+        coin.approve(address(lender), borrowAmount); // approve full repayment
+        uint collateralReceived = lender.liquidate(borrower, type(uint256).max, 0);
+        vm.stopPrank();
+        
+        // The max repayment should be capped at the liquidatable amount
+        assertGt(collateralReceived, 0, "Liquidator should receive collateral");
+        assertLt(lender.getDebtOf(borrower), preDebt, "Borrower debt should decrease");
+        assertLt(lender._cachedCollateralBalances(borrower), preCollateral, "Borrower collateral should decrease");
+    }
+    
+    function test_liquidation_revertIfNotLiquidatable() public {
+        // Setup: create a safe position
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 20000; // Only 25% of capacity
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Mint coins to liquidator
+        coin.mint(liquidator, borrowAmount);
+        
+        // Setup: mint collateral to borrower
+        collateral.mint(borrower, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral and borrow
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Price remains the same (position is safe)
+        
+        // Attempt to liquidate (should revert)
+        vm.startPrank(liquidator);
+        coin.approve(address(lender), borrowAmount);
+        
+        vm.expectRevert("insufficient liquidatable debt");
+        lender.liquidate(borrower, borrowAmount, 0);
+        
+        vm.stopPrank();
+    }
+    
+    function test_liquidation_revertIfPriceFeedDisabled() public {
+        // Setup: create a position
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 20000; // Only 25% of capacity
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Mint coins to liquidator
+        coin.mint(liquidator, borrowAmount);
+        
+        // Setup: mint collateral to borrower
+        collateral.mint(borrower, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral and borrow
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Disable price feed (make it revert)
+        feed.setShouldRevert(true);
+        
+        // Attempt to liquidate (should revert because liquidations are disabled when feed reverts)
+        vm.startPrank(liquidator);
+        coin.approve(address(lender), borrowAmount);
+        
+        vm.expectRevert("liquidations disabled");
+        lender.liquidate(borrower, borrowAmount, 0);
+        
+        vm.stopPrank();
+    }
+    
+    function test_liquidation_revertIfMinCollateralOutNotMet() public {
+        // Setup: create a position that will become underwater
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 20000; // Using 25% of capacity
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Mint coins to liquidator
+        coin.mint(liquidator, borrowAmount);
+        
+        // Setup: mint collateral to borrower
+        collateral.mint(borrower, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral and borrow
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Make the position underwater
+        feed.setPrice(0.4e18);
+        
+        // Calculate debt to be repaid
+        uint expectedDebtRepaid = borrowAmount / 4; // 25% of debt
+        
+        // Attempt to liquidate with unrealistically high minCollateralOut
+        vm.startPrank(liquidator);
+        coin.approve(address(lender), expectedDebtRepaid);
+        
+        // The expected collateral out would be around borrowAmount * 1.01 * 2.5 = borrowAmount * 2.525
+        // Setting a value higher than this should cause revert
+        uint unrealisticMinCollateralOut = borrowAmount * 3; // 3x the debt amount
+        
+        vm.expectRevert("insufficient collateral out");
+        lender.liquidate(borrower, expectedDebtRepaid, unrealisticMinCollateralOut);
+        
+        vm.stopPrank();
+    }
+    
+    function test_writeOff_success() public {
+        // Setup: create a severely underwater position
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000; // Using 50% of capacity
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address otherBorrower = address(0xF00D); // Add another borrower for debt redistribution
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Setup: mint collateral to both borrowers
+        collateral.mint(borrower, collateralAmount);
+        collateral.mint(otherBorrower, collateralAmount);
+        
+        // Setup: borrower 1 deposits collateral and borrows
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Setup: borrower 2 (other borrower) also deposits collateral and borrows
+        vm.startPrank(otherBorrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(otherBorrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Make the first position severely underwater (price drops by 99.9%)
+        feed.setPrice(0.001e18);
+        
+        // Get initial values
+        uint initialDebt = lender.getDebtOf(borrower);
+        uint initialCollateral = lender._cachedCollateralBalances(borrower);
+        uint initialTotalFreeDebt = lender.totalFreeDebt();
+        uint initialTotalPaidDebt = lender.totalPaidDebt();
+        uint otherBorrowerInitialDebt = lender.getDebtOf(otherBorrower);
+        
+        // Execute write-off
+        vm.prank(liquidator);
+        bool result = lender.writeOff(borrower);
+        
+        // Verify write-off was successful
+        assertTrue(result, "Write-off should be successful");
+        
+        // Verify borrower's debt is zero
+        assertEq(lender.getDebtOf(borrower), 0, "Borrower's debt should be zero after write-off");
+        
+        // Verify borrower's collateral is zero
+        assertEq(lender._cachedCollateralBalances(borrower), 0, "Borrower's collateral should be zero after write-off");
+        
+        // Verify liquidator received all collateral
+        assertEq(collateral.balanceOf(liquidator), initialCollateral, "Liquidator should receive all borrower's collateral");
+        
+        // Verify debt was redistributed (total debt should still include the written off debt)
+        assertEq(lender.totalFreeDebt() + lender.totalPaidDebt(), initialTotalFreeDebt + initialTotalPaidDebt, 
+                 "Total debt should remain the same after write-off (redistributed)");
+        
+        // Verify other borrower's debt has increased due to redistribution
+        assertGt(lender.getDebtOf(otherBorrower), otherBorrowerInitialDebt, 
+                "Other borrower's debt should increase after write-off due to redistribution");
+    }
+    
+    function test_writeOff_notDeepEnoughUnderwater() public {
+        // Setup: create a position that's underwater but not deeply enough for write-off
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 20000; // Using 25% of capacity
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Setup: mint collateral to borrower
+        collateral.mint(borrower, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral and borrow
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Make the position underwater but not by 100x (price drops by 75%)
+        feed.setPrice(0.25e18);
+        
+        // Execute write-off (should return false because debt is not 100x the collateral value)
+        vm.prank(liquidator);
+        bool result = lender.writeOff(borrower);
+        
+        // Verify result is false
+        assertFalse(result, "Write-off should not succeed if position isn't deeply underwater");
+        
+        // Verify debt and collateral remain unchanged
+        assertGt(lender.getDebtOf(borrower), 0, "Borrower's debt should remain after failed write-off");
+        assertEq(lender._cachedCollateralBalances(borrower), collateralAmount, "Borrower's collateral should remain after failed write-off");
     }
 
 }

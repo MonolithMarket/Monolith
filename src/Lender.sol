@@ -272,6 +272,7 @@ contract Lender {
         uint liqIncentiveBps = getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
         uint collateralReward = collateralRewardValue * 1e18 / price;
+        collateralReward = collateralReward > collateralBalance ? collateralBalance : collateralReward;
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
         if(collateralReward > 0) {
