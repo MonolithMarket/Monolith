@@ -13,18 +13,19 @@ contract InterestModel {
     // In case of unexpected under/overflow here, Lender contracts would skip accruing interest
     // while allowing borrowers to exit. Otherwise failure would freeze their funds.
     // We could have also added this as an external function to Lender and called
-    // self.calculateRate() externally, but since it's the same cost to call it here,
+    // self.calculateInterest() externally, but since it's the same cost to call it here,
     // we opt for this approach in order to reduce contract bytecode size of Lender.
     // We also reduce Factory deployment costs by only using one instance of
     // this contract for all Lender contracts.
-    function calculateRate(
+    function calculateInterest(
+        uint _totalPaidDebt,
         uint _lastRate,
         uint _timeElapsed,
         uint _expRate,
         uint _lastFreeDebtRatioBps,
         uint _targetFreeDebtRatioStartBps,
         uint _targetFreeDebtRatioEndBps
-    ) external pure returns (uint currBorrowRate, uint integral) {
+    ) external pure returns (uint currBorrowRate, uint interest) {
         // check _expRate * _timeElapsed overflow
         if(uint(type(int256).max) / _expRate < _timeElapsed) _timeElapsed = uint(type(int256).max) / _expRate;
         // we use a negative exponent in order to prevent growthDecay overflow due to large timeElapsed
@@ -33,7 +34,7 @@ contract InterestModel {
         
         if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
             currBorrowRate = _lastRate * 1e18 / growthDecay;
-            integral = (currBorrowRate - _lastRate) * 1e18 / _expRate / 365 days;
+            interest = _totalPaidDebt * (currBorrowRate - _lastRate) * 1e18 / _expRate / 365 days;
         } else if (_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
             currBorrowRate = _lastRate * growthDecay / 1e18;
             if (currBorrowRate < MIN_RATE) {
@@ -41,20 +42,20 @@ contract InterestModel {
                 // calculate integral
                 if (_lastRate <= MIN_RATE) {
                     // Already at min rate, just use flat rate for entire period
-                    integral = MIN_RATE * _timeElapsed / 365 days;
+                    interest = _totalPaidDebt * MIN_RATE * _timeElapsed / 365 days;
                 } else {
                     // Calculate time until min rate is reached
                     uint timeToMin = uint(wadLn(int(MIN_RATE * 1e18 / _lastRate))) * 1e18 / _expRate;
                     // Decaying integral up to min rate, then add flat rate portion
-                    integral = ((_lastRate - MIN_RATE) * 1e18 / _expRate + 
+                    interest = _totalPaidDebt * ((_lastRate - MIN_RATE) * 1e18 / _expRate + 
                               MIN_RATE * (_timeElapsed - timeToMin)) / 365 days;
                 }
             } else {
-                integral = (_lastRate - currBorrowRate) * 1e18 / _expRate / 365 days;
+                interest = _totalPaidDebt * (_lastRate - currBorrowRate) * 1e18 / _expRate / 365 days;
             }
         } else {
             currBorrowRate = _lastRate;
-            integral = _lastRate * _timeElapsed / 365 days;
+            interest = _totalPaidDebt * _lastRate * _timeElapsed / 365 days;
         }
     }
 }

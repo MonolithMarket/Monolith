@@ -57,7 +57,7 @@ contract Lender {
     IChainlinkFeed public immutable feed;
     Vault public immutable vault;
     InterestModel public immutable interestModel;
-    address public immutable factory;
+    IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
     uint public constant STALENESS_THRESHOLD = 60 minutes;
@@ -82,7 +82,7 @@ contract Lender {
         Coin _coin,
         Vault _vault,
         InterestModel _interestModel,
-        address _factory,
+        IFactory _factory,
         address _operator,
         uint _collateralFactor,
         uint _minDebt,
@@ -120,18 +120,18 @@ contract Lender {
         uint timeElapsed = block.timestamp - lastAccrue;
         if(timeElapsed == 0) return;
 
-        try interestModel.calculateRate(
+        try interestModel.calculateInterest(
+            totalPaidDebt,
             lastBorrowRateMantissa,
             timeElapsed,
             expRate,
             getFreeDebtRatio(),
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
-        ) returns (uint currBorrowRate, uint integral) {
-            uint interest = totalPaidDebt * integral / 1e18;
+        ) returns (uint currBorrowRate, uint interest) {
             uint128 localReserveFee = uint128(interest * feeBps / 10000);
             // TODO: cache the global factory fee from last update in order to avoid retroactive fee change.
-            uint128 globalReserveFee = uint128(interest * IFactory(factory).feeBps() / 10000);
+            uint128 globalReserveFee = uint128(interest * factory.feeBps() / 10000);
             accruedLocalReserves += localReserveFee;
             accruedGlobalReserves += globalReserveFee;
             // we remove reserve fees from interest before calculating how much to give to stakers
@@ -237,6 +237,8 @@ contract Lender {
             increaseDebt(account, prevDebt);
             uint currDebt = getDebtOf(account);
             require(currDebt >= prevDebt, "Debt decreased unexpectedly");
+        } else {
+            isRedeemable[account] = chooseRedeemable;
         }
         emit RedemptionStatusUpdated(account, chooseRedeemable);
     }
@@ -592,7 +594,7 @@ contract Lender {
     }
 
     function pullGlobalReserves(address _to) external {
-        require(msg.sender == factory, "Unauthorized");
+        require(msg.sender == address(factory), "Unauthorized");
         accrueInterest();
         coin.mint(_to, accruedGlobalReserves);
         accruedGlobalReserves = 0;
