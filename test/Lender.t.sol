@@ -1625,4 +1625,547 @@ contract LenderTest is Test {
         assertEq(lender._cachedCollateralBalances(borrower), collateralAmount, "Borrower's collateral should remain after failed write-off");
     }
 
+    function test_redeem_basic() public {
+        // Setup: create a scenario with free debt (redeemable)
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Verify borrower has redeemable debt
+        assertTrue(lender.isRedeemable(borrower), "Borrower should have redeemable debt");
+        assertEq(lender.totalFreeDebt(), borrowAmount, "Total free debt should match borrowed amount");
+        assertEq(lender.getDebtOf(borrower), borrowAmount, "Borrower's debt should match borrowed amount");
+        
+        // Calculate expected collateral out based on redeem fee
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000; // 1:1 price with fee applied
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        uint collateralOut = lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Verify results
+        assertEq(collateralOut, expectedCollateralOut, "Collateral out should match expected amount");
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
+        assertEq(lender.totalFreeDebt(), borrowAmount - redeemAmount, "Total free debt should be reduced by redeem amount");
+        
+        lender.updateBorrower(borrower);
+        assertEq(lender._cachedCollateralBalances(borrower), collateralAmount - collateralOut, "Borrower's collateral should be reduced by redeem amount");
+        assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower's debt should be reduced by redeem amount");
+    }
+    
+    function test_redeem_withMultipleBorrowers() public {
+        // Setup: create multiple borrowers with redeemable debt
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1000e18;
+        uint redeemAmount = 1500e18;
+        
+        // Prepare test data
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        collateral.mint(borrower1, collateralAmount);
+        collateral.mint(borrower2, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower1 creates a redeemable position
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Setup: borrower2 creates a redeemable position
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Verify both borrowers have redeemable debt
+        assertTrue(lender.isRedeemable(borrower1), "Borrower1 should have redeemable debt");
+        assertTrue(lender.isRedeemable(borrower2), "Borrower2 should have redeemable debt");
+        assertEq(lender.totalFreeDebt(), borrowAmount * 2, "Total free debt should match combined borrowed amount");
+        
+        // Calculate expected collateral out based on redeem fee
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000; // 1:1 price with fee applied
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Verify results
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Collateral out should match expected amount");
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
+        assertEq(lender.totalFreeDebt(), borrowAmount * 2 - redeemAmount, "Total free debt should be reduced by redeem amount");
+
+        lender.updateBorrower(borrower1);
+        assertEq(lender._cachedCollateralBalances(borrower1), collateralAmount - (expectedCollateralOut / 2), "Borrower1's collateral should be reduced by redeem amount");
+        assertEq(lender.getDebtOf(borrower1), borrowAmount - (redeemAmount / 2), "Borrower1's debt should be reduced by redeem amount");
+
+        lender.updateBorrower(borrower2);
+        assertEq(lender._cachedCollateralBalances(borrower2), collateralAmount - (expectedCollateralOut / 2), "Borrower2's collateral should be reduced by redeem amount");
+        assertEq(lender.getDebtOf(borrower2), borrowAmount - (redeemAmount / 2), "Borrower2's debt should be reduced by redeem amount");
+    }
+    
+    function test_redeem_withDifferentPrice() public {
+        // Setup: create a scenario with free debt (redeemable) and change price
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Change price to 2x (collateral is now worth 2 coins per unit)
+        feed.setPrice(2e18);
+        
+        // Calculate expected collateral out based on new price and redeem fee
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000 / 2; // 2:1 price with fee applied
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Verify results
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Collateral out should match expected amount");
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
+        assertEq(lender.totalFreeDebt(), borrowAmount - redeemAmount, "Total free debt should be reduced by redeem amount");
+
+        lender.updateBorrower(borrower);
+        assertEq(lender._cachedCollateralBalances(borrower), collateralAmount - expectedCollateralOut, "Borrower's collateral should be reduced by redeem amount");
+        assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower's debt should be reduced by redeem amount");
+    }
+    
+    function test_redeem_withCustomRedeemFee() public {
+        // Setup: create a scenario with free debt (redeemable) and change the redeem fee
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        uint newRedeemFeeBps = 100; // 1%
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        address operatorAddr = lender.operator();
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Change the redeem fee
+        vm.prank(operatorAddr);
+        lender.setRedeemFeeBps(uint16(newRedeemFeeBps));
+        
+        // Verify the fee has been updated
+        assertEq(lender.redeemFeeBps(), newRedeemFeeBps, "Redeem fee should be updated");
+        
+        // Calculate expected collateral out based on new fee
+        uint expectedCollateralOut = redeemAmount * (10000 - newRedeemFeeBps) / 10000; // 1:1 price with new fee applied
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Verify results
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Collateral out should match expected amount with new fee");
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
+
+        lender.updateBorrower(borrower);
+        assertEq(lender._cachedCollateralBalances(borrower), collateralAmount - expectedCollateralOut, "Borrower's collateral should be reduced by redeem amount");
+        assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower's debt should be reduced by redeem amount");
+    }
+    
+    function test_redeem_AllFreeDebtReverts() public {
+        // Setup: create a scenario with less free debt than redeem amount
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1000e18;
+        uint redeemAmount = 1000e18; // the entire free debt
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Verify state before redemption
+        assertEq(lender.totalFreeDebt(), borrowAmount, "Total free debt should match borrowed amount");
+        
+        // Attempt to redeem more than available free debt
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        
+        // This should revert when calling getRedeemAmountOut inside redeem function
+        vm.expectRevert();
+        lender.redeem(redeemAmount, 0);
+        
+        vm.stopPrank();
+    }
+    
+    function test_redeem_withInsufficientAmountOutReverts() public {
+        // Setup: create a scenario with free debt (redeemable)
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Calculate expected collateral out based on redeem fee
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000; // 1:1 price with fee applied
+        
+        // Set minimum amount out higher than expected output
+        uint tooHighMinAmountOut = expectedCollateralOut + 1;
+        
+        // Attempt to redeem with too high minAmountOut
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        
+        vm.expectRevert("insufficient amount out");
+        lender.redeem(redeemAmount, tooHighMinAmountOut);
+        
+        vm.stopPrank();
+    }
+    
+    function test_redeem_withDisallowedLiquidationsMode() public {
+        // Setup: create a scenario with free debt (redeemable)
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Enable the feed to revert to trigger disallowed liquidations mode
+        feed.setShouldRevert(true);
+        
+        // Attempt to redeem in disallowed liquidations mode (should fail)
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        
+        // In disallowed liquidations mode, getRedeemAmountOut should return 0
+        uint out = lender.redeem(redeemAmount, 0);
+        assertEq(out, 0, "In disallowed liquidations mode, redeem should return 0");
+        vm.stopPrank();
+    }
+    
+    function test_redeem_triggersNewEpoch() public {
+        // Setup: create a scenario where redeem causes a new epoch (totalFreeDebtShares / totalFreeDebt > 1e18)
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 2000e18-1; // Almost all the free debt
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Get initial epoch and debt shares
+        uint initialEpoch = lender.epoch();
+        uint initialDebtShares = lender.totalFreeDebtShares();
+        
+        // Calculate expected collateral out
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000;
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Verify a new epoch was created
+        uint newEpoch = lender.epoch();
+        uint newDebtShares = lender.totalFreeDebtShares();
+        
+        assertEq(newEpoch, initialEpoch + 1, "A new epoch should be created");
+        assertLt(newDebtShares, initialDebtShares, "Debt shares should be reduced in new epoch");
+    }
+    
+    function test_redeem_epochRedeemedCollateralUpdates() public {
+        // Setup: create a scenario with free debt (redeemable)
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Get current epoch
+        uint currentEpoch = lender.epoch();
+        uint initialEpochRedeemed = lender.epochRedeemedCollateral(currentEpoch);
+        
+        // Calculate expected collateral out
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000;
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Check that epochRedeemedCollateral was updated
+        uint updatedEpochRedeemed = lender.epochRedeemedCollateral(currentEpoch);
+        assertGt(updatedEpochRedeemed, initialEpochRedeemed, "Epoch redeemed collateral should increase");
+        
+        // Calculate expected update to the epoch redeemed collateral
+        uint expectedIndex = expectedCollateralOut * 1e18 / lender.totalFreeDebtShares();
+        assertEq(updatedEpochRedeemed - initialEpochRedeemed, expectedIndex, "Epoch redeemed collateral should increase by the correct amount");
+    }
+    
+    function test_redeem_updateBorrowerReducesCollateral() public {
+        // Setup: create a scenario with free debt (redeemable)
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrower and coins to redeemer
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrower creates a redeemable position
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Get borrower's initial collateral balance
+        uint initialCollateralBalance = lender._cachedCollateralBalances(borrower);
+        
+        // Calculate expected collateral out
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000;
+        
+        // Redeemer exchanges Coin for collateral
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // The first redeem doesn't immediately affect the borrower's balance, 
+        // it only updates the epochRedeemedCollateral
+        
+        lender.updateBorrower(borrower);
+        
+        // After updateBorrower, the borrower's collateral should be reduced
+        uint newCollateralBalance = lender._cachedCollateralBalances(borrower);
+        assertEq(newCollateralBalance, initialCollateralBalance - expectedCollateralOut, "Borrower's collateral should be reduced after updateBorrower");
+        
+        // The reduction should be proportional to their debt share of the redeemed amount
+        uint borrowerDebtShare = lender.freeDebtShares(borrower);
+        uint totalDebtShares = lender.totalFreeDebtShares();
+        uint expectedReduction = expectedCollateralOut * borrowerDebtShare / totalDebtShares;
+        
+        assertEq(initialCollateralBalance - newCollateralBalance, expectedReduction, 
+            "Borrower's collateral reduction should be proportional to their debt share");
+    }
+    
+    function test_redeem_updateBorrowerReducesCollateralMultipleBorrowers() public {
+        // Setup: create 2 borrowers with different collateral and debt amounts
+        uint collateralAmount = 5000e18;
+                
+        // those were commented to save on stack space
+        // address borrower1 = address(0xBEEF);
+        // address borrower2 = address(0xF00D);
+        address redeemer = address(0xCAFE);
+        
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        collateral.mint(address(0xBEEF), collateralAmount);
+        collateral.mint(address(0xF00D), collateralAmount);
+        uint redeemAmount = 1500e18; // Redeem 50% of total debt
+        coin.mint(redeemer, redeemAmount);
+        
+        // Setup: borrowers create redeemable positions
+        vm.startPrank(address(0xBEEF));
+        collateral.approve(address(lender), collateralAmount);
+        uint borrowAmount = 2000e18;
+        lender.adjust(address(0xBEEF), int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+        
+        vm.startPrank(address(0xF00D));
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(address(0xF00D), int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+        
+        // Get total free debt and store initial collateral balances
+        uint totalFreeDebt = lender.totalFreeDebt();
+        uint totalFreeDebtShares = lender.totalFreeDebtShares();
+        
+        uint initialCollateralBalance1 = lender._cachedCollateralBalances(address(0xBEEF));
+        uint initialCollateralBalance2 = lender._cachedCollateralBalances(address(0xF00D));
+        
+        // Store debt shares for each borrower
+        uint debtShares1 = lender.freeDebtShares(address(0xBEEF));
+        uint debtShares2 = lender.freeDebtShares(address(0xF00D));
+        
+        // Calculate expected collateral out based on redeem fee
+        uint redeemFeeBps = lender.redeemFeeBps();
+        uint expectedCollateralOut = redeemAmount * (10000 - redeemFeeBps) / 10000;
+        
+        // Perform redemption
+        vm.startPrank(redeemer);
+        uint _redeemAmount = redeemAmount;
+        coin.approve(address(lender), _redeemAmount);
+        uint collateralOut = lender.redeem(_redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+        
+        // Verify redemption results
+        address _redeemer = redeemer;
+        assertEq(collateralOut, expectedCollateralOut, "Collateral out should match expected amount");
+        assertEq(collateral.balanceOf(_redeemer), collateralOut, "Redeemer should receive expected collateral");
+        assertEq(lender.totalFreeDebt(), totalFreeDebt - _redeemAmount, "Total free debt should be reduced by redeem amount");
+        
+        // Call updateBorrower for each borrower and verify collateral reduction
+        lender.updateBorrower(address(0xBEEF)); // borrower1
+        lender.updateBorrower(address(0xF00D)); // borrower2
+        
+        // Calculate expected collateral reduction for each borrower based on their debt share
+        uint expectedReduction1 = expectedCollateralOut * debtShares1 / totalFreeDebtShares;
+        uint expectedReduction2 = expectedCollateralOut * debtShares2 / totalFreeDebtShares;
+        
+        // Verify final collateral balances
+        assertEq(lender._cachedCollateralBalances(address(0xBEEF)), initialCollateralBalance1 - expectedReduction1, 
+            "Borrower1's collateral should be reduced proportionally to debt share");
+        assertEq(lender._cachedCollateralBalances(address(0xF00D)), initialCollateralBalance2 - expectedReduction2, 
+            "Borrower2's collateral should be reduced proportionally to debt share");
+        
+        // Verify final debt for each borrower
+        uint expectedDebtReduction1 = _redeemAmount * debtShares1 / totalFreeDebtShares;
+        uint expectedDebtReduction2 = _redeemAmount * debtShares2 / totalFreeDebtShares;
+        uint _borrowAmount = 2000e18; // stack too deep
+        assertEq(lender.getDebtOf(address(0xBEEF)), _borrowAmount - expectedDebtReduction1, 
+            "Borrower1's debt should be reduced proportionally to debt share");
+        assertEq(lender.getDebtOf(address(0xF00D)), _borrowAmount - expectedDebtReduction2, 
+            "Borrower2's debt should be reduced proportionally to debt share");
+        
+        // Verify that the sum of reductions equals the total collateral out (within rounding error)
+        uint totalReduction = expectedReduction1 + expectedReduction2;
+        assertEq(totalReduction, expectedCollateralOut, "Sum of collateral reductions should equal total collateral out");
+        
+        // Verify that the sum of debt reductions equals the total redeem amount (within rounding error)
+        uint totalDebtReduction = expectedDebtReduction1 + expectedDebtReduction2;
+        assertEq(totalDebtReduction, _redeemAmount, "Sum of debt reductions should equal total redeem amount");
+    }
 }
