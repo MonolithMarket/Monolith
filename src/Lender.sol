@@ -365,7 +365,7 @@ contract Lender {
             // index is denominated in collateral tokens redeemed per free debt share
             uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - borrowerLastRedeemedIndex[borrower];
             // multiply the index delta by the borrower's debt shares to get the amount of collateral redeemed
-            uint redeemedCollateral = indexDelta * borrowerDebtShares / 1e18;
+            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e18);
             uint bal = _cachedCollateralBalances[borrower];
             // reduce collateral balance and guard against underflow
             _cachedCollateralBalances[borrower] = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
@@ -378,7 +378,7 @@ contract Lender {
                 // if the division above rounds down to 0, we skip the redemption
                 if(borrowerDebtShares > 0) {
                     // in this case, the entire epoch's index is equal to our delta (epochRedeemedCollateral[_borrowerEpoch + 1] - 0)
-                    redeemedCollateral = epochRedeemedCollateral[_borrowerEpoch + 1] * borrowerDebtShares / 1e18;
+                    redeemedCollateral = epochRedeemedCollateral[_borrowerEpoch + 1].mulDivUp(borrowerDebtShares, 1e18);
                     bal = _cachedCollateralBalances[borrower];
                     // reduce collateral balance again after guarding against underflow
                     _cachedCollateralBalances[borrower] = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;

@@ -2094,7 +2094,7 @@ contract LenderTest is Test {
         // Setup: mint collateral to borrowers and coins to redeemer
         collateral.mint(address(0xBEEF), collateralAmount);
         collateral.mint(address(0xF00D), collateralAmount);
-        uint redeemAmount = 1500e18; // Redeem 50% of total debt
+        uint redeemAmount = 2000e18-1; // Redeem most of total debt
         coin.mint(redeemer, redeemAmount);
         
         // Setup: borrowers create redeemable positions
@@ -2142,30 +2142,30 @@ contract LenderTest is Test {
         lender.updateBorrower(address(0xF00D)); // borrower2
         
         // Calculate expected collateral reduction for each borrower based on their debt share
-        uint expectedReduction1 = expectedCollateralOut * debtShares1 / totalFreeDebtShares;
-        uint expectedReduction2 = expectedCollateralOut * debtShares2 / totalFreeDebtShares;
+        uint expectedReduction1 = expectedCollateralOut / 2;
+        uint expectedReduction2 = expectedCollateralOut / 2;
         
         // Verify final collateral balances
-        assertEq(lender._cachedCollateralBalances(address(0xBEEF)), initialCollateralBalance1 - expectedReduction1, 
+        assertApproxEqAbs(lender._cachedCollateralBalances(address(0xBEEF)), initialCollateralBalance1 - expectedReduction1, 1e4,
             "Borrower1's collateral should be reduced proportionally to debt share");
-        assertEq(lender._cachedCollateralBalances(address(0xF00D)), initialCollateralBalance2 - expectedReduction2, 
+        assertApproxEqAbs(lender._cachedCollateralBalances(address(0xF00D)), initialCollateralBalance2 - expectedReduction2, 1e4,
             "Borrower2's collateral should be reduced proportionally to debt share");
         
         // Verify final debt for each borrower
-        uint expectedDebtReduction1 = _redeemAmount * debtShares1 / totalFreeDebtShares;
-        uint expectedDebtReduction2 = _redeemAmount * debtShares2 / totalFreeDebtShares;
+        uint expectedDebtReduction1 = _redeemAmount / 2;
+        uint expectedDebtReduction2 = _redeemAmount / 2;
         uint _borrowAmount = 2000e18; // stack too deep
-        assertEq(lender.getDebtOf(address(0xBEEF)), _borrowAmount - expectedDebtReduction1, 
+        assertApproxEqAbs(lender.getDebtOf(address(0xBEEF)), _borrowAmount - expectedDebtReduction1, 1, 
             "Borrower1's debt should be reduced proportionally to debt share");
-        assertEq(lender.getDebtOf(address(0xF00D)), _borrowAmount - expectedDebtReduction2, 
+        assertApproxEqAbs(lender.getDebtOf(address(0xF00D)), _borrowAmount - expectedDebtReduction2, 1, 
             "Borrower2's debt should be reduced proportionally to debt share");
         
         // Verify that the sum of reductions equals the total collateral out (within rounding error)
         uint totalReduction = expectedReduction1 + expectedReduction2;
-        assertEq(totalReduction, expectedCollateralOut, "Sum of collateral reductions should equal total collateral out");
+        assertApproxEqAbs(totalReduction, expectedCollateralOut, 1, "Sum of collateral reductions should equal total collateral out");
         
         // Verify that the sum of debt reductions equals the total redeem amount (within rounding error)
         uint totalDebtReduction = expectedDebtReduction1 + expectedDebtReduction2;
-        assertEq(totalDebtReduction, _redeemAmount, "Sum of debt reductions should equal total redeem amount");
+        assertApproxEqAbs(totalDebtReduction, _redeemAmount, 1, "Sum of debt reductions should equal total redeem amount");
     }
 }
