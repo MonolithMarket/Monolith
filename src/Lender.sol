@@ -357,7 +357,7 @@ contract Lender {
 
     // Internal functions
 
-    function updateBorrower(address borrower) public {
+    function updateBorrower(address borrower) internal {
         uint borrowerDebtShares = freeDebtShares[borrower];
         // if borrower has free debt, we proceed
         if(borrowerDebtShares > 0) {

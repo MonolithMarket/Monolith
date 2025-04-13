@@ -1533,7 +1533,6 @@ contract LenderTest is Test {
         address otherBorrower = address(0xF00D); // Add another borrower for debt redistribution
         address liquidator = address(0xCAFE);
         ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
-        ERC20Mock coin = ERC20Mock(address(lender.coin()));
         FeedMock feed = FeedMock(address(lender.feed()));
         
         // Setup: mint collateral to both borrowers
@@ -1556,7 +1555,6 @@ contract LenderTest is Test {
         feed.setPrice(0.001e18);
         
         // Get initial values
-        uint initialDebt = lender.getDebtOf(borrower);
         uint initialCollateral = lender._cachedCollateralBalances(borrower);
         uint initialTotalFreeDebt = lender.totalFreeDebt();
         uint initialTotalPaidDebt = lender.totalPaidDebt();
@@ -1596,7 +1594,6 @@ contract LenderTest is Test {
         address borrower = address(0xBEEF);
         address liquidator = address(0xCAFE);
         ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
-        ERC20Mock coin = ERC20Mock(address(lender.coin()));
         FeedMock feed = FeedMock(address(lender.feed()));
         
         // Setup: mint collateral to borrower
@@ -1667,7 +1664,7 @@ contract LenderTest is Test {
         assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
         assertEq(lender.totalFreeDebt(), borrowAmount - redeemAmount, "Total free debt should be reduced by redeem amount");
         
-        lender.updateBorrower(borrower);
+        lender.adjust(borrower, 0, 0);
         assertEq(lender._cachedCollateralBalances(borrower), collateralAmount - collateralOut, "Borrower's collateral should be reduced by redeem amount");
         assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower's debt should be reduced by redeem amount");
     }
@@ -1722,11 +1719,12 @@ contract LenderTest is Test {
         assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
         assertEq(lender.totalFreeDebt(), borrowAmount * 2 - redeemAmount, "Total free debt should be reduced by redeem amount");
 
-        lender.updateBorrower(borrower1);
+        lender.adjust(borrower1, 0, 0);
+
         assertEq(lender._cachedCollateralBalances(borrower1), collateralAmount - (expectedCollateralOut / 2), "Borrower1's collateral should be reduced by redeem amount");
         assertEq(lender.getDebtOf(borrower1), borrowAmount - (redeemAmount / 2), "Borrower1's debt should be reduced by redeem amount");
 
-        lender.updateBorrower(borrower2);
+        lender.adjust(borrower2, 0, 0);
         assertEq(lender._cachedCollateralBalances(borrower2), collateralAmount - (expectedCollateralOut / 2), "Borrower2's collateral should be reduced by redeem amount");
         assertEq(lender.getDebtOf(borrower2), borrowAmount - (redeemAmount / 2), "Borrower2's debt should be reduced by redeem amount");
     }
@@ -1772,7 +1770,7 @@ contract LenderTest is Test {
         assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
         assertEq(lender.totalFreeDebt(), borrowAmount - redeemAmount, "Total free debt should be reduced by redeem amount");
 
-        lender.updateBorrower(borrower);
+        lender.adjust(borrower, 0, 0);
         assertEq(lender._cachedCollateralBalances(borrower), collateralAmount - expectedCollateralOut, "Borrower's collateral should be reduced by redeem amount");
         assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower's debt should be reduced by redeem amount");
     }
@@ -1787,7 +1785,6 @@ contract LenderTest is Test {
         // Prepare test data
         address borrower = address(0xBEEF);
         address redeemer = address(0xCAFE);
-        address operatorAddr = lender.operator();
         ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
         ERC20Mock coin = ERC20Mock(address(lender.coin()));
         
@@ -1821,7 +1818,7 @@ contract LenderTest is Test {
         assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Collateral out should match expected amount with new fee");
         assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive expected collateral");
 
-        lender.updateBorrower(borrower);
+        lender.adjust(borrower, 0, 0);
         assertEq(lender._cachedCollateralBalances(borrower), collateralAmount - expectedCollateralOut, "Borrower's collateral should be reduced by redeem amount");
         assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower's debt should be reduced by redeem amount");
     }
@@ -2064,7 +2061,7 @@ contract LenderTest is Test {
         // The first redeem doesn't immediately affect the borrower's balance, 
         // it only updates the epochRedeemedCollateral
         
-        lender.updateBorrower(borrower);
+        lender.adjust(borrower, 0, 0);
         
         // After updateBorrower, the borrower's collateral should be reduced
         uint newCollateralBalance = lender._cachedCollateralBalances(borrower);
@@ -2111,14 +2108,9 @@ contract LenderTest is Test {
         
         // Get total free debt and store initial collateral balances
         uint totalFreeDebt = lender.totalFreeDebt();
-        uint totalFreeDebtShares = lender.totalFreeDebtShares();
         
         uint initialCollateralBalance1 = lender._cachedCollateralBalances(address(0xBEEF));
         uint initialCollateralBalance2 = lender._cachedCollateralBalances(address(0xF00D));
-        
-        // Store debt shares for each borrower
-        uint debtShares1 = lender.freeDebtShares(address(0xBEEF));
-        uint debtShares2 = lender.freeDebtShares(address(0xF00D));
         
         // Calculate expected collateral out based on redeem fee
         uint redeemFeeBps = lender.redeemFeeBps();
@@ -2138,8 +2130,8 @@ contract LenderTest is Test {
         assertEq(lender.totalFreeDebt(), totalFreeDebt - _redeemAmount, "Total free debt should be reduced by redeem amount");
         
         // Call updateBorrower for each borrower and verify collateral reduction
-        lender.updateBorrower(address(0xBEEF)); // borrower1
-        lender.updateBorrower(address(0xF00D)); // borrower2
+        lender.adjust(address(0xBEEF), 0, 0); // borrower1
+        lender.adjust(address(0xF00D), 0, 0); // borrower2
         
         // Calculate expected collateral reduction for each borrower based on their debt share
         uint expectedReduction1 = expectedCollateralOut / 2;
@@ -2167,5 +2159,375 @@ contract LenderTest is Test {
         // Verify that the sum of debt reductions equals the total redeem amount (within rounding error)
         uint totalDebtReduction = expectedDebtReduction1 + expectedDebtReduction2;
         assertApproxEqAbs(totalDebtReduction, _redeemAmount, 1, "Sum of debt reductions should equal total redeem amount");
+    }
+    
+    function test_setPendingOperator() public {
+        // Define a new address for the pending operator
+        address newOperator = address(0x456);
+        
+        // Ensure the initial operator is set correctly
+        assertEq(lender.operator(), operatorAddr, "Initial operator should be operatorAddr");
+        assertEq(lender.pendingOperator(), address(0), "Initial pendingOperator should be address(0)");
+        
+        // Call setPendingOperator as the current operator
+        vm.prank(operatorAddr);
+        lender.setPendingOperator(newOperator);
+        
+        // Verify the pendingOperator was updated correctly
+        assertEq(lender.pendingOperator(), newOperator, "pendingOperator should be updated to newOperator");
+        assertEq(lender.operator(), operatorAddr, "operator should remain unchanged");
+    }
+    
+    function test_setPendingOperator_unauthorized() public {
+        // Define a new address for the pending operator
+        address newOperator = address(0x456);
+        address unauthorized = address(0x789);
+        
+        // Attempt to call setPendingOperator from an unauthorized address
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.setPendingOperator(newOperator);
+        
+        // Verify state remains unchanged
+        assertEq(lender.operator(), operatorAddr, "operator should remain unchanged");
+        assertEq(lender.pendingOperator(), address(0), "pendingOperator should remain unchanged");
+    }
+    
+    function test_acceptOperator() public {
+        // Define a new address for the pending operator
+        address newOperator = address(0x456);
+        
+        // Set the pending operator first
+        vm.prank(operatorAddr);
+        lender.setPendingOperator(newOperator);
+        
+        // Verify the pending operator was set
+        assertEq(lender.pendingOperator(), newOperator, "pendingOperator should be set to newOperator");
+        
+        // Accept the operator role as the pending operator
+        vm.prank(newOperator);
+        lender.acceptOperator();
+        
+        // Verify the operator was changed
+        assertEq(lender.operator(), newOperator, "operator should be updated to newOperator");
+    }
+    
+    function test_acceptOperator_unauthorized() public {
+        // Define addresses for the pending operator and an unauthorized address
+        address newOperator = address(0x456);
+        address unauthorized = address(0x789);
+        
+        // Set the pending operator first
+        vm.prank(operatorAddr);
+        lender.setPendingOperator(newOperator);
+        
+        // Attempt to accept the operator role from an unauthorized address
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.acceptOperator();
+        
+        // Verify state remains unchanged
+        assertEq(lender.operator(), operatorAddr, "operator should remain unchanged");
+        assertEq(lender.pendingOperator(), newOperator, "pendingOperator should remain unchanged");
+    }
+    
+    function test_setHalfLife() public {
+        // Get initial expRate
+        uint64 initialExpRate = lender.expRate();
+        
+        // Set a new half-life (14 days)
+        uint64 newHalfLife = 14 days;
+        vm.prank(operatorAddr);
+        lender.setHalfLife(newHalfLife);
+        
+        // Calculate expected new expRate based on the formula in the contract
+        uint64 expectedExpRate = uint64(uint(wadLn(2*1e18)) / newHalfLife);
+        
+        // Verify expRate was updated correctly
+        assertEq(lender.expRate(), expectedExpRate, "expRate should be updated based on new half-life");
+        assertNotEq(lender.expRate(), initialExpRate, "expRate should be different from initial value");
+    }
+
+    function test_setHalfLife_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.setHalfLife(14 days);
+    }
+
+    function test_setHalfLife_revertAfterImmutabilityDeadline() public {
+        // Warp past immutability deadline
+        vm.warp(block.timestamp + 366 days);
+        
+        vm.prank(operatorAddr);
+        vm.expectRevert("Deadline passed");
+        lender.setHalfLife(14 days);
+    }
+
+    function test_setHalfLife_revertInvalidValue() public {
+        // Test too small half-life
+        vm.startPrank(operatorAddr);
+        vm.expectRevert("Invalid half life");
+        lender.setHalfLife(12 hours - 1);
+        
+        // Test too large half-life
+        vm.expectRevert("Invalid half life");
+        lender.setHalfLife(30 days + 1);
+        vm.stopPrank();
+    }
+
+    function test_setTargetFreeDebtRatio() public {
+        // Get initial values
+        uint16 initialStartBps = lender.targetFreeDebtRatioStartBps();
+        uint16 initialEndBps = lender.targetFreeDebtRatioEndBps();
+        
+        // Set new values
+        uint16 newStartBps = 1000;
+        uint16 newEndBps = 3000;
+        vm.prank(operatorAddr);
+        lender.setTargetFreeDebtRatio(newStartBps, newEndBps);
+        
+        // Verify values were updated
+        assertEq(lender.targetFreeDebtRatioStartBps(), newStartBps, "targetFreeDebtRatioStartBps should be updated");
+        assertEq(lender.targetFreeDebtRatioEndBps(), newEndBps, "targetFreeDebtRatioEndBps should be updated");
+        assertNotEq(lender.targetFreeDebtRatioStartBps(), initialStartBps, "targetFreeDebtRatioStartBps should be different from initial");
+        assertNotEq(lender.targetFreeDebtRatioEndBps(), initialEndBps, "targetFreeDebtRatioEndBps should be different from initial");
+    }
+
+    function test_setTargetFreeDebtRatio_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.setTargetFreeDebtRatio(1000, 3000);
+    }
+
+    function test_setTargetFreeDebtRatio_revertAfterImmutabilityDeadline() public {
+        // Warp past immutability deadline
+        vm.warp(block.timestamp + 366 days);
+        
+        vm.prank(operatorAddr);
+        vm.expectRevert("Deadline passed");
+        lender.setTargetFreeDebtRatio(1000, 3000);
+    }
+
+    function test_setTargetFreeDebtRatio_revertInvalidValues() public {
+        vm.startPrank(operatorAddr);
+        
+        // Test start below minimum
+        vm.expectRevert("Invalid start bps");
+        lender.setTargetFreeDebtRatio(499, 3000);
+        
+        // Test start greater than end
+        vm.expectRevert("Invalid start bps");
+        lender.setTargetFreeDebtRatio(4000, 3000);
+        
+        // Test end above maximum
+        vm.expectRevert("Invalid end bps");
+        lender.setTargetFreeDebtRatio(1000, 9501);
+        
+        vm.stopPrank();
+    }
+
+    function test_setRedeemFeeBps() public {
+        // Get initial value
+        uint16 initialRedeemFeeBps = lender.redeemFeeBps();
+        
+        // Set new value
+        uint16 newRedeemFeeBps = 100;
+        vm.prank(operatorAddr);
+        lender.setRedeemFeeBps(newRedeemFeeBps);
+        
+        // Verify value was updated
+        assertEq(lender.redeemFeeBps(), newRedeemFeeBps, "redeemFeeBps should be updated");
+        assertNotEq(lender.redeemFeeBps(), initialRedeemFeeBps, "redeemFeeBps should be different from initial");
+    }
+
+    function test_setRedeemFeeBps_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.setRedeemFeeBps(100);
+    }
+
+    function test_setRedeemFeeBps_revertAfterImmutabilityDeadline() public {
+        // Warp past immutability deadline
+        vm.warp(block.timestamp + 366 days);
+        
+        vm.prank(operatorAddr);
+        vm.expectRevert("Deadline passed");
+        lender.setRedeemFeeBps(100);
+    }
+
+    function test_setRedeemFeeBps_revertInvalidValue() public {
+        vm.prank(operatorAddr);
+        vm.expectRevert("Invalid redeem fee bps");
+        lender.setRedeemFeeBps(301); // Above max 300 bps
+    }
+
+    function test_setLocalReserveFeeBps() public {
+        // Get initial value
+        uint16 initialFeeBps = lender.feeBps();
+        
+        // Set new value
+        uint newFeeBps = 500;
+        vm.prank(operatorAddr);
+        lender.setLocalReserveFeeBps(newFeeBps);
+        
+        // Verify value was updated
+        assertEq(lender.feeBps(), newFeeBps, "feeBps should be updated");
+        assertNotEq(lender.feeBps(), initialFeeBps, "feeBps should be different from initial");
+    }
+
+    function test_setLocalReserveFeeBps_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.setLocalReserveFeeBps(500);
+    }
+
+    function test_setLocalReserveFeeBps_revertInvalidValue() public {
+        vm.prank(operatorAddr);
+        vm.expectRevert("Invalid fee");
+        lender.setLocalReserveFeeBps(1001); // Above max 1000 bps (10%)
+    }
+
+    function test_enableImmutabilityNow() public {
+        // Get initial deadline
+        uint initialDeadline = lender.immutabilityDeadline();
+        
+        // Enable immutability immediately
+        vm.prank(operatorAddr);
+        lender.enableImmutabilityNow();
+        
+        // Verify deadline was updated to current timestamp
+        assertEq(lender.immutabilityDeadline(), block.timestamp, "immutabilityDeadline should be set to current timestamp");
+        assertLt(lender.immutabilityDeadline(), initialDeadline, "new deadline should be earlier than initial deadline");
+    }
+
+    function test_enableImmutabilityNow_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.enableImmutabilityNow();
+    }
+
+    function test_enableImmutabilityNow_revertAfterDeadline() public {
+        // Warp past immutability deadline
+        vm.warp(block.timestamp + 366 days);
+        
+        vm.prank(operatorAddr);
+        vm.expectRevert("Deadline passed");
+        lender.enableImmutabilityNow();
+    }
+
+    function test_pullLocalReserves() public {
+        // Generate some local reserves through interest accrual
+        // Setup a borrower with debt
+        address borrower = address(0xBEEF);
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Setup collateral and borrow
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        collateral.mint(borrower, collateralAmount);
+        
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // non-redeemable debt
+        vm.stopPrank();
+        
+        // Set local reserve fee to 10%
+        vm.prank(operatorAddr);
+        lender.setLocalReserveFeeBps(1000);
+        
+        // Advance time to accrue interest
+        vm.warp(block.timestamp + 30 days);
+        
+        // Force interest accrual
+        lender.accrueInterest();
+        
+        // Get local reserves amount
+        uint localReserves = lender.accruedLocalReserves();
+        assertGt(localReserves, 0, "Local reserves should be greater than 0 after interest accrual");
+        
+        // Pull local reserves
+        vm.prank(operatorAddr);
+        lender.pullLocalReserves();
+        
+        // Verify local reserves were reset to 0
+        assertEq(lender.accruedLocalReserves(), 0, "Local reserves should be reset to 0 after pulling");
+        
+        // Verify operator received the coins
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        assertEq(coin.balanceOf(operatorAddr), localReserves, "Operator should receive local reserves");
+    }
+
+    function test_pullLocalReserves_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.pullLocalReserves();
+    }
+
+    function test_pullGlobalReserves() public {
+        // Generate some global reserves through interest accrual
+        // Setup a borrower with debt
+        address borrower = address(0xBEEF);
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Setup collateral and borrow
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        collateral.mint(borrower, collateralAmount);
+        
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // non-redeemable debt
+        vm.stopPrank();
+        
+        // Advance time to accrue interest
+        vm.warp(block.timestamp + 30 days);
+        
+        // Force interest accrual
+        lender.accrueInterest();
+        
+        // Get global reserves amount
+        uint globalReserves = lender.accruedGlobalReserves();
+        assertGt(globalReserves, 0, "Global reserves should be greater than 0 after interest accrual");
+        
+        // Pull global reserves (only factory can call this)
+        address factoryAddr = address(lender.factory());
+        address recipient = address(0xABCD);
+        
+        vm.prank(factoryAddr);
+        lender.pullGlobalReserves(recipient);
+        
+        // Verify global reserves were reset to 0
+        assertEq(lender.accruedGlobalReserves(), 0, "Global reserves should be reset to 0 after pulling");
+        
+        // Verify recipient received the coins
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        assertEq(coin.balanceOf(recipient), globalReserves, "Recipient should receive global reserves");
+    }
+
+    function test_pullGlobalReserves_revertUnauthorized() public {
+        address unauthorized = address(0xBAD);
+        address recipient = address(0xABCD);
+        
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.pullGlobalReserves(recipient);
+    }
+
+    // Helper function for wadLn calculation (similar to the one in the contract)
+    function wadLn(uint /*x*/) internal pure returns (uint r) {
+        // This is a simplified version just for testing
+        return 693147180559945309; // ln(2) * 1e18, approximate value
     }
 }
