@@ -293,6 +293,338 @@ contract LenderTest is Test {
         vm.stopPrank();
     }
     
+    function test_withdrawCollateral(uint depositAmount, uint withdrawAmount, bool chooseRedeemable) public {
+        // Bound amounts to prevent int256 overflow
+        depositAmount = bound(depositAmount, 1, uint(type(int256).max));
+        withdrawAmount = bound(withdrawAmount, 1, depositAmount);
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, depositAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), depositAmount);
+        
+        // Deposit collateral first with redemption status
+        lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+        
+        // Execute: withdraw collateral
+        lender.adjust(user, -int256(withdrawAmount), 0);
+        
+        // Verify final state
+        assertEq(collateral.balanceOf(user), withdrawAmount, "User collateral balance incorrect after withdrawal");
+        assertEq(collateral.balanceOf(address(lender)), depositAmount - withdrawAmount, "Lender collateral balance incorrect after withdrawal");
+        assertEq(lender._cachedCollateralBalances(user), depositAmount - withdrawAmount, "Cached collateral balance incorrect after withdrawal");
+        assertEq(lender.isRedeemable(user), chooseRedeemable, "isRedeemable should remain unchanged after withdrawal");
+        
+        vm.stopPrank();
+    }
+    
+    function test_withdrawCollateral_full(uint depositAmount, bool chooseRedeemable) public {
+        // Bound deposit amount to prevent int256 overflow
+        depositAmount = bound(depositAmount, 1, uint(type(int256).max));
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, depositAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), depositAmount);
+        
+        // Deposit collateral first with redemption status
+        lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+        
+        // Execute: withdraw all collateral
+        lender.adjust(user, -int256(depositAmount), 0);
+        
+        // Verify final state
+        assertEq(collateral.balanceOf(user), depositAmount, "User collateral balance should equal original deposit after full withdrawal");
+        assertEq(collateral.balanceOf(address(lender)), 0, "Lender collateral balance should be zero after full withdrawal");
+        assertEq(lender._cachedCollateralBalances(user), 0, "Cached collateral balance should be zero after full withdrawal");
+        
+        vm.stopPrank();
+    }
+    
+    function test_withdrawCollateral_multipleTransactions(uint totalAmount, bool chooseRedeemable) public {
+        // Bound amount to prevent int256 overflow
+        totalAmount = bound(totalAmount, 2, uint(type(int256).max));
+        uint firstWithdrawal = totalAmount / 2;
+        uint secondWithdrawal = totalAmount - firstWithdrawal;
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, totalAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), totalAmount);
+        
+        // Deposit collateral first with redemption status
+        lender.adjust(user, int256(totalAmount), 0, chooseRedeemable);
+        
+        // Execute: first withdrawal
+        lender.adjust(user, -int256(firstWithdrawal), 0);
+        
+        // Verify intermediate state
+        assertEq(collateral.balanceOf(user), firstWithdrawal, "User collateral balance incorrect after first withdrawal");
+        assertEq(collateral.balanceOf(address(lender)), secondWithdrawal, "Lender collateral balance incorrect after first withdrawal");
+        assertEq(lender._cachedCollateralBalances(user), secondWithdrawal, "Cached collateral balance incorrect after first withdrawal");
+        
+        // Execute: second withdrawal
+        lender.adjust(user, -int256(secondWithdrawal), 0);
+        
+        // Verify final state
+        assertEq(collateral.balanceOf(user), totalAmount, "User collateral balance should equal original deposit after multiple withdrawals");
+        assertEq(collateral.balanceOf(address(lender)), 0, "Lender collateral balance should be zero after multiple withdrawals");
+        assertEq(lender._cachedCollateralBalances(user), 0, "Cached collateral balance should be zero after multiple withdrawals");
+        
+        vm.stopPrank();
+    }
+    
+    function test_withdrawCollateral_byDelegation(uint depositAmount, uint withdrawAmount, bool chooseRedeemable) public {
+        // Bound amounts to prevent int256 overflow
+        depositAmount = bound(depositAmount, 1, uint(type(int256).max));
+        withdrawAmount = bound(withdrawAmount, 1, depositAmount);
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        address delegate = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, depositAmount);
+        
+        // Setup: delegate permissions
+        vm.prank(user);
+        lender.delegate(delegate, true);
+        
+        // Setup: deposit collateral first (from user)
+        vm.startPrank(user);
+        collateral.approve(address(lender), depositAmount);
+        lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+        vm.stopPrank();
+        
+        // Execute: delegate withdraws on behalf of user
+        vm.prank(delegate);
+        lender.adjust(user, -int256(withdrawAmount), 0);
+        
+        // Verify final state - collateral goes to the delegate (msg.sender)
+        assertEq(collateral.balanceOf(delegate), withdrawAmount, "Delegate collateral balance incorrect after delegated withdrawal");
+        assertEq(collateral.balanceOf(user), 0, "User collateral balance should be zero after delegated withdrawal");
+        assertEq(lender._cachedCollateralBalances(user), depositAmount - withdrawAmount, "Cached collateral balance incorrect after delegated withdrawal");
+    }
+    
+    function test_withdrawCollateral_withInterestModelRevert(uint depositAmount, uint withdrawAmount, bool chooseRedeemable) public {
+        // Bound amounts to prevent int256 overflow
+        depositAmount = bound(depositAmount, 1, uint(type(int256).max));
+        withdrawAmount = bound(withdrawAmount, 1, depositAmount);
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, depositAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), depositAmount);
+        
+        // Deposit collateral first with redemption status
+        lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+        
+        // Configure the InterestModel to revert
+        InterestModelMock interestModel = InterestModelMock(address(lender.interestModel()));
+        interestModel.setShouldRevert(true);
+        
+        // Get initial lastAccrue value
+        uint40 initialLastAccrue = lender.lastAccrue();
+        
+        // Warp 1 second into the future
+        vm.warp(block.timestamp + 1);
+        
+        // Execute: withdraw collateral (should still work even if IRM reverts)
+        lender.adjust(user, -int256(withdrawAmount), 0);
+        
+        // Verify final state
+        assertEq(collateral.balanceOf(user), withdrawAmount, "User collateral balance incorrect after withdrawal despite IRM revert");
+        assertEq(collateral.balanceOf(address(lender)), depositAmount - withdrawAmount, "Lender collateral balance incorrect after withdrawal despite IRM revert");
+        assertEq(lender._cachedCollateralBalances(user), depositAmount - withdrawAmount, "Cached collateral balance incorrect after withdrawal despite IRM revert");
+        
+        // Check if lastAccrue was updated or not
+        uint40 finalLastAccrue = lender.lastAccrue();
+        assertEq(finalLastAccrue, initialLastAccrue, "lastAccrue should not be updated when interest model reverts");
+        
+        // Set the IRM back to normal
+        interestModel.setShouldRevert(false);
+        
+        vm.stopPrank();
+    }
+    
+    function test_withdrawCollateral_byUnauthorizedThirdPartyReverts() public {
+        // Amounts don't matter for this test
+        uint depositAmount = 1000e18;
+        uint withdrawAmount = 500e18;
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        address unauthorized = address(0xDEAD);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, depositAmount);
+        
+        // Setup: deposit collateral first (from user)
+        vm.startPrank(user);
+        collateral.approve(address(lender), depositAmount);
+        lender.adjust(user, int256(depositAmount), 0);
+        vm.stopPrank();
+        
+        // Execute: unauthorized third party attempts to withdraw on behalf of user
+        vm.startPrank(unauthorized);
+        
+        // This should revert because the third party is not authorized
+        vm.expectRevert("Unauthorized");
+        lender.adjust(user, -int256(withdrawAmount), 0);
+        
+        vm.stopPrank();
+        
+        // Verify state remains unchanged
+        assertEq(collateral.balanceOf(address(lender)), depositAmount, "Lender collateral balance should remain unchanged after failed withdrawal attempt");
+        assertEq(lender._cachedCollateralBalances(user), depositAmount, "Cached collateral balance should remain unchanged after failed withdrawal attempt");
+    }
+    
+    function test_withdrawCollateral_withDebtSolvencyCheck(uint collateralAmount, uint borrowAmount) public {
+        // Bound amounts to prevent overflows and ensure solvency
+        collateralAmount = bound(collateralAmount, 4000e18, type(uint128).max);
+        borrowAmount = bound(borrowAmount, lender.minDebt(), collateralAmount * lender.collateralFactor() / 20000); // Only borrow 25% of capacity
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral first
+        lender.adjust(user, int256(collateralAmount), 0);
+        
+        // Borrow some amount
+        lender.adjust(user, 0, int256(borrowAmount));
+        
+        // Calculate the maximum amount of collateral that can be withdrawn while maintaining solvency
+        // Price is 1e18 in the mock, and collateral factor is 5000 (50%)
+        uint price = 1e18;
+        uint minCollateralRequired = borrowAmount * 10000 / lender.collateralFactor() * 1e18 / price;
+        uint maxWithdrawalAmount = collateralAmount - minCollateralRequired;
+        
+        // Execute: withdraw just under the maximum allowed amount
+        uint safeWithdrawalAmount = maxWithdrawalAmount > 0 ? maxWithdrawalAmount - 1 : 0;
+        lender.adjust(user, -int256(safeWithdrawalAmount), 0);
+        
+        // This should succeed
+        assertEq(collateral.balanceOf(user), safeWithdrawalAmount, "User collateral balance incorrect after safe withdrawal");
+        assertEq(lender._cachedCollateralBalances(user), collateralAmount - safeWithdrawalAmount, "Cached collateral balance incorrect after safe withdrawal");
+        
+        // Try to withdraw 2 more units, which should break solvency
+        vm.expectRevert("Solvency check failed");
+        lender.adjust(user, -int256(2), 0);
+        
+        vm.stopPrank();
+    }
+    
+    function test_withdrawCollateral_reduceOnlyModeZeroDebt(uint depositAmount, uint withdrawAmount) public {
+        // Bound amounts to prevent int256 overflow
+        depositAmount = bound(depositAmount, 1, uint(type(int256).max));
+        withdrawAmount = bound(withdrawAmount, 1, depositAmount);
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, depositAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), depositAmount);
+        
+        // Deposit collateral first
+        lender.adjust(user, int256(depositAmount), 0);
+        
+        // Enable the feed to revert to trigger reduce-only mode
+        feed.setShouldRevert(true);
+        
+        // Execute: withdraw collateral in reduce-only mode (should ONLY work with zero debt)
+        lender.adjust(user, -int256(withdrawAmount), 0);
+        
+        // Verify final state
+        assertEq(collateral.balanceOf(user), withdrawAmount, "User collateral balance incorrect after withdrawal in reduce-only mode");
+        assertEq(collateral.balanceOf(address(lender)), depositAmount - withdrawAmount, "Lender collateral balance incorrect after withdrawal in reduce-only mode");
+        assertEq(lender._cachedCollateralBalances(user), depositAmount - withdrawAmount, "Cached collateral balance incorrect after withdrawal in reduce-only mode");
+        
+        vm.stopPrank();
+    }
+    
+    function test_withdrawCollateral_reduceOnlyModeWithDebtReverts(uint collateralAmount, uint withdrawAmount) public {
+        // Bound amounts to prevent overflows and ensure solvency
+        collateralAmount = bound(collateralAmount, 4000e18, type(uint128).max);
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000;
+        withdrawAmount = bound(withdrawAmount, 1, collateralAmount / 2); // Try to withdraw some amount
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, collateralAmount);
+        
+        // Setup: approve collateral for lender
+        vm.startPrank(user);
+        collateral.approve(address(lender), collateralAmount);
+        
+        // Deposit collateral first
+        lender.adjust(user, int256(collateralAmount), 0);
+        
+        // Borrow some amount
+        lender.adjust(user, 0, int256(borrowAmount));
+        
+        // Verify user has debt
+        assertGt(lender.getDebtOf(user), 0, "User should have debt before trying to withdraw in reduce-only mode");
+        
+        // Enable the feed to revert to trigger reduce-only mode
+        feed.setShouldRevert(true);
+        
+        // Try to withdraw collateral in reduce-only mode with debt
+        // This should revert because withdrawing collateral with debt is not allowed in reduce-only mode
+        vm.expectRevert("Reduce only");
+        lender.adjust(user, -int256(withdrawAmount), 0);
+        
+        // Verify state remains unchanged after failed withdrawal
+        assertEq(collateral.balanceOf(user), 0, "User collateral balance should remain unchanged after failed withdrawal attempt");
+        assertEq(collateral.balanceOf(address(lender)), collateralAmount, "Lender collateral balance should remain unchanged after failed withdrawal attempt");
+        assertEq(lender._cachedCollateralBalances(user), collateralAmount, "Cached collateral balance should remain unchanged after failed withdrawal attempt");
+        
+        vm.stopPrank();
+    }
+    
     function test_borrow(uint collateralAmount, uint borrowAmount, bool chooseRedeemable) public {
         // Bound amounts to prevent overflows
         collateralAmount = bound(collateralAmount, 2000e18, type(uint128).max);
