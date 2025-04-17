@@ -44,8 +44,7 @@ contract InterestModel {
                     // Already at min rate, just use flat rate for entire period
                     interest = _totalPaidDebt * MIN_RATE * _timeElapsed / 365 days;
                 } else {
-                    // Calculate time until min rate is reached
-                    uint timeToMin = uint(wadLn(int(MIN_RATE * 1e18 / _lastRate))) * 1e18 / _expRate;
+                    uint timeToMin = uint(-wadLn(int(MIN_RATE * 1e18 / _lastRate))) * 1e18 / _expRate;
                     // Decaying integral up to min rate, then add flat rate portion
                     interest = _totalPaidDebt * ((_lastRate - MIN_RATE) * 1e18 / _expRate + 
                               MIN_RATE * (_timeElapsed - timeToMin)) / 365 days;
