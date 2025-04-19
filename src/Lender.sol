@@ -511,7 +511,9 @@ contract Lender {
             uint stalenessDuration = timeElapsed - STALENESS_THRESHOLD;
             if (stalenessDuration < STALENESS_UNWIND_DURATION) {
                 price = price * (STALENESS_UNWIND_DURATION - stalenessDuration) / STALENESS_UNWIND_DURATION;
-            } // else price is already 0
+            } else {
+                price = 0;
+            }
         }
         price = price == 0 ? 1 : price; // avoid division by zero in consumer functions
     }
