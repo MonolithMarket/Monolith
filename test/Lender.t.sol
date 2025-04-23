@@ -2530,4 +2530,280 @@ contract LenderTest is Test {
         // This is a simplified version just for testing
         return 693147180559945309; // ln(2) * 1e18, approximate value
     }
+
+    // Tests for setRedemptionStatus
+    function test_setRedemptionStatus_noDebt() public {
+        // Prepare test data
+        address user = address(0xBEEF);
+        
+        // Verify initial state
+        assertEq(lender.isRedeemable(user), false, "Initial isRedeemable should be false");
+        
+        // Execute: set redemption status to true with no debt
+        vm.prank(user);
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify final state
+        assertEq(lender.isRedeemable(user), true, "isRedeemable should be updated to true");
+        
+        // Execute: set redemption status back to false with no debt
+        vm.prank(user);
+        lender.setRedemptionStatus(user, false);
+        
+        // Verify final state
+        assertEq(lender.isRedeemable(user), false, "isRedeemable should be updated to false");
+    }
+    
+    function test_setRedemptionStatus_withDebt(uint collateralAmount, uint borrowAmount) public {
+        // Bound amounts to prevent overflows
+        collateralAmount = bound(collateralAmount, 2000e18, type(uint128).max);
+        borrowAmount = bound(borrowAmount, lender.minDebt(), collateralAmount * lender.collateralFactor() / 10000);
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, collateralAmount);
+        
+        // Setup: user deposits collateral and borrows as non-redeemable (default)
+        vm.startPrank(user);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+        
+        // Verify initial state
+        assertEq(lender.isRedeemable(user), false, "Initial isRedeemable should be false");
+        assertEq(lender.getDebtOf(user), borrowAmount, "Initial debt incorrect");
+        assertEq(lender.paidDebtShares(user) > 0, true, "Should have paid debt shares");
+        assertEq(lender.freeDebtShares(user), 0, "Should not have free debt shares");
+        
+        // Record pre-transition values
+        uint initialTotalPaidDebt = lender.totalPaidDebt();
+        uint initialTotalFreeDebt = lender.totalFreeDebt();
+        
+        // Execute: change to redeemable
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify state after transition
+        assertEq(lender.isRedeemable(user), true, "isRedeemable should be true after transition");
+        assertEq(lender.getDebtOf(user), borrowAmount, "Debt should remain the same after transition");
+        assertEq(lender.paidDebtShares(user), 0, "Should have no paid debt shares after transition");
+        assertEq(lender.freeDebtShares(user) > 0, true, "Should have free debt shares after transition");
+        assertEq(lender.totalPaidDebt(), initialTotalPaidDebt - borrowAmount, "Total paid debt should decrease");
+        assertEq(lender.totalFreeDebt(), initialTotalFreeDebt + borrowAmount, "Total free debt should increase");
+        
+        // Execute: change back to non-redeemable
+        lender.setRedemptionStatus(user, false);
+        
+        // Verify final state
+        assertEq(lender.isRedeemable(user), false, "isRedeemable should be false after second transition");
+        assertEq(lender.getDebtOf(user), borrowAmount, "Debt should remain the same after second transition");
+        assertEq(lender.freeDebtShares(user), 0, "Should have no free debt shares after second transition");
+        assertEq(lender.paidDebtShares(user) > 0, true, "Should have paid debt shares after second transition");
+        assertApproxEqAbs(lender.totalPaidDebt(), initialTotalPaidDebt, 1, "Total paid debt should be restored");
+        assertApproxEqAbs(lender.totalFreeDebt(), initialTotalFreeDebt, 1, "Total free debt should be restored");
+        
+        vm.stopPrank();
+    }
+    
+    function test_setRedemptionStatus_noOpWhenUnchanged(uint collateralAmount, uint borrowAmount) public {
+        // Bound amounts to prevent overflows
+        collateralAmount = bound(collateralAmount, 2000e18, type(uint128).max);
+        borrowAmount = bound(borrowAmount, lender.minDebt(), collateralAmount * lender.collateralFactor() / 10000);
+        
+        // Prepare test data
+        address user = address(0xBEEF);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, collateralAmount);
+        
+        // Setup: user deposits collateral and borrows with redeemable status
+        vm.startPrank(user);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(user, int256(collateralAmount), 0, true); // Set redeemable to true
+        lender.adjust(user, 0, int256(borrowAmount)); // Borrow
+        
+        // Verify initial state
+        assertEq(lender.isRedeemable(user), true, "Initial isRedeemable should be true");
+        assertEq(lender.getDebtOf(user), borrowAmount, "Initial debt incorrect");
+        assertEq(lender.freeDebtShares(user) > 0, true, "Should have free debt shares");
+        
+        // Record the initial state
+        uint initialFreeShares = lender.freeDebtShares(user);
+        uint initialTotalFreeShares = lender.totalFreeDebtShares();
+        
+        // Execute: set redemption status to true again (no-op)
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify state remains unchanged
+        assertEq(lender.isRedeemable(user), true, "isRedeemable should still be true");
+        assertEq(lender.getDebtOf(user), borrowAmount, "Debt should remain unchanged");
+        assertEq(lender.freeDebtShares(user), initialFreeShares, "Free debt shares should remain unchanged");
+        assertEq(lender.totalFreeDebtShares(), initialTotalFreeShares, "Total free debt shares should remain unchanged");
+        
+        vm.stopPrank();
+    }
+    
+    function test_setRedemptionStatus_revertsUnauthorized() public {
+        // Prepare test data
+        address user = address(0xBEEF);
+        address unauthorized = address(0xBAD);
+        
+        // Execute: unauthorized user attempts to set redemption status
+        vm.prank(unauthorized);
+        vm.expectRevert("Unauthorized");
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify state remains unchanged
+        assertEq(lender.isRedeemable(user), false, "isRedeemable should remain false");
+    }
+    
+    function test_setRedemptionStatus_byDelegation() public {
+        // Prepare test data
+        address user = address(0xBEEF);
+        address delegate = address(0xCAFE);
+        
+        // Setup: delegate permissions
+        vm.prank(user);
+        lender.delegate(delegate, true);
+        
+        // Execute: delegate sets redemption status
+        vm.prank(delegate);
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify status was updated
+        assertEq(lender.isRedeemable(user), true, "isRedeemable should be updated by delegated call");
+        
+        // Execute: delegate sets it back
+        vm.prank(delegate);
+        lender.setRedemptionStatus(user, false);
+        
+        // Verify status was updated again
+        assertEq(lender.isRedeemable(user), false, "isRedeemable should be updated again by delegated call");
+    }
+    
+    function test_setRedemptionStatus_withInterestAccrual() public {
+        // Prepare test data
+        address user = address(0xBEEF);
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, collateralAmount);
+        
+        // Setup: user deposits collateral and borrows as non-redeemable (default)
+        vm.startPrank(user);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+        
+        // Warp time to accrue interest
+        vm.warp(block.timestamp + 30 days);
+        
+        // Execute: change to redeemable
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify lastAccrue was updated
+        uint40 finalLastAccrue = lender.lastAccrue();
+        assertEq(finalLastAccrue, block.timestamp, "lastAccrue should be updated during setRedemptionStatus");
+        assertEq(lender.isRedeemable(user), true, "isRedeemable should be updated during setRedemptionStatus");
+        
+        vm.stopPrank();
+    }
+    
+    function test_setRedemptionStatus_withInterestModelRevert() public {
+        // Prepare test data
+        address user = address(0xBEEF);
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to user
+        collateral.mint(user, collateralAmount);
+        
+        // Setup: user deposits collateral and borrows as non-redeemable (default)
+        vm.startPrank(user);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+        
+        // Configure the InterestModel to revert
+        InterestModelMock interestModel = InterestModelMock(address(lender.interestModel()));
+        interestModel.setShouldRevert(true);
+        
+        // Warp time to attempt interest accrual
+        vm.warp(block.timestamp + 30 days);
+        
+        // Get initial lastAccrue value
+        uint40 initialLastAccrue = lender.lastAccrue();
+        
+        // Execute: change to redeemable (should still work even if IRM reverts)
+        lender.setRedemptionStatus(user, true);
+        
+        // Verify redemption status changed
+        assertEq(lender.isRedeemable(user), true, "isRedeemable should be updated even with interest model revert");
+        
+        // Verify lastAccrue wasn't updated
+        uint40 finalLastAccrue = lender.lastAccrue();
+        assertEq(finalLastAccrue, initialLastAccrue, "lastAccrue should not be updated when interest model reverts");
+        
+        vm.stopPrank();
+        
+        // Set the IRM back to normal
+        interestModel.setShouldRevert(false);
+    }
+    
+    function test_setRedemptionStatus_complexInteractions() public {
+        // Test setup with multiple borrowers with different statuses
+        address userA = address(0xBEEF);
+        address userB = address(0xF00D);
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 2000e18;
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        
+        // Setup: mint collateral to users
+        collateral.mint(userA, collateralAmount);
+        collateral.mint(userB, collateralAmount);
+        
+        // Setup: userA borrows as non-redeemable (default)
+        vm.startPrank(userA);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(userA, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Setup: userB borrows as redeemable
+        vm.startPrank(userB);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(userB, int256(collateralAmount), 0, true); // Set redeemable to true
+        lender.adjust(userB, 0, int256(borrowAmount)); // Borrow
+        vm.stopPrank();
+        
+        // Verify initial state
+        assertEq(lender.isRedeemable(userA), false, "UserA should be non-redeemable");
+        assertEq(lender.isRedeemable(userB), true, "UserB should be redeemable");
+        assertEq(lender.getDebtOf(userA), borrowAmount, "UserA debt incorrect");
+        assertEq(lender.getDebtOf(userB), borrowAmount, "UserB debt incorrect");
+        
+        // Record the state of debt pools
+        uint initialTotalPaidDebt = lender.totalPaidDebt();
+        uint initialTotalFreeDebt = lender.totalFreeDebt();
+        
+        // Switch userA to redeemable
+        vm.prank(userA);
+        lender.setRedemptionStatus(userA, true);
+        
+        // Switch userB to non-redeemable
+        vm.prank(userB);
+        lender.setRedemptionStatus(userB, false);
+        
+        // Verify debt pools have been updated correctly (swapped)
+        assertEq(lender.totalPaidDebt(), initialTotalPaidDebt + borrowAmount - borrowAmount, "Paid debt pool should remain the same");
+        assertEq(lender.totalFreeDebt(), initialTotalFreeDebt + borrowAmount - borrowAmount, "Free debt pool should remain the same");
+        
+        // Verify individual statuses
+        assertEq(lender.isRedeemable(userA), true, "UserA should now be redeemable");
+        assertEq(lender.isRedeemable(userB), false, "UserB should now be non-redeemable");
+        assertEq(lender.getDebtOf(userA), borrowAmount, "UserA debt should remain the same");
+        assertEq(lender.getDebtOf(userB), borrowAmount, "UserB debt should remain the same");
+    }
 }
