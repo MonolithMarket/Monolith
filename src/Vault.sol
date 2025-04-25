@@ -11,6 +11,7 @@ interface ILender {
 contract Vault is ERC4626 {
 
     ILender public immutable lender;
+    uint256 constant MIN_SHARES = 1e16; // 1 cent;
 
     /// @param _name Name of the token. Prepended with "Staked "
     /// @param _symbol Symbol of the token. Prepended with "s"
@@ -41,7 +42,15 @@ contract Vault is ERC4626 {
     /// @param receiver Address to receive the shares
     /// @return shares Amount of shares minted
     function deposit(uint256 assets, address receiver) public accrueInterest override returns (uint256 shares) {
+        bool isFirstDeposit = totalSupply == 0;
         shares = super.deposit(assets, receiver);
+        if(isFirstDeposit) {
+            // if this underflows, the first deposit is less than MIN_SHARES which is not allowed
+            balanceOf[receiver] -= MIN_SHARES;
+            balanceOf[address(0)] += MIN_SHARES;
+            emit Transfer(receiver, address(0), MIN_SHARES);
+            shares -= MIN_SHARES;
+        }
     }
 
     /// @notice Mints shares of the vault
@@ -49,7 +58,15 @@ contract Vault is ERC4626 {
     /// @param receiver Address to receive the shares
     /// @return assets Amount of assets deposited
     function mint(uint256 shares, address receiver) public accrueInterest override returns (uint256 assets) {
+        bool isFirstDeposit = totalSupply == 0;
         assets = super.mint(shares, receiver);
+        if(isFirstDeposit) {
+            // if this underflows, the first deposit is less than MIN_SHARES which is not allowed
+            balanceOf[receiver] -= MIN_SHARES;
+            balanceOf[address(0)] += MIN_SHARES;
+            emit Transfer(receiver, address(0), MIN_SHARES);
+            assets -= MIN_SHARES; // shares and assets are 1:1 when the first deposit is made
+        }
     }
 
     /// @notice Withdraws assets from the vault
