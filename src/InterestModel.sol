@@ -34,7 +34,7 @@ contract InterestModel {
         
         if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
             currBorrowRate = _lastRate * 1e18 / growthDecay;
-            interest = _totalPaidDebt * (currBorrowRate - _lastRate) * 1e18 / _expRate / 365 days;
+            interest = _totalPaidDebt * (currBorrowRate - _lastRate) / _expRate / 365 days;
         } else if (_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
             currBorrowRate = _lastRate * growthDecay / 1e18;
             if (currBorrowRate < MIN_RATE) {
@@ -42,19 +42,19 @@ contract InterestModel {
                 // calculate integral
                 if (_lastRate <= MIN_RATE) {
                     // Already at min rate, just use flat rate for entire period
-                    interest = _totalPaidDebt * MIN_RATE * _timeElapsed / 365 days;
+                    interest = _totalPaidDebt * MIN_RATE * _timeElapsed / 365 days / 1e18;
                 } else {
-                    uint timeToMin = uint(-wadLn(int(MIN_RATE * 1e18 / _lastRate))) * 1e18 / _expRate;
+                    uint timeToMin = uint(-wadLn(int(MIN_RATE * 1e18 / _lastRate))) / _expRate;
                     // Decaying integral up to min rate, then add flat rate portion
-                    interest = _totalPaidDebt * ((_lastRate - MIN_RATE) * 1e18 / _expRate + 
-                              MIN_RATE * (_timeElapsed - timeToMin)) / 365 days;
+                    interest = _totalPaidDebt * ((_lastRate - MIN_RATE) / _expRate + 
+                              MIN_RATE * (_timeElapsed - timeToMin)) / 365 days / 1e18;
                 }
             } else {
-                interest = _totalPaidDebt * (_lastRate - currBorrowRate) * 1e18 / _expRate / 365 days;
+                interest = _totalPaidDebt * (_lastRate - currBorrowRate) / _expRate / 365 days / 1e18;
             }
         } else {
             currBorrowRate = _lastRate;
-            interest = _totalPaidDebt * _lastRate * _timeElapsed / 365 days;
+            interest = _totalPaidDebt * _lastRate * _timeElapsed / 365 days / 1e18;
         }
     }
 }
