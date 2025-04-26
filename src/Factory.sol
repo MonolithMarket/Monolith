@@ -66,6 +66,8 @@ contract Factory {
 
     address[] public deployments;
     mapping(address => bool) public isDeployed;
+    mapping(address => uint256) public customFeeBps;
+    mapping(address => bool) public hasCustomFee;
 
     constructor(address _operator) {
         operator = _operator;
@@ -98,6 +100,19 @@ contract Factory {
     function setFeeBps(uint256 _feeBps) external onlyOperator {
         require(_feeBps <= MAX_FEE_BPS, "Feebps must be less than or equal to 1000");
         feeBps = _feeBps;
+    }
+
+    function setCustomFeeBps(address _address, uint256 _feeBps) external onlyOperator {
+        require(_feeBps <= MAX_FEE_BPS, "Feebps must be less than or equal to 1000");
+        customFeeBps[_address] = _feeBps;
+        emit CustomFeeBpsSet(_address, _feeBps);
+    }
+
+    function getFeeOf(address _lender) external view returns (uint256) {
+        if (hasCustomFee[_lender]) {
+            return customFeeBps[_lender];
+        }
+        return feeBps;
     }
 
     function pullReserves(address _deployment) external {
@@ -140,6 +155,9 @@ contract Factory {
         VaultDeployer.deployVault(msg.sender, id, vaultData);
         deployments.push(lender);
         isDeployed[lender] = true;
+        emit Deployed(lender, coin, vault);
     }
 
+    event CustomFeeBpsSet(address indexed lender, uint256 feeBps);
+    event Deployed(address indexed lender, address indexed coin, address indexed vault);
 }

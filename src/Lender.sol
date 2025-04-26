@@ -20,7 +20,7 @@ interface IChainlinkFeed {
 }
 
 interface IFactory {
-    function feeBps() external view returns (uint);
+    function getFeeOf(address _lender) external view returns (uint256);
 }
 
 contract Lender {
@@ -131,7 +131,7 @@ contract Lender {
         ) returns (uint currBorrowRate, uint interest) {
             uint128 localReserveFee = uint128(interest * feeBps / 10000);
             // TODO: cache the global factory fee from last update in order to avoid retroactive fee change.
-            uint128 globalReserveFee = uint128(interest * factory.feeBps() / 10000);
+            uint128 globalReserveFee = uint128(interest * factory.getFeeOf(address(this)) / 10000);
             accruedLocalReserves += localReserveFee;
             accruedGlobalReserves += globalReserveFee;
             // we remove reserve fees from interest before calculating how much to give to stakers

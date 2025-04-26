@@ -78,7 +78,7 @@ contract InterestModelMock {
 }
 
 contract FactoryMock {
-    function feeBps() external view returns (uint) {
+    function getFeeOf(address) external view returns (uint) {
         address(this); // silences pure function warning
         return 1000; // 10%
     }
