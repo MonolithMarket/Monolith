@@ -50,7 +50,7 @@ contract InterestModel {
                               MIN_RATE * (_timeElapsed - timeToMin)) / 365 days / 1e18;
                 }
             } else {
-                interest = _totalPaidDebt * (_lastRate - currBorrowRate) / _expRate / 365 days / 1e18;
+                interest = _totalPaidDebt * (_lastRate - currBorrowRate) / _expRate / 365 days;
             }
         } else {
             currBorrowRate = _lastRate;

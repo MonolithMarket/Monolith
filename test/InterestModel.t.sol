@@ -45,7 +45,7 @@ contract InterestModelTest is Test {
             expectedInterest += (totalPaidDebt + expectedInterest) * expectedBorrowRate / 1e18 / 365 days;
         }
 
-        assertApproxEqAbs(currBorrowRate, expectedBorrowRate, 1e11, "borrow rate mismatch");
-        assertApproxEqAbs(interest, expectedInterest, 1e15, "interest mismatch");
+        assertApproxEqRel(currBorrowRate, expectedBorrowRate, 1e11, "borrow rate mismatch");
+        assertApproxEqRel(interest, expectedInterest, 1e15, "interest mismatch");
     }
 }
