@@ -38,8 +38,9 @@ contract Lender {
     uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
 
     // single 256-bit slot
-    uint128 public accruedLocalReserves;
-    uint128 public accruedGlobalReserves;
+    uint16 public cachedGlobalFeeBps;
+    uint120 public accruedLocalReserves;
+    uint120 public accruedGlobalReserves;
 
     // Other state variables
     address public operator;
@@ -129,9 +130,8 @@ contract Lender {
             targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps
         ) returns (uint currBorrowRate, uint interest) {
-            uint128 localReserveFee = uint128(interest * feeBps / 10000);
-            // TODO: cache the global factory fee from last update in order to avoid retroactive fee change.
-            uint128 globalReserveFee = uint128(interest * factory.getFeeOf(address(this)) / 10000);
+            uint120 localReserveFee = uint120(interest * feeBps / 10000);
+            uint120 globalReserveFee = uint120(interest * cachedGlobalFeeBps / 10000);
             accruedLocalReserves += localReserveFee;
             accruedGlobalReserves += globalReserveFee;
             // we remove reserve fees from interest before calculating how much to give to stakers
@@ -144,7 +144,7 @@ contract Lender {
                 uint stakedInterest = interestAfterFees * totalStaked / totalPaidDebt;
                 coin.mint(address(vault), stakedInterest);
                 uint remainingInterest = interestAfterFees - stakedInterest;
-                accruedLocalReserves += uint128(remainingInterest);
+                accruedLocalReserves += uint120(remainingInterest);
             } else {
                 // if total staked is greater than paid debt, we give all interest to stakers
                 coin.mint(address(vault), interestAfterFees);
@@ -152,6 +152,7 @@ contract Lender {
             totalPaidDebt += interest; // we add all interest to paid debt (NOT interestAfterFees)
             lastAccrue = uint40(block.timestamp);
             lastBorrowRateMantissa = uint88(currBorrowRate);
+            cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         } catch {
             // If the call reverts, do nothing.
         }

@@ -78,9 +78,14 @@ contract InterestModelMock {
 }
 
 contract FactoryMock {
+    uint public fee = 1000; // 10% default fee
+
     function getFeeOf(address) external view returns (uint) {
-        address(this); // silences pure function warning
-        return 1000; // 10%
+        return fee;
+    }
+
+    function setFee(uint newFee) external {
+        fee = newFee;
     }
 }
 
@@ -2805,5 +2810,110 @@ contract LenderTest is Test {
         assertEq(lender.isRedeemable(userB), false, "UserB should now be non-redeemable");
         assertEq(lender.getDebtOf(userA), borrowAmount, "UserA debt should remain the same");
         assertEq(lender.getDebtOf(userB), borrowAmount, "UserB debt should remain the same");
+    }
+
+    function test_cachedGlobalFeeBps() public {
+        // Setup: create a borrower with debt to accrue interest
+        address borrower = address(0xBEEF);
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Setup collateral and borrow
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        collateral.mint(borrower, collateralAmount);
+        
+        // Create a factory mock that we can change the fee on
+        FactoryMock factoryMock = new FactoryMock();
+        
+        // Deploy a new lender with this factory
+        Lender lenderWithCustomFactory = new Lender(
+            ERC20(address(collateral)),
+            IChainlinkFeed(address(new FeedMock())),
+            Coin(address(new ERC20Mock("Coin", "COIN"))),
+            Vault(address(new VaultMock())),
+            InterestModel(address(new InterestModelMock())),
+            IFactory(address(factoryMock)),
+            operatorAddr,
+            5000, // 50% collateral factor
+            1000e18, // 1000 Coin min debt
+            365 days // 1 year immutability deadline
+        );
+        
+        // Set local fee to 0% to make global fee effects more visible
+        vm.prank(operatorAddr);
+        lenderWithCustomFactory.setLocalReserveFeeBps(0);
+        
+        // Setup: borrower deposits collateral and borrows
+        vm.startPrank(borrower);
+        collateral.approve(address(lenderWithCustomFactory), collateralAmount);
+        lenderWithCustomFactory.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+        
+        // Verify the global fee was cached initially
+        assertEq(lenderWithCustomFactory.cachedGlobalFeeBps(), 1000, "Initial cached global fee should be 10%");
+        
+        // Advance time to trigger interest accrual (7 days = ~1% interest with our mock model)
+        vm.warp(block.timestamp + 7 days);
+        
+        // Call accrueInterest to accrue with 10% global fee
+        lenderWithCustomFactory.accrueInterest();
+        
+        // Track the first interest accrual
+        uint firstGlobalReserves = lenderWithCustomFactory.accruedGlobalReserves();
+        assertGt(firstGlobalReserves, 0, "Should have accrued global reserves with 10% fee");
+        
+        // Calculate the expected global reserves based on expected interest amount with 10% fee
+        // Our mock model returns 1e18 (100%) per year, so 7 days would be about 1.9% interest
+        // 2000e18 (borrowAmount) * 0.019 (interest rate for 7 days) * 0.1 (10% fee) = ~3.8e18
+        uint expectedInterestWithTenPercentFee = borrowAmount * 7 days * 1e18 / 365 days / 1e18 * 1000 / 10000;
+        assertApproxEqRel(firstGlobalReserves, expectedInterestWithTenPercentFee, 0.01e18, 
+            "Global reserves should match expected interest with 10% fee");
+        
+        // Change factory fee to 40%
+        factoryMock.setFee(4000);
+        
+        // Advance time again
+        vm.warp(block.timestamp + 7 days);
+        
+        // Call accrueInterest again - should still use cached 10% fee, not current 40%
+        lenderWithCustomFactory.accrueInterest();
+        
+        // Get new global reserves
+        uint secondGlobalReserves = lenderWithCustomFactory.accruedGlobalReserves();
+        uint secondInterestAmount = secondGlobalReserves - firstGlobalReserves;
+        
+        // Calculate expected interest with cached 10% fee (not the 40% current fee)
+        uint expectedInterestWithCachedFee = expectedInterestWithTenPercentFee;
+        assertApproxEqRel(secondInterestAmount, expectedInterestWithCachedFee, 0.1e18, 
+            "Second interest amount should use cached 10% fee, not current 40%");
+        
+        // Now we'll adjust a position, which should trigger interest accrual and refresh the cached fee
+        vm.prank(borrower);
+        lenderWithCustomFactory.adjust(borrower, 0, 0);
+        
+        // Verify fee was updated in the cache
+        assertEq(lenderWithCustomFactory.cachedGlobalFeeBps(), 4000, "Cached global fee should be updated to 40%");
+        
+        // Get reserves before next accrual
+        uint reservesBeforeThirdAccrual = lenderWithCustomFactory.accruedGlobalReserves();
+        
+        // Advance time again
+        vm.warp(block.timestamp + 7 days);
+        
+        // Call accrueInterest again - now using new 40% fee
+        lenderWithCustomFactory.accrueInterest();
+        
+        // Get new global reserves
+        uint thirdGlobalReserves = lenderWithCustomFactory.accruedGlobalReserves();
+        uint thirdInterestAmount = thirdGlobalReserves - reservesBeforeThirdAccrual;
+        
+        // Calculate expected interest with new 40% fee
+        uint expectedInterestWithFortyPercentFee = borrowAmount * 7 days * 1e18 / 365 days / 1e18 * 4000 / 10000;
+        assertApproxEqRel(thirdInterestAmount, expectedInterestWithFortyPercentFee, 0.1e18, 
+            "Third interest amount should use updated 40% fee");
+        
+        // Verify relationship between interest amounts based on fee difference
+        assertApproxEqRel(thirdInterestAmount, expectedInterestWithTenPercentFee * 4, 0.1e18, 
+            "Interest with 40% fee should be about 4x the interest with 10% fee");
     }
 }
