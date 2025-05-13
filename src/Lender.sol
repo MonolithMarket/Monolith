@@ -231,6 +231,10 @@ contract Lender {
         updateBorrower(account);
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
+        if(chooseRedeemable){
+            borrowerEpoch[account] = epoch;
+            borrowerLastRedeemedIndex[account] = epochRedeemedCollateral[epoch];
+        }
         uint prevDebt = getDebtOf(account);
         if(prevDebt > 0) {
             decreaseDebt(account, type(uint).max);
@@ -388,9 +392,10 @@ contract Lender {
                 freeDebtShares[borrower] = borrowerDebtShares;
             }
         }
-        // in all cases, update the borrower's epoch and last redeemed index
-        borrowerEpoch[borrower] = epoch;
-        borrowerLastRedeemedIndex[borrower] = epochRedeemedCollateral[epoch];
+        if(isRedeemable[borrower]){
+            borrowerEpoch[borrower] = epoch;
+            borrowerLastRedeemedIndex[borrower] = epochRedeemedCollateral[epoch];
+        }
     }
 
     function increaseDebt(address account, uint256 amount) internal {
