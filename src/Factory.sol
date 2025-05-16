@@ -67,7 +67,6 @@ contract Factory {
     address[] public deployments;
     mapping(address => bool) public isDeployed;
     mapping(address => uint256) public customFeeBps;
-    mapping(address => bool) public hasCustomFee;
 
     constructor(address _operator) {
         operator = _operator;
@@ -109,9 +108,8 @@ contract Factory {
     }
 
     function getFeeOf(address _lender) external view returns (uint256) {
-        if (hasCustomFee[_lender]) {
-            return customFeeBps[_lender];
-        }
+        uint customFee = customFeeBps[_lender];
+        if (customFee > 0) return customFee;
         return feeBps;
     }
 

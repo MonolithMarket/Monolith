@@ -11,7 +11,7 @@ contract InterestModelTest is Test {
         interestModel = new InterestModel();
     }
     
-    function test_calculateInterest(uint _totalPaidDebt, uint lastFreeDebtRatioBps, uint timeElapsed, uint halfLife, uint lastRate) public {
+    function test_calculateInterest(uint _totalPaidDebt, uint lastFreeDebtRatioBps, uint timeElapsed, uint halfLife, uint lastRate) public view {
         lastFreeDebtRatioBps = bound(lastFreeDebtRatioBps, 0, 10000);
         timeElapsed = bound(timeElapsed, 1, 100);
         halfLife = bound(halfLife, 12 hours, 30 days);

@@ -2907,8 +2907,9 @@ contract LenderTest is Test {
         uint thirdGlobalReserves = lenderWithCustomFactory.accruedGlobalReserves();
         uint thirdInterestAmount = thirdGlobalReserves - reservesBeforeThirdAccrual;
         
+        uint _borrowAmount = borrowAmount;
         // Calculate expected interest with new 40% fee
-        uint expectedInterestWithFortyPercentFee = borrowAmount * 7 days * 1e18 / 365 days / 1e18 * 4000 / 10000;
+        uint expectedInterestWithFortyPercentFee = _borrowAmount * 7 days * 1e18 / 365 days / 1e18 * 4000 / 10000;
         assertApproxEqRel(thirdInterestAmount, expectedInterestWithFortyPercentFee, 0.1e18, 
             "Third interest amount should use updated 40% fee");
         
