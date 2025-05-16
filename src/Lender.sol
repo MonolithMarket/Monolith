@@ -61,7 +61,7 @@ contract Lender {
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
-    uint public constant STALENESS_THRESHOLD = 60 minutes;
+    uint public constant STALENESS_THRESHOLD = 25 hours; // standard 24 hours staleness + 1 hour buffer
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
 
