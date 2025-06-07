@@ -2,7 +2,7 @@ Non-Commercial Software Audit License Agreement
 
 Licensor:             Nour Haridy
 
-Licensed Work:  USD2 Core
+Licensed Work:  Monolith Protocol
 
 Version: 1.0
                       

@@ -3,7 +3,7 @@ pragma solidity 0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
 
-contract USD2Script is Script {
+contract MonolithScript is Script {
     function setUp() public {}
 
     function run() public {

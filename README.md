@@ -1,6 +1,6 @@
-# USD2 Protocol
+# Monolith Protocol
 
-USD2 is an autonomous single-collateral stablecoin protocol that allows users to borrow USD2 against collateral. The protocol features a unique dual debt system with free (redeemable) and paid (non-redeemable) debt mechanisms.
+Monolith is an autonomous single-collateral stablecoin protocol factory. The protocol features a unique dual debt system for deployed stablecoins with free (redeemable) and paid (non-redeemable) debt mechanisms.
 
 ## Development
 
@@ -18,9 +18,9 @@ forge t
 
 The protocol consists of three main contracts:
 
-- **USD2**: The main user entry point contract for handling borrowing, liquidations, redemptions, and debt management
-- **SUSD2**: A yield-bearing tokenized vault for USD2 implementing the ERC4626 standard
-- **CollateralManager**: Manages redeemable and non-redeemable collateral shares. Mostly called by USD2 contract rather than directly by users.
+- **Factory**: Allows users to create new Monolith stablecoins
+- **Lender**: The main user entry point contract for each stablecoin, handling borrowing, liquidations, redemptions, and debt management
+- **Vault**: A yield-bearing tokenized vault for Monolith stablecoins implementing the ERC4626 standard
 
 ## Key Features
 
@@ -59,13 +59,13 @@ Only borrowers who have opted into redemptions are subject to have their collate
 
 Redemptions cause eligible borrowers collateral to be reduced by the same dollar value as their debt is reduced minus a fee paid by redeemers to borrowers. Redemptions are distributed pro-rata among all eligible borrowers.
 
-### Staked USD2
+### Vault
 
-USD2 holders can stake in SUSD2 to earn a portion of interest paid by non-redeemable borrowers.
+Stablecoin holders can stake in the Vault to earn a portion of interest paid by non-redeemable borrowers.
 
-SUSD2 yield is capped by the borrow rate of non-redeemable borrowers but may be lower depending on the free debt ratio.
+Vault yield is capped by the borrow rate of non-redeemable borrowers but may be lower depending on the free debt ratio.
 
-Excess interest is added to the protocol's reserve which is only accessible by the protocol owner. Additionally, a fee can be charged on SUSD2 yield up to a maximum of 25%.
+Excess interest is added to the protocol's reserve which is only accessible by the protocol owner. Additionally, a fee can be charged on the Vault yield up to a maximum of 25%.
 
 ### Immutability Deadline
 
