@@ -198,6 +198,9 @@ contract Lender {
         uint debtBalance = getDebtOf(account);
         if(debtDelta != 0) require(debtBalance == 0 || debtBalance >= minDebt, "Debt below minimum and larger than 0");
 
+        // Emit event before the first early return
+        emit PositionAdjusted(account, collateralDelta, debtDelta);
+
         // Skip remaining invariants if caller does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
 
@@ -212,7 +215,6 @@ contract Lender {
         require(!reduceOnly, "Reduce only");
         uint borrowingPower = price * _cachedCollateralBalances[account] * collateralFactor / 1e18 / 10000;
         require(debtBalance <= borrowingPower, "Solvency check failed");
-        emit PositionAdjusted(account, collateralDelta, debtDelta);
     }
 
     function adjust(address account, int collateralDelta, int debtDelta, bool chooseRedeemable) external {
