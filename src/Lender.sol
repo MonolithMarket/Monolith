@@ -101,6 +101,7 @@ contract Lender {
         collateralFactor = _collateralFactor;
         minDebt = _minDebt;
         immutabilityDeadline = block.timestamp + _timeUntilImmutability;
+        lastAccrue = uint40(block.timestamp);
     }
 
     // Modifiers
