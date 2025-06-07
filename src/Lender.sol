@@ -490,7 +490,7 @@ contract Lender {
     }
 
     /// @notice Gets the current price of the collateral asset
-    /// @return price The price in USD with 18 decimals
+    /// @return price The price in USD normalized to (36 - collateral decimals) decimals for consistent calculations
     /// @return reduceOnly A boolean indicating if reduce only mode is enabled
     /// @return allowLiquidations A boolean indicating if liquidations and write-offs are enabled
     function getCollateralPrice() public view returns (uint price, bool reduceOnly, bool allowLiquidations) {
