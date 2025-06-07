@@ -452,7 +452,7 @@ contract Lender {
     function getLiquidatableDebt(uint collateralBalance, uint price, uint debt) internal view returns(uint liquidatableDebt){
         uint borrowingPower = price * collateralBalance * collateralFactor / 1e18 / 10000;
         if(borrowingPower > debt) return 0;
-        // liquidate only the amount of debt that is above the borrowing power
+        // liquidate 25% of the total debt
         liquidatableDebt = debt / 4; // 25% of the debt
         // liquidate at least MIN_LIQUIDATION_DEBT (or the entire debt if it's less than MIN_LIQUIDATION_DEBT)
         if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debt < MIN_LIQUIDATION_DEBT ? debt : MIN_LIQUIDATION_DEBT;
