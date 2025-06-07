@@ -102,6 +102,7 @@ contract Lender {
         minDebt = _minDebt;
         immutabilityDeadline = block.timestamp + _timeUntilImmutability;
         lastAccrue = uint40(block.timestamp);
+        cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
     }
 
     // Modifiers
