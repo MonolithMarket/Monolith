@@ -290,15 +290,16 @@ contract Lender {
         coin.burn(repayAmount);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
         // try to write off remaining debt. Call externally and catch error to prevent liquidation failure
-        try this.writeOff(borrower) {} catch {}
+        try this.writeOff(borrower, msg.sender) {} catch {}
         return collateralReward;
     }
 
     /// @notice Redistributes excess debt of undercollateralized accounts among other borrowers
     /// @param borrower The account in potentiallyundercollateralized state
     /// @return writtenOff True if the borrower was written off, false otherwise
+    /// @param to The address to send the collateral to
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
-    function writeOff(address borrower) external returns (bool writtenOff) {
+    function writeOff(address borrower, address to) external returns (bool writtenOff) {
         accrueInterest();
         updateBorrower(borrower);
         // check for write off
@@ -322,9 +323,9 @@ contract Lender {
                     totalPaidDebt += paidDebtIncrease;
                 }
                 // 3. send collateral to caller
-                collateral.safeTransfer(msg.sender, collateralBalance);
+                collateral.safeTransfer(to, collateralBalance);
                 _cachedCollateralBalances[borrower] = 0;
-                emit WrittenOff(borrower, msg.sender, debt, collateralBalance);
+                emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
             }
         }
@@ -621,7 +622,7 @@ contract Lender {
     event LocalReserveFeeUpdated(uint256 feeBps);
     event RedemptionStatusUpdated(address indexed account, bool isRedeemable);
     event Liquidated(address indexed borrower, address indexed liquidator, uint repayAmount, uint collateralOut);
-    event WrittenOff(address indexed borrower, address indexed writerOff, uint debt, uint collateral);
+    event WrittenOff(address indexed borrower, address indexed to, uint debt, uint collateral);
     event NewEpoch(uint epoch);
     event Redeemed(address indexed account, uint amountIn, uint amountOut);
 }

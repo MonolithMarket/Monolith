@@ -1567,7 +1567,7 @@ contract LenderTest is Test {
         
         // Execute write-off
         vm.prank(liquidator);
-        bool result = lender.writeOff(borrower);
+        bool result = lender.writeOff(borrower, liquidator);
         
         // Verify write-off was successful
         assertTrue(result, "Write-off should be successful");
@@ -1617,7 +1617,7 @@ contract LenderTest is Test {
         
         // Execute write-off (should return false because debt is not 100x the collateral value)
         vm.prank(liquidator);
-        bool result = lender.writeOff(borrower);
+        bool result = lender.writeOff(borrower, liquidator);
         
         // Verify result is false
         assertFalse(result, "Write-off should not succeed if position isn't deeply underwater");
