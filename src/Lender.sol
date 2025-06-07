@@ -265,11 +265,9 @@ contract Lender {
         uint collateralBalance = _cachedCollateralBalances[borrower];
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
-        if(repayAmount == type(uint256).max) {
-            require(liquidatableDebt > 0, "no liquidatable debt");
+        require(liquidatableDebt > 0, "insufficient liquidatable debt");
+        if(repayAmount > liquidatableDebt) {
             repayAmount = liquidatableDebt;
-        } else {
-            require(liquidatableDebt >= repayAmount, "insufficient liquidatable debt");
         }
 
         // apply repayment
