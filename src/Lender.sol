@@ -101,6 +101,8 @@ contract Lender {
         collateralFactor = _collateralFactor;
         minDebt = _minDebt;
         immutabilityDeadline = block.timestamp + _timeUntilImmutability;
+        lastAccrue = uint40(block.timestamp);
+        cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
     }
 
     // Modifiers
@@ -196,6 +198,9 @@ contract Lender {
         uint debtBalance = getDebtOf(account);
         if(debtDelta != 0) require(debtBalance == 0 || debtBalance >= minDebt, "Debt below minimum and larger than 0");
 
+        // Emit event before the first early return
+        emit PositionAdjusted(account, collateralDelta, debtDelta);
+
         // Skip remaining invariants if caller does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
 
@@ -210,7 +215,6 @@ contract Lender {
         require(!reduceOnly, "Reduce only");
         uint borrowingPower = price * _cachedCollateralBalances[account] * collateralFactor / 1e18 / 10000;
         require(debtBalance <= borrowingPower, "Solvency check failed");
-        emit PositionAdjusted(account, collateralDelta, debtDelta);
     }
 
     function adjust(address account, int collateralDelta, int debtDelta, bool chooseRedeemable) external {
@@ -263,11 +267,9 @@ contract Lender {
         uint collateralBalance = _cachedCollateralBalances[borrower];
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
-        if(repayAmount == type(uint256).max) {
-            require(liquidatableDebt > 0, "no liquidatable debt");
+        require(liquidatableDebt > 0, "insufficient liquidatable debt");
+        if(repayAmount > liquidatableDebt) {
             repayAmount = liquidatableDebt;
-        } else {
-            require(liquidatableDebt >= repayAmount, "insufficient liquidatable debt");
         }
 
         // apply repayment
@@ -288,15 +290,16 @@ contract Lender {
         coin.burn(repayAmount);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
         // try to write off remaining debt. Call externally and catch error to prevent liquidation failure
-        try this.writeOff(borrower) {} catch {}
+        try this.writeOff(borrower, msg.sender) {} catch {}
         return collateralReward;
     }
 
     /// @notice Redistributes excess debt of undercollateralized accounts among other borrowers
     /// @param borrower The account in potentiallyundercollateralized state
     /// @return writtenOff True if the borrower was written off, false otherwise
+    /// @param to The address to send the collateral to
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
-    function writeOff(address borrower) external returns (bool writtenOff) {
+    function writeOff(address borrower, address to) external returns (bool writtenOff) {
         accrueInterest();
         updateBorrower(borrower);
         // check for write off
@@ -320,9 +323,9 @@ contract Lender {
                     totalPaidDebt += paidDebtIncrease;
                 }
                 // 3. send collateral to caller
-                collateral.safeTransfer(msg.sender, collateralBalance);
+                collateral.safeTransfer(to, collateralBalance);
                 _cachedCollateralBalances[borrower] = 0;
-                emit WrittenOff(borrower, msg.sender, debt, collateralBalance);
+                emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
             }
         }
@@ -449,7 +452,7 @@ contract Lender {
     function getLiquidatableDebt(uint collateralBalance, uint price, uint debt) internal view returns(uint liquidatableDebt){
         uint borrowingPower = price * collateralBalance * collateralFactor / 1e18 / 10000;
         if(borrowingPower > debt) return 0;
-        // liquidate only the amount of debt that is above the borrowing power
+        // liquidate 25% of the total debt
         liquidatableDebt = debt / 4; // 25% of the debt
         // liquidate at least MIN_LIQUIDATION_DEBT (or the entire debt if it's less than MIN_LIQUIDATION_DEBT)
         if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debt < MIN_LIQUIDATION_DEBT ? debt : MIN_LIQUIDATION_DEBT;
@@ -487,7 +490,7 @@ contract Lender {
     }
 
     /// @notice Gets the current price of the collateral asset
-    /// @return price The price in USD with 18 decimals
+    /// @return price The price in USD normalized to (36 - collateral decimals) decimals for consistent calculations
     /// @return reduceOnly A boolean indicating if reduce only mode is enabled
     /// @return allowLiquidations A boolean indicating if liquidations and write-offs are enabled
     function getCollateralPrice() public view returns (uint price, bool reduceOnly, bool allowLiquidations) {
@@ -619,7 +622,7 @@ contract Lender {
     event LocalReserveFeeUpdated(uint256 feeBps);
     event RedemptionStatusUpdated(address indexed account, bool isRedeemable);
     event Liquidated(address indexed borrower, address indexed liquidator, uint repayAmount, uint collateralOut);
-    event WrittenOff(address indexed borrower, address indexed writerOff, uint debt, uint collateral);
+    event WrittenOff(address indexed borrower, address indexed to, uint debt, uint collateral);
     event NewEpoch(uint epoch);
     event Redeemed(address indexed account, uint amountIn, uint amountOut);
 }
