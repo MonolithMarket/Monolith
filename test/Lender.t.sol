@@ -1303,6 +1303,104 @@ contract LenderTest is Test {
         vm.stopPrank();
     }
 
+    function test_repay_multipleUsers(uint borrowAmount1, uint borrowAmount2) public {
+        // Bound amounts to prevent overflows and ensure valid debt amounts
+        borrowAmount1 = bound(borrowAmount1, lender.minDebt() * 2, lender.minDebt() * 4);
+        borrowAmount2 = bound(borrowAmount2, lender.minDebt() * 2, lender.minDebt() * 3);
+        
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        address repayer = address(0xDEAD);
+        
+        uint collateralAmount = lender.minDebt() * 8; // Large enough for both borrowers
+        
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to both borrowers
+        collateral.mint(borrower1, collateralAmount);
+        collateral.mint(borrower2, collateralAmount);
+        
+        // Setup: mint coins to repayer for all repayments
+        uint totalRepayAmount = borrowAmount1 + borrowAmount2;
+        coin.mint(repayer, totalRepayAmount);
+        
+        // Setup: borrower1 deposits collateral and borrows
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1));
+        vm.stopPrank();
+        
+        // Setup: borrower2 deposits collateral and borrows
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount2));
+        vm.stopPrank();
+        
+        // Verify initial state
+        assertEq(lender.getDebtOf(borrower1), borrowAmount1, "Borrower1 initial debt incorrect");
+        assertEq(lender.getDebtOf(borrower2), borrowAmount2, "Borrower2 initial debt incorrect");
+        assertEq(coin.balanceOf(borrower1), borrowAmount1, "Borrower1 initial coin balance incorrect");
+        assertEq(coin.balanceOf(borrower2), borrowAmount2, "Borrower2 initial coin balance incorrect");
+        
+        // Calculate partial repayment amounts (repay half of each borrower's debt)
+        uint repayAmount1 = borrowAmount1 / 2;
+        uint repayAmount2 = borrowAmount2 / 2;
+        
+        // Execute: repayer repays partial debt for both borrowers
+        vm.startPrank(repayer);
+        coin.approve(address(lender), totalRepayAmount);
+        
+        // Repay for borrower1
+        lender.adjust(borrower1, 0, -int256(repayAmount1));
+        
+        // Repay for borrower2
+        lender.adjust(borrower2, 0, -int256(repayAmount2));
+        
+        vm.stopPrank();
+        
+        // Verify state after partial repayments
+        assertEq(lender.getDebtOf(borrower1), borrowAmount1 - repayAmount1, "Borrower1 debt incorrect after partial repayment");
+        assertEq(lender.getDebtOf(borrower2), borrowAmount2 - repayAmount2, "Borrower2 debt incorrect after partial repayment");
+        
+        // Verify borrowers' coin balances remain unchanged (repayer paid from their own balance)
+        assertEq(coin.balanceOf(borrower1), borrowAmount1, "Borrower1 coin balance should remain unchanged");
+        assertEq(coin.balanceOf(borrower2), borrowAmount2, "Borrower2 coin balance should remain unchanged");
+        
+        // Verify repayer's coin balance decreased by total repaid amount
+        uint totalRepaid = repayAmount1 + repayAmount2;
+        assertEq(coin.balanceOf(repayer), totalRepayAmount - totalRepaid, "Repayer coin balance incorrect after repayments");
+        
+        // Execute: full repayment of remaining debt for both borrowers
+        uint remainingDebt1 = borrowAmount1 - repayAmount1;
+        uint remainingDebt2 = borrowAmount2 - repayAmount2;
+        
+        vm.startPrank(repayer);
+        
+        // Full repayment for borrower1
+        lender.adjust(borrower1, 0, -int256(remainingDebt1));
+        
+        // Full repayment for borrower2
+        lender.adjust(borrower2, 0, -int256(remainingDebt2));
+        
+        vm.stopPrank();
+        
+        // Verify final state - all debts should be zero
+        assertEq(lender.getDebtOf(borrower1), 0, "Borrower1 debt should be zero after full repayment");
+        assertEq(lender.getDebtOf(borrower2), 0, "Borrower2 debt should be zero after full repayment");
+        
+        // Verify repayer's coin balance is now zero (used all coins for repayments)
+        assertEq(coin.balanceOf(repayer), 0, "Repayer should have used all coins for repayments");
+        
+        // Verify borrowers still have their original coin balances
+        assertEq(coin.balanceOf(borrower1), borrowAmount1, "Borrower1 final coin balance incorrect");
+        assertEq(coin.balanceOf(borrower2), borrowAmount2, "Borrower2 final coin balance incorrect");
+        
+        // Verify collateral balances remain unchanged
+        assertEq(lender._cachedCollateralBalances(borrower1), collateralAmount, "Borrower1 collateral should remain unchanged");
+        assertEq(lender._cachedCollateralBalances(borrower2), collateralAmount, "Borrower2 collateral should remain unchanged");
+    }
+
     function test_liquidation_successAfterPriceDecrease() public {
         // Setup: create a position that will become underwater when price changes
         uint collateralAmount = 4000e18;
