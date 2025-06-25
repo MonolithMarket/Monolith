@@ -427,7 +427,7 @@ contract Lender {
                 shares = freeDebtShares[account];
                 amount = getDebtOf(account);
             } else {
-                shares = amount.mulDivDown(freeDebtShares[account], totalFreeDebt);
+                shares = amount.mulDivDown(totalFreeDebtShares, totalFreeDebt);
             }
             
             freeDebtShares[account] -= shares;
@@ -440,7 +440,7 @@ contract Lender {
                 shares = paidDebtShares[account];
                 amount = getDebtOf(account);
             } else {
-                shares = amount.mulDivDown(paidDebtShares[account], totalPaidDebt);
+                shares = amount.mulDivDown(totalPaidDebtShares, totalPaidDebt);
             }
             
             paidDebtShares[account] -= shares;
