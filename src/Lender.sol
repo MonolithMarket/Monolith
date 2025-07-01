@@ -50,6 +50,7 @@ contract Lender {
     uint public totalFreeDebtShares;
     uint public totalPaidDebt;
     uint public totalPaidDebtShares;
+    uint public totalCollateral;
     uint public epoch;
 
     // Constants and immutables
@@ -167,10 +168,12 @@ contract Lender {
         if (collateralDelta > 0) {
             // Deposit collateral
             _cachedCollateralBalances[account] += uint(collateralDelta);
+            totalCollateral += uint(collateralDelta);
             collateral.safeTransferFrom(msg.sender, address(this), uint(collateralDelta));
         } else if (collateralDelta < 0) {
             // Withdraw collateral
             _cachedCollateralBalances[account] -= uint(-collateralDelta);
+            totalCollateral -= uint(-collateralDelta);
             collateral.safeTransfer(msg.sender, uint(-collateralDelta));
         }
 
@@ -285,6 +288,7 @@ contract Lender {
         if(collateralReward > 0) {
             collateral.safeTransfer(msg.sender, collateralReward);
             _cachedCollateralBalances[borrower] = collateralBalance - collateralReward;
+            totalCollateral -= collateralReward;
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
@@ -325,6 +329,7 @@ contract Lender {
                 // 3. send collateral to caller
                 collateral.safeTransfer(to, collateralBalance);
                 _cachedCollateralBalances[borrower] = 0;
+                totalCollateral -= collateralBalance;
                 emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
             }
@@ -351,6 +356,7 @@ contract Lender {
         epochRedeemedCollateral[epoch] += amountOut * 1e18 / totalFreeDebtShares;
 
         collateral.safeTransfer(msg.sender, amountOut);
+        totalCollateral -= amountOut;
 
         // Intentional division by zero and revert if totalFreeDebt is 0
         if(totalFreeDebtShares / totalFreeDebt > 1e18) {
@@ -392,6 +398,7 @@ contract Lender {
             }
             // reduce collateral balance and guard against underflow
             _cachedCollateralBalances[borrower] = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+            totalCollateral -= (bal - newBalance);
         }
         if(isRedeemable[borrower]){
             borrowerEpoch[borrower] = epoch;
@@ -548,6 +555,12 @@ contract Lender {
         if(!allowLiquidations) return 0;
         // multiply amountIn by price then apply redeem fee to amountIn
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+    }
+
+    /// @notice Returns the total collateral deposited across all accounts
+    /// @return The total amount of collateral tracked by the contract
+    function getTotalCollateral() public view returns (uint) {
+        return totalCollateral;
     }
 
     // Setters
