@@ -4,4 +4,4 @@
 source .env
 
 # To deploy and verify our contract
-forge script script/Factory.s.sol:FactoryScript --rpc-url $MAINNET_RPC_URL --broadcast -vvvv --etherscan-api-key $ETHERSCAN_API_KEY --verify --slow --private-key $PRIVATE_KEY
+forge script script/Factory.s.sol:FactoryScript --rpc-url $RPC_URL --broadcast -vvvv --etherscan-api-key $ETHERSCAN_API_KEY --verify --slow --private-key $PRIVATE_KEY
