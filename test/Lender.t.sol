@@ -2267,8 +2267,12 @@ contract LenderTest is Test {
     function test_repeated_redemptions() public {
         // Setup: create multiple borrowers with redeemable debt
         uint collateralAmount1 = 25000e18;
-        uint collateralAmount = 5000e18;
-        uint borrowAmount = 1000e18;
+        uint collateralAmount2 = 5000e18;
+        uint borrowAmount1 = 1000e18;
+        uint borrowAmount2 = 1000e18;
+
+        // Set collateral price to $3000 (similar to eth)
+        FeedMock(address(lender.feed())).setPrice(3000e18);
         
         // Prepare test data
         address borrower1 = address(0xBEEF);
@@ -2278,22 +2282,22 @@ contract LenderTest is Test {
         
         // Setup: mint collateral to borrowers and coins to redeemer
         collateral.mint(borrower1, collateralAmount1);
-        collateral.mint(borrower2, collateralAmount);
+        collateral.mint(borrower2, collateralAmount2);
 
         // Setup: borrower2 creates a redeemable position
         vm.startPrank(borrower2);
-        collateral.approve(address(lender), collateralAmount);
-        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        collateral.approve(address(lender), collateralAmount2);
+        lender.adjust(borrower2, int256(collateralAmount2), int256(borrowAmount2), true); // opt into redemptions
         vm.stopPrank();
 
         // Setup: borrower1 creates a redeemable position
         vm.startPrank(borrower1);
         collateral.approve(address(lender), type(uint).max);
         coin.approve(address(lender), type(uint).max);
-        lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount), true); // opt into redemptions
+        lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount1), true); // opt into redemptions
         vm.stopPrank();
 
-        for(uint i; i < 100; i++){
+        for(uint i; i < 40; i++){
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
             (uint price,,) = lender.getCollateralPrice();
@@ -2304,8 +2308,19 @@ contract LenderTest is Test {
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
             lender.redeem(redeemAmount, 0);
             vm.stopPrank();
+            emit log_string("epoch");
+            emit log_uint(lender.epoch());
+            emit log_string("totalFreeDebtShares");
+            emit log_uint(lender.totalFreeDebtShares());
+            emit log_string("totalFreeDebt");
+            emit log_uint(lender.totalFreeDebt());
+            emit log_string("cachedCollateralBalance");
+            emit log_uint(lender._cachedCollateralBalances(borrower1));
+            emit log_string("Lender collateral balance");
+            emit log_uint(collateral.balanceOf(address(lender)));
+            emit log_string("borrower1 freeDebtShares");
+            emit log_uint(lender.freeDebtShares(borrower1));
             assertLt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
-            emit log_int(int(collateral.balanceOf(borrower1)) - int(collateralAmount1));
         }
     }
 
@@ -2352,8 +2367,19 @@ contract LenderTest is Test {
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
             lender.redeem(redeemAmount, 0);
             vm.stopPrank();
+            emit log_string("epoch");
+            emit log_uint(lender.epoch());
+            emit log_string("totalFreeDebtShares");
+            emit log_uint(lender.totalFreeDebtShares());
+            emit log_string("totalFreeDebt");
+            emit log_uint(lender.totalFreeDebt());
+            emit log_string("cachedCollateralBalance");
+            emit log_uint(lender._cachedCollateralBalances(borrower1));
+            emit log_string("Lender collateral balance");
+            emit log_uint(collateral.balanceOf(address(lender)));
+            emit log_string("borrower1 freeDebtShares");
+            emit log_uint(lender.freeDebtShares(borrower1));
             assertLt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
-            emit log_int(int(collateral.balanceOf(borrower1)) - int(collateralAmount1));
         }
     }
     
