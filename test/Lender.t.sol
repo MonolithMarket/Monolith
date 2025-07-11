@@ -2263,6 +2263,99 @@ contract LenderTest is Test {
         uint totalDebtReduction = expectedDebtReduction1 + expectedDebtReduction2;
         assertApproxEqAbs(totalDebtReduction, _redeemAmount, 1, "Sum of debt reductions should equal total redeem amount");
     }
+
+    function test_repeated_redemptions() public {
+        // Setup: create multiple borrowers with redeemable debt
+        uint collateralAmount1 = 25000e18;
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        collateral.mint(borrower1, collateralAmount1);
+        collateral.mint(borrower2, collateralAmount);
+
+        // Setup: borrower2 creates a redeemable position
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+
+        // Setup: borrower1 creates a redeemable position
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), type(uint).max);
+        coin.approve(address(lender), type(uint).max);
+        lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+
+        for(uint i; i < 100; i++){
+            vm.startPrank(borrower1);
+            lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
+            (uint price,,) = lender.getCollateralPrice();
+            uint borrowingPower = price * lender._cachedCollateralBalances(borrower1) * lender.collateralFactor() / 1e18 / 10000 - lender.getDebtOf(borrower1);
+            lender.adjust(borrower1, 0, int256(borrowingPower));
+            uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
+            uint balance = coin.balanceOf(borrower1);
+            uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
+            lender.redeem(redeemAmount, 0);
+            vm.stopPrank();
+            assertLt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
+            emit log_int(int(collateral.balanceOf(borrower1)) - int(collateralAmount1));
+        }
+    }
+
+    function test_repeated_redemptions_fork() public {
+        string memory url = vm.rpcUrl("mainnet");
+        uint mainnetFork = vm.createSelectFork(url, 22867366);
+        lender = Lender(0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A);
+        // Setup: create multiple borrowers with redeemable debt
+        uint collateralAmount1 = 25000e18;
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1000e18;
+        
+        // Prepare test data
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        ERC20 collateral = ERC20(address(lender.collateral()));
+        ERC20 coin = ERC20(address(lender.coin()));
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        deal(address(collateral), borrower1, collateralAmount1);
+        deal(address(collateral), borrower2, collateralAmount);
+
+        // Setup: borrower2 creates a redeemable position
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+
+        // Setup: borrower1 creates a redeemable position
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), type(uint).max);
+        coin.approve(address(lender), type(uint).max);
+        lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+
+        for(uint i; i < 40; i++){
+            vm.startPrank(borrower1);
+            lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
+            (uint price,,) = lender.getCollateralPrice();
+            uint borrowingPower = price * lender._cachedCollateralBalances(borrower1) * lender.collateralFactor() / 1e18 / 10000 - lender.getDebtOf(borrower1);
+            lender.adjust(borrower1, 0, int256(borrowingPower));
+            uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
+            uint balance = coin.balanceOf(borrower1);
+            uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
+            lender.redeem(redeemAmount, 0);
+            vm.stopPrank();
+            assertLt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
+            emit log_int(int(collateral.balanceOf(borrower1)) - int(collateralAmount1));
+        }
+    }
     
     function test_setPendingOperator() public {
         // Define a new address for the pending operator
