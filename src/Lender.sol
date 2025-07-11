@@ -353,7 +353,7 @@ contract Lender {
         collateral.safeTransfer(msg.sender, amountOut);
 
         // Intentional division by zero and revert if totalFreeDebt is 0
-        if(totalFreeDebtShares / totalFreeDebt > 1e18) {
+        if(totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
             totalFreeDebtShares /= 1e18;
             emit NewEpoch(epoch);
