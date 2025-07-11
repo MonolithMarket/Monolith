@@ -2264,7 +2264,7 @@ contract LenderTest is Test {
         assertApproxEqAbs(totalDebtReduction, _redeemAmount, 1, "Sum of debt reductions should equal total redeem amount");
     }
 
-    function test_repeated_redemptions() public {
+    function test_repeated_redemptions_bug() public {
         // Setup: create multiple borrowers with redeemable debt
         uint collateralAmount1 = 25000e18;
         uint collateralAmount2 = 5000e18;
