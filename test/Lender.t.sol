@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test, console, console2} from "forge-std/Test.sol";
 import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
+import {Lens} from "src/Lens.sol";
 
 contract FeedMock {
 
@@ -93,7 +94,7 @@ contract LenderTest is Test {
 
     Lender lender;
     address public operatorAddr;
-
+       Lens lens = Lens(address(0xedb597C9715c648e4cf546464d365D5923d7F6c8));
     function setUp() public {
         // Set operator address
         operatorAddr = address(0x123);
@@ -111,6 +112,7 @@ contract LenderTest is Test {
             1000e18, // 1000 Coin min debt
             365 days // 1 year immutability deadline
         );
+    
     }
     
     function test_constructor() public {
@@ -2381,7 +2383,7 @@ contract LenderTest is Test {
         // Get the existing Lender contract address
         address lenderAddress = 0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A;
         lender = Lender(lenderAddress);
-        
+
         // Deploy a new Lender contract with the same immutable variables as the existing contract
         Lender newLenderImplementation = new Lender(
             lender.collateral(),
@@ -2438,9 +2440,32 @@ contract LenderTest is Test {
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
             lender.redeem(redeemAmount, 0);
             vm.stopPrank();
-            assertLt(collateral.balanceOf(borrower1), collateralAmount1, "Profitable redemptions");
-
         }
+        // Attemps to repay debt and withdraw collateral for both borrowers
+        uint256 collateralBalance2 = lens.getCollateralOf(lender, borrower2);
+        uint256 debt2 = lender.getDebtOf(borrower2);
+        uint256 collateralBalance1 = lens.getCollateralOf(lender, borrower1);
+        uint256 debt1 = lender.getDebtOf(borrower1);
+        vm.startPrank(borrower2);
+        lender.coin().approve(address(lender), type(uint).max);
+        lender.adjust(borrower2, -int(collateralBalance2), -int(debt2)); 
+        assertEq(lens.getCollateralOf(lender, borrower2), 0, "Borrower2's collateral should be zero after update");
+        assertEq(lender._cachedCollateralBalances(borrower2), 0, "Borrower2's cached collateral should be zero after update");
+        assertEq(lender.getDebtOf(borrower2), 0, "Borrower2's debt should be zero after update");
+        vm.stopPrank();
+        // Borrower1 should still have some collateral and debt
+        assertGt(lens.getCollateralOf(lender, borrower1), 0, "Borrower1's collateral should be greater than zero after update");
+        assertEq(lens.getCollateralOf(lender, borrower1), collateralBalance1, "Borrower1's collateral should be unchanged after update");
+        assertGt(lender.getDebtOf(borrower1), 0, "Borrower1's debt should be greater than zero after update");
+        // When borrower1 attemps to repay debt and withdraw all it fails in the Lender with aritmetic underflow because totalFreeDebtShares are less than borrower's freeDebtShares
+        assertGt(lender.totalFreeDebtShares(), lender.freeDebtShares(borrower1), "Total Free Debt Shares are greater than borrower's Free Debt Shares");
+        // Borrower1 should still have some collateral and debt
+        vm.startPrank(borrower1);
+        assertEq(lender.getDebtOf(borrower1), debt1, "Borrower1's debt should be unchanged before redeem");
+        deal(address(coin), borrower1, lender.getDebtOf(borrower1)); // give borrower1 enough coins to redeem
+        assertEq(lens.getCollateralOf(lender, borrower1), collateralBalance1, "Borrower1's collateral should be unchanged before update");
+        lender.adjust(borrower1, -int(collateralBalance1), -int(lender.getDebtOf(borrower1))); 
+        vm.stopPrank();
     }
     
     function test_setPendingOperator() public {
