@@ -2428,7 +2428,7 @@ contract LenderTest is Test {
         coin.approve(address(lender), type(uint).max);
         lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount), true); // opt into redemptions
         vm.stopPrank();
-
+        
         for(uint i; i < 40; i++){
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
@@ -2444,6 +2444,7 @@ contract LenderTest is Test {
         // Attemps to repay debt and withdraw collateral for both borrowers
         uint256 collateralBalance2 = lens.getCollateralOf(lender, borrower2);
         uint256 debt2 = lender.getDebtOf(borrower2);
+        assertGt(debt2, 0, "Borrower2's debt should be greater than zero before update");
         uint256 collateralBalance1 = lens.getCollateralOf(lender, borrower1);
         uint256 debt1 = lender.getDebtOf(borrower1);
         vm.startPrank(borrower2);
@@ -2457,8 +2458,9 @@ contract LenderTest is Test {
         assertGt(lens.getCollateralOf(lender, borrower1), 0, "Borrower1's collateral should be greater than zero after update");
         assertEq(lens.getCollateralOf(lender, borrower1), collateralBalance1, "Borrower1's collateral should be unchanged after update");
         assertGt(lender.getDebtOf(borrower1), 0, "Borrower1's debt should be greater than zero after update");
-        // When borrower1 attemps to repay debt and withdraw all it fails in the Lender with aritmetic underflow because totalFreeDebtShares are less than borrower's freeDebtShares
-        assertGt(lender.totalFreeDebtShares(), lender.freeDebtShares(borrower1), "Total Free Debt Shares are greater than borrower's Free Debt Shares");
+        // At this point only borrower1 should have free debt shares (other small free debt borrowers already on the fork would have been redeemed)
+        assertEq(lender.totalFreeDebtShares(), lender.freeDebtShares(borrower1), "Total Free Debt Shares should be equal to borrower1's Free Debt Shares");
+        
         // Borrower1 should still have some collateral and debt
         vm.startPrank(borrower1);
         assertEq(lender.getDebtOf(borrower1), debt1, "Borrower1's debt should be unchanged before redeem");
@@ -2466,8 +2468,10 @@ contract LenderTest is Test {
         assertEq(lens.getCollateralOf(lender, borrower1), collateralBalance1, "Borrower1's collateral should be unchanged before update");
         lender.adjust(borrower1, -int(collateralBalance1), -int(lender.getDebtOf(borrower1))); 
         vm.stopPrank();
+        assertEq(lender.getDebtOf(borrower1), 0, "Borrower1's debt should be zero after update");
+        assertEq(lens.getCollateralOf(lender, borrower1), 0, "Borrower1's collateral should be zero after update");
     }
-    
+
     function test_setPendingOperator() public {
         // Define a new address for the pending operator
         address newOperator = address(0x456);
