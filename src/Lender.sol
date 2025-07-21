@@ -353,9 +353,10 @@ contract Lender {
         collateral.safeTransfer(msg.sender, amountOut);
 
         // Intentional division by zero and revert if totalFreeDebt is 0
-        if(totalFreeDebtShares / totalFreeDebt > 1e9) {
+        if(totalFreeDebt == 0 || totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
-            totalFreeDebtShares /= 1e18;
+            totalFreeDebtShares = 0;
+            totalFreeDebt = 0;
             emit NewEpoch(epoch);
         }
 
@@ -379,16 +380,7 @@ contract Lender {
             // apply collateral redemption of the following epoch of the borrower's epoch. Following epochs are not
             // considered since the borrower's debt shares become 0 or negligible after 1 epoch.
             if(epoch > _borrowerEpoch) {
-                // reduce the borrower's debt to match shares of the next epoch
-                borrowerDebtShares /= 1e18;
-                // if the division above rounds down to 0, we skip the redemption
-                if(borrowerDebtShares > 0) {
-                    // Add additional redeemedCollateral
-                    // in this case, the entire epoch's index is equal to our delta (epochRedeemedCollateral[_borrowerEpoch + 1] - 0)
-                    redeemedCollateral += epochRedeemedCollateral[_borrowerEpoch + 1].mulDivUp(borrowerDebtShares, 1e18);
-                }
-                // update the borrower's debt shares. May be 0 or positive.
-                freeDebtShares[borrower] = borrowerDebtShares;
+                freeDebtShares[borrower] = 0;
             }
             // reduce collateral balance and guard against underflow
             _cachedCollateralBalances[borrower] = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
