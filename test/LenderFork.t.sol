@@ -198,7 +198,7 @@ contract LenderForkTest is Test {
         vm.stopPrank();
 
         // This check is important
-        // The final balance of borrower1 should be less than the initial collateral amount minus the debt amount adjusted to the current collateral price
+        // The final difference in collateral balance should be less than the debt amount adjusted to the current collateral price
         assertLt(collateral.balanceOf(borrower1) - collateralAmount1, (debt1 * 1 ether / price),"PROFIT");
         
         assertEq(lender.getDebtOf(borrower1), 0, "Borrower1's debt should be zero after update");
