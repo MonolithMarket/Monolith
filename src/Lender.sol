@@ -348,15 +348,15 @@ contract Lender {
         coin.burn(amountIn);
 
         // distribute collateral redemption per free debt share
-        epochRedeemedCollateral[epoch] += amountOut * 1e18 / totalFreeDebtShares;
+        epochRedeemedCollateral[epoch] += amountOut.mulDivUp(1e36, totalFreeDebtShares);
 
         collateral.safeTransfer(msg.sender, amountOut);
 
         // Intentional division by zero and revert if totalFreeDebt is 0
-        if(totalFreeDebt == 0 || totalFreeDebtShares / totalFreeDebt > 1e9) {
+        if( totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
-            totalFreeDebtShares = 0;
-            totalFreeDebt = 0;
+            totalFreeDebtShares /= 1e18;
+            //totalFreeDebt = 0;
             emit NewEpoch(epoch);
         }
 
@@ -368,27 +368,35 @@ contract Lender {
 
     function updateBorrower(address borrower) internal {
         uint borrowerDebtShares = freeDebtShares[borrower];
-        // if borrower has free debt, we proceed
-        if(borrowerDebtShares > 0) {
-            uint _borrowerEpoch = borrowerEpoch[borrower];
-            uint bal = _cachedCollateralBalances[borrower];
-            // index is denominated in collateral tokens redeemed per free debt share
-            uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - borrowerLastRedeemedIndex[borrower];
-            // multiply the index delta by the borrower's debt shares to get the amount of collateral redeemed
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e18);
-            // if the borrower's epoch is less than the current epoch, we need to reduce his free debt shares and
-            // apply collateral redemption of the following epoch of the borrower's epoch. Following epochs are not
-            // considered since the borrower's debt shares become 0 or negligible after 1 epoch.
-            if(epoch > _borrowerEpoch) {
-                freeDebtShares[borrower] = 0;
-            }
-            // reduce collateral balance and guard against underflow
-            _cachedCollateralBalances[borrower] = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+        uint _borrowerEpoch = borrowerEpoch[borrower];
+        uint bal = _cachedCollateralBalances[borrower];
+        uint lastIndex = borrowerLastRedeemedIndex[borrower];
+        // Loop through all missed epochs
+        while (_borrowerEpoch < epoch && borrowerDebtShares > 0) {
+            // Apply redemption for the borrower's current epoch
+            uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
+            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+
+            // Move to next epoch, reduce shares
+            _borrowerEpoch += 1;
+            borrowerDebtShares /= 1e18;
+            lastIndex = 0; // For new epoch, last redeemed index is 0
         }
+        // Apply any remaining redemption for the current epoch
+        if (borrowerDebtShares > 0) {
+            uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
+            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+        }
+        // Update state
+        freeDebtShares[borrower] = borrowerDebtShares;
+        _cachedCollateralBalances[borrower] = bal;
+
         if(isRedeemable[borrower]){
             borrowerEpoch[borrower] = epoch;
             borrowerLastRedeemedIndex[borrower] = epochRedeemedCollateral[epoch];
-        }
+        } 
     }
 
     function increaseDebt(address account, uint256 amount) internal {

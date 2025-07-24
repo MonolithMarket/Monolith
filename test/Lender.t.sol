@@ -2088,7 +2088,7 @@ contract LenderTest is Test {
         assertGt(updatedEpochRedeemed, initialEpochRedeemed, "Epoch redeemed collateral should increase");
         
         // Calculate expected update to the epoch redeemed collateral
-        uint expectedIndex = expectedCollateralOut * 1e18 / lender.totalFreeDebtShares();
+        uint expectedIndex = expectedCollateralOut * 1e36 / lender.totalFreeDebtShares();
         assertEq(updatedEpochRedeemed - initialEpochRedeemed, expectedIndex, "Epoch redeemed collateral should increase by the correct amount");
     }
     
@@ -2347,7 +2347,7 @@ contract LenderTest is Test {
         // Get the existing Lender contract address
         address lenderAddress = 0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A;
         lender = Lender(lenderAddress);
-
+        lens = new Lens();
         // Deploy a new Lender contract with the same immutable variables as the existing contract
         Lender newLenderImplementation = new Lender(
             lender.collateral(),
@@ -2412,7 +2412,7 @@ contract LenderTest is Test {
         uint256 debt1 = lender.getDebtOf(borrower1);
         vm.startPrank(borrower2);
         lender.coin().approve(address(lender), type(uint).max);
-        lender.adjust(borrower2, -int(collateralBalance2 + 1) , -int(debt2)); 
+        lender.adjust(borrower2, -int(collateralBalance2) , -int(debt2)); 
         assertEq(lens.getCollateralOf(lender, borrower2), 0, "Borrower2's collateral should be zero after update");
         assertEq(lender._cachedCollateralBalances(borrower2), 0, "Borrower2's cached collateral should be zero after update");
         assertEq(lender.getDebtOf(borrower2), 0, "Borrower2's debt should be zero after update");
