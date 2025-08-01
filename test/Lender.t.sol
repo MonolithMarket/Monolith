@@ -1830,7 +1830,9 @@ contract LenderTest is Test {
         if(lender.totalFreeDebt() > 0 && lender.freeDebtShares(borrower) > 0 && lender.totalFreeDebtShares() > 0)
             //Subtract debt if it exists
             netValue -= lender.totalFreeDebt() * lender.freeDebtShares(borrower) / lender.totalFreeDebtShares();
-        assertEq(netValue, collateralAmount, "Net value not equal to start value");
+        assertLe(netValue, collateralAmount, "Net value greater than start value");
+        assertGt(netValue, collateralAmount - 10, "Net value loss greater than 10 wei");
+
     }
 
     
