@@ -356,7 +356,6 @@ contract Lender {
         if( totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
             totalFreeDebtShares /= 1e18;
-            //totalFreeDebt = 0;
             emit NewEpoch(epoch);
         }
 
