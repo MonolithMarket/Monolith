@@ -7,7 +7,7 @@ import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
 import "./Vault.sol";
 import "./InterestModel.sol";
-
+import {console2} from "lib/forge-std/src/console2.sol";
 interface IChainlinkFeed {
     function decimals() external view returns (uint8);
     function latestRoundData() external view returns (
@@ -75,7 +75,7 @@ contract Lender {
     mapping(address => uint) public borrowerLastRedeemedIndex;
     mapping(address => uint) public borrowerEpoch;
     mapping(uint => uint) public epochRedeemedCollateral;
-
+    uint256 nonRedeemableCollateral;
 
     constructor(
         ERC20 _collateral,
@@ -165,12 +165,29 @@ contract Lender {
         updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
+            if(!isRedeemable[account]){
+                nonRedeemableCollateral += uint(collateralDelta);
+            }
             // Deposit collateral
             _cachedCollateralBalances[account] += uint(collateralDelta);
             collateral.safeTransferFrom(msg.sender, address(this), uint(collateralDelta));
         } else if (collateralDelta < 0) {
+            if(isRedeemable[account]) {
+             console2.log("collateralDelta", collateralDelta);
+             console2.log("nonRedeemableCollateral", nonRedeemableCollateral);
+             console2.log("collateral in lender", collateral.balanceOf(address(this)));
+            if (collateral.balanceOf(address(this)) < uint(-collateralDelta)+ nonRedeemableCollateral) {
+                console2.log("Insufficient collateral in lender");
+            } else {
+                require(collateral.balanceOf(address(this))- uint(-collateralDelta) >= nonRedeemableCollateral, "Insufficient non-redeemable collateral");
+            }
+            } else {
+                nonRedeemableCollateral -= uint(-collateralDelta);
+            }
+            require(_cachedCollateralBalances[account] >= uint(-collateralDelta), "Insufficient collateral balance");
             // Withdraw collateral
             _cachedCollateralBalances[account] -= uint(-collateralDelta);
+           
             collateral.safeTransfer(msg.sender, uint(-collateralDelta));
         }
 
@@ -184,7 +201,7 @@ contract Lender {
             // Repay
             uint amount = uint256(-debtDelta);
             uint debt = getDebtOf(account);
-            if(debt < amount) {
+            if(debt <= amount) {
                 amount = debt;
                 decreaseDebt(account, type(uint).max);
             } else {
@@ -355,8 +372,8 @@ contract Lender {
         // Intentional division by zero and revert if totalFreeDebt is 0
         if( totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
-            totalFreeDebtShares /= 1e18;
-            //totalFreeDebt = 0;
+            //totalFreeDebtShares /= 1e18;
+            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1e18,1e36); // ensure shares are in 1e36 format
             emit NewEpoch(epoch);
         }
 
@@ -380,7 +397,10 @@ contract Lender {
 
             // Move to next epoch, reduce shares
             _borrowerEpoch += 1;
-            borrowerDebtShares /= 1e18;
+           // borrowerDebtShares /= 1e18;
+            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36); 
+            borrowerDebtShares == 1 ? borrowerDebtShares = 0 : borrowerDebtShares;
+            console2.log("borrowerDebtShares", borrowerDebtShares);
             lastIndex = 0; // For new epoch, last redeemed index is 0
         }
         // Apply any remaining redemption for the current epoch
@@ -429,10 +449,21 @@ contract Lender {
             } else {
                 shares = amount.mulDivDown(totalFreeDebtShares, totalFreeDebt);
             }
-            
+            console2.log("CRASH");
             freeDebtShares[account] -= shares;
+              console2.log("CRASH2");
+              console2.log("shares", shares);
+              console2.log("totalFreeDebtShares", totalFreeDebtShares);
+              if( totalFreeDebtShares +1 < shares) {
+                console2.log("MORE THAN 1 WEI");
+              } else if(shares != 0) shares -=1;
+              
             totalFreeDebtShares -= shares;
+            console2.log("CRASH3");
+            console2.log("amount", amount);
+            console2.log("totalFreeDebt", totalFreeDebt);
             totalFreeDebt -= amount;
+            console2.log("CRASH4");
         } else {
             // Handle paid debt
             uint256 shares;

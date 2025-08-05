@@ -17,7 +17,7 @@ contract InterestModelTest is Test {
         halfLife = bound(halfLife, 12 hours, 30 days);
         lastRate = bound(lastRate, 5e15, 1e18);
 
-        uint totalPaidDebt = bound(_totalPaidDebt, 1e18, 1e20);
+        uint totalPaidDebt = bound(_totalPaidDebt, 1e18, 1e32);
         uint expRate = uint(wadLn(2*1e18)) / halfLife;
         uint targetFreeDebtRatioStartBps = 2500; // 25%
         uint targetFreeDebtRatioEndBps = 7500; // 75%
