@@ -21,9 +21,8 @@ contract Lens {
 
             // Move to next epoch, reduce shares
             _borrowerEpoch += 1;
-           // borrowerDebtShares /= 1e18;
-            borrowerDebtShares = borrowerDebtShares.mulDivUp(1e18,1e36);
-            borrowerDebtShares = borrowerDebtShares == 1 ? 0 : borrowerDebtShares; // Avoid underflow 
+            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36);
+            borrowerDebtShares = borrowerDebtShares == 1 ? 0 : borrowerDebtShares; // If shares is 1 rounded down to 0
             lastIndex = 0; // For new epoch, last redeemed index is 0
         }
         // Apply any remaining redemption for the current epoch
