@@ -7,7 +7,7 @@ import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
 import "./Vault.sol";
 import "./InterestModel.sol";
-
+import {console2} from "lib/forge-std/src/console2.sol";
 interface IChainlinkFeed {
     function decimals() external view returns (uint8);
     function latestRoundData() external view returns (
@@ -165,9 +165,8 @@ contract Lender {
         updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
-            if(!isRedeemable[account]){
-                nonRedeemableCollateral += uint(collateralDelta);
-            }
+            if(!isRedeemable[account]) nonRedeemableCollateral += uint(collateralDelta);
+            
             // Deposit collateral
             _cachedCollateralBalances[account] += uint(collateralDelta);
             collateral.safeTransferFrom(msg.sender, address(this), uint(collateralDelta));
@@ -396,8 +395,7 @@ contract Lender {
 
             // Move to next epoch, reduce shares
             _borrowerEpoch += 1;
-            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36); 
-            borrowerDebtShares == 1 ? borrowerDebtShares = 0 : borrowerDebtShares;
+            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
             lastIndex = 0; // For new epoch, last redeemed index is 0
         }
         // Apply any remaining redemption for the current epoch
@@ -448,8 +446,8 @@ contract Lender {
             }
 
             freeDebtShares[account] -= shares;
-            totalFreeDebtShares < shares ? totalFreeDebtShares = 0 : totalFreeDebtShares -= shares; // prevent underflow
-            totalFreeDebt < amount ? totalFreeDebt = 0 : totalFreeDebt -= amount; // prevent underflow
+            totalFreeDebtShares = totalFreeDebtShares <= shares ? 0 : totalFreeDebtShares - shares; // prevent underflow
+            totalFreeDebt = totalFreeDebt <= amount ? 0 : totalFreeDebt - amount; // prevent underflow
         } else {
             // Handle paid debt
             uint256 shares;
