@@ -346,4 +346,125 @@ contract LenderForkTest is Test {
         assertEq(lender.freeDebtShares(borrower2), 0, "Borrower2's free debt shares should be zero at the end");
         assertEq(lender.paidDebtShares(nonRedeemableBorrower3), 0, "Borrower3's paid debt shares should be zero at the end");
     }    
-}
+
+    function test_nonRedeemableCollateral_accounting_for_adjust(uint256 collateralAmount, uint256 nonRedeemableCollateralAmount) public {
+        collateralAmount = bound(collateralAmount, 1e16, 100_000_000e18);
+        nonRedeemableCollateralAmount = bound(nonRedeemableCollateralAmount, 1e16, 100_000_000e18);
+
+          // Setup: create multiple borrowers with redeemable debt and non-redeemable debt
+        (uint price,,) = lender.getCollateralPrice();
+        
+        uint borrowAmount1 =  collateralAmount * price / 1 ether * 80 / 100; // 80% of collateral amount
+        uint nonRedeemableBorrowAmount = nonRedeemableCollateralAmount * price / 1 ether * 80 / 100; // non-redeemable debt amount
+        // Prepare test data
+        address borrower1 = address(0xBEEF);
+        address nonRedeemableBorrower = address(0xBEEF2);
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        deal(address(collateral), borrower1, collateralAmount);
+        deal(address(collateral), nonRedeemableBorrower, nonRedeemableCollateralAmount); 
+
+         // Setup: borrower1 creates a redeemable position
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), type(uint).max);
+        coin.approve(address(lender), type(uint).max);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1), true); // opt into redemptions
+        vm.stopPrank();
+        assertEq(lender.nonRedeemableCollateral(),0, "Non-redeemable collateral should be zero if is borrower has redeemable debt");
+        // Borrower3 creates a non-redeemable position
+        vm.startPrank(nonRedeemableBorrower);
+        collateral.approve(address(lender), nonRedeemableCollateralAmount);
+        lender.adjust(nonRedeemableBorrower, int256(nonRedeemableCollateralAmount), int256(nonRedeemableBorrowAmount), false); // non-redeemable debt
+        vm.stopPrank();
+        assertEq(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount, "Non-redeemable collateral should be equal to initial amount after non-redeemable borrower creation");
+        
+        vm.prank(borrower1);
+        lender.setRedemptionStatus(borrower1, false); // make borrower1 non-redeemable
+        assertEq(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount + collateralAmount, "Non-redeemable collateral should be equal to initial amount after borrower1 becomes non-redeemable");
+
+        vm.startPrank(nonRedeemableBorrower);
+        lender.setRedemptionStatus(nonRedeemableBorrower, true); // make non-redeemable borrower redeemable
+        assertEq(lender.nonRedeemableCollateral(), collateralAmount, "Non-redeemable collateral should be equal to collateralAmount after non-redeemable borrower becomes redeemable");
+
+        coin.approve(address(lender), type(uint).max);
+        // Remove redeemable half of redeemable collateral
+        lender.adjust(nonRedeemableBorrower, -int256(nonRedeemableCollateralAmount/2), -int256(nonRedeemableBorrowAmount)); // withdraw non-redeemable collateral
+        // 1 wei delta in case nonRedeemableCollateralAmount is odd
+        assertApproxEqAbs(lender.nonRedeemableCollateral(), collateralAmount , 1,"Non-redeemable collateral should be unchanged after redeemable collateral withdrawal");
+        vm.stopPrank();
+
+        vm.prank(borrower1);
+        lender.setRedemptionStatus(borrower1, true); // make borrower1 redeemable
+        assertEq(lender.nonRedeemableCollateral(), 0, "Non-redeemable collateral should be zero after borrower1 becomes redeemable");
+
+        vm.startPrank(nonRedeemableBorrower);
+        lender.setRedemptionStatus(nonRedeemableBorrower, false); // make non-redeemable borrower non-redeemable
+        // 1 wei delta in case nonRedeemableCollateralAmount is odd
+        assertApproxEqAbs(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount/2, 1, "Non-redeemable collateral should be equal half of initial amount");
+
+        lender.adjust(nonRedeemableBorrower, -int256(lens.getCollateralOf(lender,nonRedeemableBorrower)), 0); // withdraw non-redeemable collateral
+        assertEq(lender.nonRedeemableCollateral(), 0, "Non-redeemable collateral should be zero after non-redeemable borrower withdrawal");
+        vm.stopPrank();
+        
+        vm.startPrank(borrower1);
+        lender.setRedemptionStatus(borrower1, false); // make borrower1 non-redeemable
+        assertEq(lender.nonRedeemableCollateral(), collateralAmount, "Non-redeemable collateral should be equal to initial amount after borrower1 becomes non-redeemable");
+        coin.approve(address(lender), type(uint).max);
+        lender.adjust(borrower1, -int256(collateralAmount), -int(borrowAmount1));
+        assertEq(lender.nonRedeemableCollateral(), 0, "Non-redeemable collateral should be zero after borrower1 withdrawal");
+        assertEq(collateral.balanceOf(address(lender)), 0, "Lender's collateral balance should be zero after all withdrawals");
+    }
+
+    function test_nonRedeemableCollateral_accounting_setRedemptionStatus_only(uint256 collateralAmount, uint256 nonRedeemableCollateralAmount) public {
+        collateralAmount = bound(collateralAmount, 1e16, 100_000_000e18);
+        nonRedeemableCollateralAmount = bound(nonRedeemableCollateralAmount, 1e16, 100_000_000e18);
+
+          // Setup: create multiple borrowers with redeemable debt and non-redeemable debt
+        (uint price,,) = lender.getCollateralPrice();
+        
+        uint borrowAmount1 =  collateralAmount * price / 1 ether * 80 / 100; // 80% of collateral amount
+        uint nonRedeemableBorrowAmount = nonRedeemableCollateralAmount * price / 1 ether * 80 / 100; // non-redeemable debt amount
+        // Prepare test data
+        address borrower1 = address(0xBEEF);
+        address nonRedeemableBorrower = address(0xBEEF2);
+        
+        // Setup: mint collateral to borrowers and coins to redeemer
+        deal(address(collateral), borrower1, collateralAmount);
+        deal(address(collateral), nonRedeemableBorrower, nonRedeemableCollateralAmount); 
+
+         // Setup: borrower1 creates a redeemable position
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), type(uint).max);
+        coin.approve(address(lender), type(uint).max);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1), true); // opt into redemptions
+        vm.stopPrank();
+        assertEq(lender.nonRedeemableCollateral(),0, "Non-redeemable collateral should be zero if is borrower has redeemable debt");
+        // Borrower creates a non-redeemable position
+        vm.startPrank(nonRedeemableBorrower);
+        collateral.approve(address(lender), nonRedeemableCollateralAmount);
+        lender.adjust(nonRedeemableBorrower, int256(nonRedeemableCollateralAmount), int256(nonRedeemableBorrowAmount), false); // non-redeemable debt
+        vm.stopPrank();
+        assertEq(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount, "Non-redeemable collateral should be equal to initial amount after non-redeemable borrower creation");
+        
+        vm.prank(borrower1);
+        lender.setRedemptionStatus(borrower1, false); // make borrower1 non-redeemable
+        assertEq(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount + collateralAmount, "Non-redeemable collateral should be equal to initial amount after borrower1 becomes non-redeemable");
+
+        vm.prank(nonRedeemableBorrower);
+        lender.setRedemptionStatus(nonRedeemableBorrower, true); // make non-redeemable borrower redeemable
+        assertEq(lender.nonRedeemableCollateral(), collateralAmount, "Non-redeemable collateral should be equal to collateralAmount after non-redeemable borrower becomes redeemable");
+
+        vm.prank(borrower1);
+        lender.setRedemptionStatus(borrower1, true); // make borrower1 redeemable
+        assertEq(lender.nonRedeemableCollateral(), 0, "Non-redeemable collateral should be zero after borrower1 becomes redeemable");
+
+        vm.prank(nonRedeemableBorrower);
+        lender.setRedemptionStatus(nonRedeemableBorrower, false); // make non-redeemable borrower non-redeemable
+        assertEq(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount, "Non-redeemable collateral should be equal to initial amount after non-redeemable borrower creation");
+        
+        vm.prank(borrower1);
+        lender.setRedemptionStatus(borrower1, false); // make borrower1 non-redeemable
+        assertEq(lender.nonRedeemableCollateral(), collateralAmount + nonRedeemableCollateralAmount, "Non-redeemable collateral should be equal to collateralAmount and non-redeemableCollateralAmount after borrower1 becomes non-redeemable");
+        
+    }
+}   
