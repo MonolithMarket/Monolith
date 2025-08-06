@@ -342,10 +342,8 @@ contract LenderForkTest is Test {
         assertEq(lender._cachedCollateralBalances(borrower1), 0, "Borrower1's cached collateral should be zero at the end");
         assertEq(lender._cachedCollateralBalances(borrower2), 0, "Borrower2's cached collateral should be zero at the end");
         assertEq(lender._cachedCollateralBalances(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's cached collateral should be zero at the end");
-        // console2.log("Collateral in excess",collateral.balanceOf(address(lender)));
-        // console2.log("Total free debt shares", lender.totalFreeDebtShares());
-        // console2.log("Total free debt", lender.totalFreeDebt());
-        // console2.log("Total paid debt shares", lender.totalPaidDebtShares());
-        // console2.log("Total paid debt", lender.totalPaidDebt());
+        assertEq(lender.freeDebtShares(borrower1), 0, "Borrower1's free debt shares should be zero at the end");
+        assertEq(lender.freeDebtShares(borrower2), 0, "Borrower2's free debt shares should be zero at the end");
+        assertEq(lender.paidDebtShares(nonRedeemableBorrower3), 0, "Borrower3's paid debt shares should be zero at the end");
     }    
 }

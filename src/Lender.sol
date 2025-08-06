@@ -7,7 +7,7 @@ import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
 import "./Vault.sol";
 import "./InterestModel.sol";
-import {console2} from "lib/forge-std/src/console2.sol";
+
 interface IChainlinkFeed {
     function decimals() external view returns (uint8);
     function latestRoundData() external view returns (
@@ -183,7 +183,6 @@ contract Lender {
  
             // Withdraw collateral
             _cachedCollateralBalances[account] -= uint(-collateralDelta);
-           
             collateral.safeTransfer(msg.sender, uint(-collateralDelta));
         }
 
@@ -444,7 +443,6 @@ contract Lender {
             } else {
                 shares = amount.mulDivDown(totalFreeDebtShares, totalFreeDebt);
             }
-
             freeDebtShares[account] -= shares;
             totalFreeDebtShares = totalFreeDebtShares <= shares ? 0 : totalFreeDebtShares - shares; // prevent underflow
             totalFreeDebt = totalFreeDebt <= amount ? 0 : totalFreeDebt - amount; // prevent underflow
