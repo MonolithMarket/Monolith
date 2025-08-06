@@ -271,8 +271,6 @@ contract LenderForkTest is Test {
         assertEq(collateral.balanceOf(address(lender)), collateralAmount2 + collateralAmount1 + nonRedeemableCollateralAmount, "Collateral balance in lender should be correct");
         
         for(uint i; i < 50; i++){
-           // console2.log("Iteration: %s", lender.epoch());
-            // console2.log("total free debt shares: %s", lender.totalFreeDebtShares());
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
             uint borrowingPower = price * lens.getCollateralOf(lender, borrower1) * (lender.collateralFactor()-1) / 1e18 / 10000 - lender.getDebtOf(borrower1);

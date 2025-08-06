@@ -75,7 +75,7 @@ contract Lender {
     mapping(address => uint) public borrowerLastRedeemedIndex;
     mapping(address => uint) public borrowerEpoch;
     mapping(uint => uint) public epochRedeemedCollateral;
-    uint256 nonRedeemableCollateral;
+    uint256 public nonRedeemableCollateral;
 
     constructor(
         ERC20 _collateral,
@@ -176,13 +176,12 @@ contract Lender {
             if (isRedeemable[account]) {
                 require(
                     collateral.balanceOf(address(this)) - uint256(-collateralDelta) >= nonRedeemableCollateral,
-                    "Insufficient non-redeemable collateral"
+                    "Insufficient redeemable collateral"
                 );
             } else {
                 nonRedeemableCollateral -= uint256(-collateralDelta);
             }
-            
-            require(_cachedCollateralBalances[account] >= uint(-collateralDelta), "Insufficient collateral balance");
+ 
             // Withdraw collateral
             _cachedCollateralBalances[account] -= uint(-collateralDelta);
            
@@ -373,8 +372,7 @@ contract Lender {
         // Intentional division by zero and revert if totalFreeDebt is 0
         if( totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
-           // totalFreeDebtShares /= 1e18;
-            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1e18,1e36); // ensure shares are in 1e36 format
+            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1e18,1e36); 
             emit NewEpoch(epoch);
         }
 

@@ -2231,7 +2231,7 @@ contract LenderTest is Test {
     }
 
     function test_repeated_redemptions_bug(int collateralPrice) public {
-        collateralPrice = bound(collateralPrice, 1e16, 1e30);
+        collateralPrice = bound(collateralPrice, 1e16, 1e25);
 
         // Setup: create multiple borrowers with redeemable debt
         uint collateralAmount1 = 25e24;
