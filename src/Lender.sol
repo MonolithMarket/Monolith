@@ -359,7 +359,7 @@ contract Lender {
         // calculate amountOut
         amountOut = getRedeemAmountOut(amountIn);
         require(amountOut >= minAmountOut, "insufficient amount out");
-
+        require(collateral.balanceOf(address(this)) - amountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn;
         coin.transferFrom(msg.sender, address(this), amountIn);
