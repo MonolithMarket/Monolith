@@ -385,6 +385,8 @@ contract Lender {
 
     function updateBorrower(address borrower) internal {
         uint borrowerDebtShares = freeDebtShares[borrower];
+        
+        if (borrowerDebtShares > 0) {
         uint _borrowerEpoch = borrowerEpoch[borrower];
         uint bal = _cachedCollateralBalances[borrower];
         uint lastIndex = borrowerLastRedeemedIndex[borrower];
@@ -409,6 +411,7 @@ contract Lender {
         // Update state
         freeDebtShares[borrower] = borrowerDebtShares;
         _cachedCollateralBalances[borrower] = bal;
+        }
 
         if(isRedeemable[borrower]){
             borrowerEpoch[borrower] = epoch;
