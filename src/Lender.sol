@@ -7,7 +7,7 @@ import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
 import "./Vault.sol";
 import "./InterestModel.sol";
-
+import {console2} from "forge-std/console2.sol";
 interface IChainlinkFeed {
     function decimals() external view returns (uint8);
     function latestRoundData() external view returns (
@@ -387,30 +387,30 @@ contract Lender {
         uint borrowerDebtShares = freeDebtShares[borrower];
         
         if (borrowerDebtShares > 0) {
-        uint _borrowerEpoch = borrowerEpoch[borrower];
-        uint bal = _cachedCollateralBalances[borrower];
-        uint lastIndex = borrowerLastRedeemedIndex[borrower];
-        // Loop through all missed epochs
-        while (_borrowerEpoch < epoch && borrowerDebtShares > 0) {
-            // Apply redemption for the borrower's current epoch
-            uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
-            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+            uint _borrowerEpoch = borrowerEpoch[borrower];
+            uint bal = _cachedCollateralBalances[borrower];
+            uint lastIndex = borrowerLastRedeemedIndex[borrower];
+            // Loop through missed epochs (max 5 iterations considering max uint256 is 2^256 - 1 would go to zero in 5 iterations)
+            for (uint i = 0; i < 5 && _borrowerEpoch < epoch && borrowerDebtShares > 0; ++i) {
+                // Apply redemption for the borrower's current epoch
+                uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
+                uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+                bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
 
-            // Move to next epoch, reduce shares
-            _borrowerEpoch += 1;
-            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
-            lastIndex = 0; // For new epoch, last redeemed index is 0
-        }
-        // Apply any remaining redemption for the current epoch
-        if (borrowerDebtShares > 0) {
-            uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
-            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
-        }
-        // Update state
-        freeDebtShares[borrower] = borrowerDebtShares;
-        _cachedCollateralBalances[borrower] = bal;
+                // Move to next epoch, reduce shares
+                _borrowerEpoch += 1;
+                borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
+                lastIndex = 0; // For new epoch, last redeemed index is 0
+            }
+            // Apply any remaining redemption for the current epoch
+            if (borrowerDebtShares > 0) {
+                uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
+                uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+                bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+            }
+            // Update state
+            freeDebtShares[borrower] = borrowerDebtShares;
+            _cachedCollateralBalances[borrower] = bal;
         }
 
         if(isRedeemable[borrower]){

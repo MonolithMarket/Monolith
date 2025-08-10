@@ -6,14 +6,17 @@ import "./Lender.sol";
 contract Lens {
 
     using FixedPointMathLib for uint256;
+    
 
     function getCollateralOf(Lender _lender, address borrower) public view returns (uint256) {
         uint borrowerDebtShares = _lender.freeDebtShares(borrower);
+        // If borrower has no debt shares skip calculation
+        if (borrowerDebtShares == 0) return 0;
         uint _borrowerEpoch = _lender.borrowerEpoch(borrower);
         uint bal = _lender._cachedCollateralBalances(borrower);
         uint lastIndex = _lender.borrowerLastRedeemedIndex(borrower);
         // Loop through all missed epochs
-        while (_borrowerEpoch < _lender.epoch() && borrowerDebtShares > 0) {
+        for (uint i = 0; i < 5 && _borrowerEpoch < _lender.epoch() && borrowerDebtShares > 0; ++i) {
             // Apply redemption for the borrower's current epoch
             uint indexDelta = _lender.epochRedeemedCollateral(_borrowerEpoch) - lastIndex;
             uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
@@ -21,8 +24,7 @@ contract Lens {
 
             // Move to next epoch, reduce shares
             _borrowerEpoch += 1;
-            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36);
-            borrowerDebtShares = borrowerDebtShares == 1 ? 0 : borrowerDebtShares; // If shares is 1 round down to 0
+            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
             lastIndex = 0; // For new epoch, last redeemed index is 0
         }
         // Apply any remaining redemption for the current epoch
