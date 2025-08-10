@@ -7,7 +7,7 @@ import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
 import "./Vault.sol";
 import "./InterestModel.sol";
-import {console2} from "forge-std/console2.sol";
+
 interface IChainlinkFeed {
     function decimals() external view returns (uint8);
     function latestRoundData() external view returns (
