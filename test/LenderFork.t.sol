@@ -212,7 +212,7 @@ contract LenderForkTest is Test {
         
         // Non-redeemable borrower should still have their collateral and debt
         vm.startPrank(nonRedeemableBorrower3);
-        uint256 nonRedeemableCollateralBalance = lens.getCollateralOf(lender, nonRedeemableBorrower3);
+        uint256 nonRedeemableCollateralBalance = lender._cachedCollateralBalances(nonRedeemableBorrower3);
         uint256 nonRedeemableDebt = lender.getDebtOf(nonRedeemableBorrower3);
         lender.coin().approve(address(lender), type(uint).max);
         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
@@ -322,7 +322,7 @@ contract LenderForkTest is Test {
         
         // Non-redeemable borrower should still have their collateral and debt
         vm.startPrank(nonRedeemableBorrower3);
-        uint256 nonRedeemableCollateralBalance = lens.getCollateralOf(lender, nonRedeemableBorrower3);
+        uint256 nonRedeemableCollateralBalance = lender._cachedCollateralBalances(nonRedeemableBorrower3);
         uint256 nonRedeemableDebt = lender.getDebtOf(nonRedeemableBorrower3);
         lender.coin().approve(address(lender), type(uint).max);
         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
@@ -402,7 +402,7 @@ contract LenderForkTest is Test {
         // 1 wei delta in case nonRedeemableCollateralAmount is odd
         assertApproxEqAbs(lender.nonRedeemableCollateral(), nonRedeemableCollateralAmount/2, 1, "Non-redeemable collateral should be equal half of initial amount");
 
-        lender.adjust(nonRedeemableBorrower, -int256(lens.getCollateralOf(lender,nonRedeemableBorrower)), 0); // withdraw non-redeemable collateral
+        lender.adjust(nonRedeemableBorrower, -int256(lender._cachedCollateralBalances(nonRedeemableBorrower)), 0); // withdraw non-redeemable collateral
         assertEq(lender.nonRedeemableCollateral(), 0, "Non-redeemable collateral should be zero after non-redeemable borrower withdrawal");
         vm.stopPrank();
         
