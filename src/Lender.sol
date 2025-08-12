@@ -75,7 +75,7 @@ contract Lender {
     mapping(address => uint) public borrowerLastRedeemedIndex;
     mapping(address => uint) public borrowerEpoch;
     mapping(uint => uint) public epochRedeemedCollateral;
-
+    uint256 public nonRedeemableCollateral;
 
     constructor(
         ERC20 _collateral,
@@ -165,10 +165,22 @@ contract Lender {
         updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
+            if(!isRedeemable[account]) nonRedeemableCollateral += uint(collateralDelta);
+            
             // Deposit collateral
             _cachedCollateralBalances[account] += uint(collateralDelta);
             collateral.safeTransferFrom(msg.sender, address(this), uint(collateralDelta));
         } else if (collateralDelta < 0) {
+            // Ensure sufficient collateral for non-redeemable accounts
+            if (isRedeemable[account]) {
+                require(
+                    collateral.balanceOf(address(this)) - uint256(-collateralDelta) >= nonRedeemableCollateral,
+                    "Insufficient redeemable collateral"
+                );
+            } else {
+                nonRedeemableCollateral -= uint256(-collateralDelta);
+            }
+ 
             // Withdraw collateral
             _cachedCollateralBalances[account] -= uint(-collateralDelta);
             collateral.safeTransfer(msg.sender, uint(-collateralDelta));
@@ -184,7 +196,7 @@ contract Lender {
             // Repay
             uint amount = uint256(-debtDelta);
             uint debt = getDebtOf(account);
-            if(debt < amount) {
+            if(debt <= amount) {
                 amount = debt;
                 decreaseDebt(account, type(uint).max);
             } else {
@@ -238,6 +250,9 @@ contract Lender {
         if(chooseRedeemable){
             borrowerEpoch[account] = epoch;
             borrowerLastRedeemedIndex[account] = epochRedeemedCollateral[epoch];
+            nonRedeemableCollateral -= _cachedCollateralBalances[account];
+        } else {
+            nonRedeemableCollateral += _cachedCollateralBalances[account];
         }
         uint prevDebt = getDebtOf(account);
         if(prevDebt > 0) {
@@ -285,6 +300,7 @@ contract Lender {
         if(collateralReward > 0) {
             collateral.safeTransfer(msg.sender, collateralReward);
             _cachedCollateralBalances[borrower] = collateralBalance - collateralReward;
+            if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralReward;
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
@@ -324,6 +340,8 @@ contract Lender {
                 }
                 // 3. send collateral to caller
                 collateral.safeTransfer(to, collateralBalance);
+                if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralBalance;
+                
                 _cachedCollateralBalances[borrower] = 0;
                 emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
@@ -341,21 +359,21 @@ contract Lender {
         // calculate amountOut
         amountOut = getRedeemAmountOut(amountIn);
         require(amountOut >= minAmountOut, "insufficient amount out");
-
+        require(collateral.balanceOf(address(this)) - amountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn;
         coin.transferFrom(msg.sender, address(this), amountIn);
         coin.burn(amountIn);
 
         // distribute collateral redemption per free debt share
-        epochRedeemedCollateral[epoch] += amountOut * 1e18 / totalFreeDebtShares;
+        epochRedeemedCollateral[epoch] += amountOut.mulDivUp(1e36, totalFreeDebtShares);
 
         collateral.safeTransfer(msg.sender, amountOut);
 
         // Intentional division by zero and revert if totalFreeDebt is 0
-        if(totalFreeDebtShares / totalFreeDebt > 1e18) {
+        if( totalFreeDebtShares / totalFreeDebt > 1e9) {
             epoch++;
-            totalFreeDebtShares /= 1e18;
+            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1e18,1e36); 
             emit NewEpoch(epoch);
         }
 
@@ -367,36 +385,38 @@ contract Lender {
 
     function updateBorrower(address borrower) internal {
         uint borrowerDebtShares = freeDebtShares[borrower];
-        // if borrower has free debt, we proceed
-        if(borrowerDebtShares > 0) {
+        
+        if (borrowerDebtShares > 0) {
             uint _borrowerEpoch = borrowerEpoch[borrower];
             uint bal = _cachedCollateralBalances[borrower];
-            // index is denominated in collateral tokens redeemed per free debt share
-            uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - borrowerLastRedeemedIndex[borrower];
-            // multiply the index delta by the borrower's debt shares to get the amount of collateral redeemed
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e18);
-            // if the borrower's epoch is less than the current epoch, we need to reduce his free debt shares and
-            // apply collateral redemption of the following epoch of the borrower's epoch. Following epochs are not
-            // considered since the borrower's debt shares become 0 or negligible after 1 epoch.
-            if(epoch > _borrowerEpoch) {
-                // reduce the borrower's debt to match shares of the next epoch
-                borrowerDebtShares /= 1e18;
-                // if the division above rounds down to 0, we skip the redemption
-                if(borrowerDebtShares > 0) {
-                    // Add additional redeemedCollateral
-                    // in this case, the entire epoch's index is equal to our delta (epochRedeemedCollateral[_borrowerEpoch + 1] - 0)
-                    redeemedCollateral += epochRedeemedCollateral[_borrowerEpoch + 1].mulDivUp(borrowerDebtShares, 1e18);
-                }
-                // update the borrower's debt shares. May be 0 or positive.
-                freeDebtShares[borrower] = borrowerDebtShares;
+            uint lastIndex = borrowerLastRedeemedIndex[borrower];
+            // Loop through missed epochs (max 5 iterations considering max uint256 is 2^256 - 1 would go to zero in 5 iterations)
+            for (uint i = 0; i < 5 && _borrowerEpoch < epoch && borrowerDebtShares > 0; ++i) {
+                // Apply redemption for the borrower's current epoch
+                uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
+                uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+                bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+
+                // Move to next epoch, reduce shares
+                _borrowerEpoch += 1;
+                borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
+                lastIndex = 0; // For new epoch, last redeemed index is 0
             }
-            // reduce collateral balance and guard against underflow
-            _cachedCollateralBalances[borrower] = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+            // Apply any remaining redemption for the current epoch
+            if (borrowerDebtShares > 0) {
+                uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
+                uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+                bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+            }
+            // Update state
+            freeDebtShares[borrower] = borrowerDebtShares;
+            _cachedCollateralBalances[borrower] = bal;
         }
+
         if(isRedeemable[borrower]){
             borrowerEpoch[borrower] = epoch;
             borrowerLastRedeemedIndex[borrower] = epochRedeemedCollateral[epoch];
-        }
+        } 
     }
 
     function increaseDebt(address account, uint256 amount) internal {
@@ -429,10 +449,9 @@ contract Lender {
             } else {
                 shares = amount.mulDivDown(totalFreeDebtShares, totalFreeDebt);
             }
-            
             freeDebtShares[account] -= shares;
-            totalFreeDebtShares -= shares;
-            totalFreeDebt -= amount;
+            totalFreeDebtShares = totalFreeDebtShares <= shares ? 0 : totalFreeDebtShares - shares; // prevent underflow
+            totalFreeDebt = totalFreeDebt <= amount ? 0 : totalFreeDebt - amount; // prevent underflow
         } else {
             // Handle paid debt
             uint256 shares;
@@ -483,9 +502,9 @@ contract Lender {
 
     function getDebtOf(address account) public view returns (uint) {
         if(isRedeemable[account]) {
-            return totalFreeDebtShares == 0 ? 0 : freeDebtShares[account].mulDivDown(totalFreeDebt, totalFreeDebtShares);
+            return totalFreeDebtShares == 0 ? 0 : freeDebtShares[account].mulDivUp(totalFreeDebt, totalFreeDebtShares);
         } else {
-            return totalPaidDebtShares == 0 ? 0 : paidDebtShares[account].mulDivDown(totalPaidDebt, totalPaidDebtShares);
+            return totalPaidDebtShares == 0 ? 0 : paidDebtShares[account].mulDivUp(totalPaidDebt, totalPaidDebtShares);
         }
     }
 

@@ -6,31 +6,31 @@ import "./Lender.sol";
 contract Lens {
 
     using FixedPointMathLib for uint256;
+    
 
-    function getCollateralOf(Lender _lender, address _borrower) public view returns (uint256) {
-        uint bal = _lender._cachedCollateralBalances(_borrower);
-        uint borrowerDebtShares = _lender.freeDebtShares(_borrower);
-        // if borrower has free debt, we proceed
-        if(borrowerDebtShares > 0) {
-            uint _borrowerEpoch = _lender.borrowerEpoch(_borrower);
-            // index is denominated in collateral tokens redeemed per free debt share
-            uint indexDelta = _lender.epochRedeemedCollateral(_borrowerEpoch) - _lender.borrowerLastRedeemedIndex(_borrower);
-            // multiply the index delta by the borrower's debt shares to get the amount of collateral redeemed
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e18);
-            // if the borrower's epoch is less than the current epoch, we need to reduce his free debt shares and
-            // apply collateral redemption of the following epoch of the borrower's epoch. Following epochs are not
-            // considered since the borrower's debt shares become 0 or negligible after 1 epoch.
-            if(_lender.epoch() > _borrowerEpoch) {
-                // reduce the borrower's debt to match shares of the next epoch
-                borrowerDebtShares /= 1e18;
-                // if the division above rounds down to 0, we skip the redemption
-                if(borrowerDebtShares > 0) {
-                    // Add additional redeemedCollateral
-                    // in this case, the entire epoch's index is equal to our delta (epochRedeemedCollateral[_borrowerEpoch + 1] - 0)
-                    redeemedCollateral += _lender.epochRedeemedCollateral(_borrowerEpoch + 1).mulDivUp(borrowerDebtShares, 1e18);
-                }
-            }
-            // reduce collateral balance and guard against underflow
+    function getCollateralOf(Lender _lender, address borrower) public view returns (uint256) {
+        uint borrowerDebtShares = _lender.freeDebtShares(borrower);
+        // If borrower has no debt shares skip calculation
+        if (borrowerDebtShares == 0) return 0;
+        uint _borrowerEpoch = _lender.borrowerEpoch(borrower);
+        uint bal = _lender._cachedCollateralBalances(borrower);
+        uint lastIndex = _lender.borrowerLastRedeemedIndex(borrower);
+        // Loop through all missed epochs
+        for (uint i = 0; i < 5 && _borrowerEpoch < _lender.epoch() && borrowerDebtShares > 0; ++i) {
+            // Apply redemption for the borrower's current epoch
+            uint indexDelta = _lender.epochRedeemedCollateral(_borrowerEpoch) - lastIndex;
+            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
+            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+
+            // Move to next epoch, reduce shares
+            _borrowerEpoch += 1;
+            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
+            lastIndex = 0; // For new epoch, last redeemed index is 0
+        }
+        // Apply any remaining redemption for the current epoch
+        if (borrowerDebtShares > 0) {
+            uint indexDelta = _lender.epochRedeemedCollateral(_borrowerEpoch) - lastIndex;
+            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
             bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
         }
         return bal;
