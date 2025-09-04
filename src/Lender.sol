@@ -34,7 +34,7 @@ contract Lender {
     uint16 public redeemFeeBps = 30; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
     uint64 public expRate = uint64(uint(wadLn(2*1e18)) / 7 days); // max result is 693147180559945309 which is within uint64 range
     uint40 public lastAccrue; // max uint40 is year 36812
-    uint88 public lastBorrowRateMantissa = uint88(5e15); // max uint88 is equivalent to 309485000% APR
+    uint88 public lastBorrowRateMantissa = uint88(2e16); // max uint88 is equivalent to 309485000% APR
     uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
 
     // single 256-bit slot
