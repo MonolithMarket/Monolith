@@ -491,18 +491,18 @@ contract Lender {
 
     function getLiquidationIncentiveBps(uint collateralBalance, uint price, uint debt) internal view returns(uint) {
         uint collateralValue = collateralBalance * price / 1e18;
-        if (collateralValue == 0) return 100; // avoid division by zero, return 1% incentive
+        if (collateralValue == 0) return 0; // avoid division by zero, return 0% incentive
         uint ltvBps = debt * 10000 / collateralValue;
         uint _collateralFactor = collateralFactor; // gas optimization
         uint maxLtvBps = _collateralFactor + 500; // range is [_collateralFactor, _collateralFactor + 5%]
 
         if (ltvBps <= _collateralFactor) {
-            return 100; // 1% incentive
+            return 0; // 0% incentive
         } else if (ltvBps >= maxLtvBps) {
             return 1000; // 10% incentive
         } else {
-            // linear interpolation between 1% and 10% incentive
-            return 100 + (ltvBps - _collateralFactor) * 900 / (maxLtvBps - _collateralFactor);
+            // linear interpolation between 0% and 10% incentive
+            return (ltvBps - _collateralFactor) * 1000 / (maxLtvBps - _collateralFactor);
         }
     }
 
