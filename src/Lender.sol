@@ -197,6 +197,7 @@ contract Lender {
         }
 
         // Handle debt changes
+        int actualDebtDelta = debtDelta;
         if (debtDelta > 0) {
             // Borrow
             uint amount = uint256(debtDelta);
@@ -208,6 +209,7 @@ contract Lender {
             uint debt = getDebtOf(account);
             if(debt <= amount) {
                 amount = debt;
+                actualDebtDelta = -int(debt); // Use actual debt repaid for full repayment
                 decreaseDebt(account, type(uint).max);
             } else {
                 decreaseDebt(account, amount);
@@ -221,7 +223,7 @@ contract Lender {
         if(debtDelta != 0) require(debtBalance == 0 || debtBalance >= minDebt, "Debt below minimum and larger than 0");
 
         // Emit event before the first early return
-        emit PositionAdjusted(account, collateralDelta, debtDelta);
+        emit PositionAdjusted(account, collateralDelta, actualDebtDelta);
 
         // Skip remaining invariants if caller does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
