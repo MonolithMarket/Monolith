@@ -282,7 +282,8 @@ contract FactoryTest is Test {
         uint256 minDebt = 1000e18;
         uint256 timeUntilImmutability = 365 days;
         address deployerOperator = address(0xBEEF);
-        
+        address managerAddr = address(0x1234);
+
         // Deploy new lending market
         vm.prank(deployerOperator);
         Factory.DeployParams memory params = Factory.DeployParams({
@@ -293,7 +294,8 @@ contract FactoryTest is Test {
             collateralFactor: collateralFactor,
             minDebt: minDebt,
             timeUntilImmutability: timeUntilImmutability,
-            operator: deployerOperator
+            operator: deployerOperator,
+            manager: managerAddr
         });
         (address lender, address coin, address vault) = factory.deploy(params);
         
@@ -313,19 +315,18 @@ contract FactoryTest is Test {
         assertEq(address(lenderContract.feed()), feedAddr, "Lender feed should be set correctly");
         assertEq(lenderContract.collateralFactor(), collateralFactor, "Lender collateralFactor should be set correctly");
         assertEq(lenderContract.minDebt(), minDebt, "Lender minDebt should be set correctly");
+        assertEq(lenderContract.manager(), managerAddr, "Lender manager should be set correctly");
         
         // Verify coin configuration
         Coin coinContract = Coin(coin);
-        assertEq(coinContract.name(), name, "Coin name should be set correctly");
-        assertEq(coinContract.symbol(), symbol, "Coin symbol should be set correctly");
+        assertEq(coinContract.name(), params.name, "Coin name should be set correctly");
+        assertEq(coinContract.symbol(), params.symbol, "Coin symbol should be set correctly");
         assertEq(coinContract.minter(), lender, "Coin minter should be set to lender");
         
         // Verify vault configuration
         Vault vaultContract = Vault(vault);
-        string memory expectedVaultName = string(abi.encodePacked("Staked ", name));
-        string memory expectedVaultSymbol = string(abi.encodePacked("s", symbol));
-        assertEq(vaultContract.name(), expectedVaultName, "Vault name should be set correctly");
-        assertEq(vaultContract.symbol(), expectedVaultSymbol, "Vault symbol should be set correctly");
+        assertEq(vaultContract.name(), string(abi.encodePacked("Staked ", params.name)), "Vault name should be set correctly");
+        assertEq(vaultContract.symbol(), string(abi.encodePacked("s", params.symbol)), "Vault symbol should be set correctly");
         assertEq(address(vaultContract.lender()), lender, "Vault lender should be set correctly");
     }
     
@@ -336,9 +337,11 @@ contract FactoryTest is Test {
         // Test parameters for second deployment
         string memory name2 = "Test EUR";
         string memory symbol2 = "tEUR";
-        
+
         address deployerOperator = address(0xBEEF);
-        
+        address managerAddr1 = address(0x1234);
+        address managerAddr2 = address(0x5678);
+
         // Deploy first lending market
         vm.prank(deployerOperator);
         Factory.DeployParams memory params1 = Factory.DeployParams({
@@ -349,10 +352,11 @@ contract FactoryTest is Test {
             collateralFactor: 5000, // 50%
             minDebt: 1000e18,
             timeUntilImmutability: 365 days,
-            operator: deployerOperator
+            operator: deployerOperator,
+            manager: managerAddr1
         });
         (address lender1, address coin1, address vault1) = factory.deploy(params1);
-        
+
         // Deploy second lending market
         vm.prank(deployerOperator);
         Factory.DeployParams memory params2 = Factory.DeployParams({
@@ -363,7 +367,8 @@ contract FactoryTest is Test {
             collateralFactor: 5000, // 50%
             minDebt: 1000e18,
             timeUntilImmutability: 365 days,
-            operator: deployerOperator
+            operator: deployerOperator,
+            manager: managerAddr2
         });
         (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
@@ -383,6 +388,50 @@ contract FactoryTest is Test {
         Coin coinContract2 = Coin(coin2);
         assertEq(coinContract2.name(), name2, "Second coin name should be set correctly");
         assertEq(coinContract2.symbol(), symbol2, "Second coin symbol should be set correctly");
+    }
+
+    function test_managerPermissions() public {
+        // Test parameters
+        string memory name = "Test Manager";
+        string memory symbol = "TMGR";
+        address collateralAddr = address(collateral);
+        address feedAddr = address(priceFeed);
+        uint256 collateralFactor = 5000; // 50%
+        uint256 minDebt = 1000e18;
+        uint256 timeUntilImmutability = 365 days;
+        address deployerOperator = address(0xBEEF);
+        address managerAddr = address(0x1234);
+
+        // Deploy new lending market
+        vm.prank(deployerOperator);
+        Factory.DeployParams memory params = Factory.DeployParams({
+            name: name,
+            symbol: symbol,
+            collateral: collateralAddr,
+            feed: feedAddr,
+            collateralFactor: collateralFactor,
+            minDebt: minDebt,
+            timeUntilImmutability: timeUntilImmutability,
+            operator: deployerOperator,
+            manager: managerAddr
+        });
+        (address lender, address coin, address vault) = factory.deploy(params);
+
+        // Verify manager is correctly stored in Lender
+        Lender lenderContract = Lender(lender);
+        assertEq(lenderContract.manager(), managerAddr, "Manager should be set correctly in Lender");
+
+        // Test manager setter function - operator can set manager
+        address newManagerAddr = address(0x1111111111111111111111111111111111111111);
+        vm.prank(deployerOperator);
+        lenderContract.setManager(newManagerAddr);
+        assertEq(lenderContract.manager(), newManagerAddr, "Manager should be updated directly by operator");
+
+        // Test that manager can also set manager (self-update)
+        address anotherManagerAddr = address(0x2222222222222222222222222222222222222222);
+        vm.prank(newManagerAddr);
+        lenderContract.setManager(anotherManagerAddr);
+        assertEq(lenderContract.manager(), anotherManagerAddr, "Manager should be able to update themselves");
     }
     
     function test_pullReserves() public {

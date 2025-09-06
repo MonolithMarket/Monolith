@@ -108,6 +108,7 @@ contract LenderForkTest is Test {
         collateral = ERC20(address(deployedLender.collateral()));
        
         // Deploy a new Lender contract with the same immutable variables as the existing contract
+        // Note: The existing contract doesn't have a manager, so we use address(0)
         lender = new Lender(
             deployedLender.collateral(),
             deployedLender.feed(),
@@ -116,6 +117,7 @@ contract LenderForkTest is Test {
             deployedLender.interestModel(),
             deployedLender.factory(),
             deployedLender.operator(), // use existing operator
+            address(0), // no manager in old contract
             deployedLender.collateralFactor(),
             deployedLender.minDebt(),
             365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)

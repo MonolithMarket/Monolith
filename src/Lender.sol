@@ -77,6 +77,9 @@ contract Lender {
     mapping(uint => uint) public epochRedeemedCollateral;
     uint256 public nonRedeemableCollateral;
 
+    address public manager;
+
+
     constructor(
         ERC20 _collateral,
         IChainlinkFeed _feed,
@@ -85,6 +88,7 @@ contract Lender {
         InterestModel _interestModel,
         IFactory _factory,
         address _operator,
+        address _manager,
         uint _collateralFactor,
         uint _minDebt,
         uint _timeUntilImmutability
@@ -98,6 +102,7 @@ contract Lender {
         interestModel = _interestModel;
         factory = _factory;
         operator = _operator;
+        manager = _manager;
         collateralFactor = _collateralFactor;
         minDebt = _minDebt;
         immutabilityDeadline = block.timestamp + _timeUntilImmutability;
@@ -106,9 +111,14 @@ contract Lender {
     }
 
     // Modifiers
-    
+
     modifier onlyOperator() {
         require(msg.sender == operator, "Unauthorized");
+        _;
+    }
+
+    modifier onlyOperatorOrManager() {
+        require(msg.sender == operator || msg.sender == manager, "Unauthorized");
         _;
     }
 
@@ -571,14 +581,14 @@ contract Lender {
 
     // Setters
 
-    function setHalfLife(uint64 halfLife) external onlyOperator beforeDeadline {
+    function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
         require(halfLife >= 12 hours && halfLife <= 30 days, "Invalid half life");
         expRate = uint64(uint(wadLn(2*1e18)) / halfLife);
         emit HalfLifeUpdated(halfLife);
     }
 
-    function setTargetFreeDebtRatio(uint16 startBps, uint16 endBps) external onlyOperator beforeDeadline {
+    function setTargetFreeDebtRatio(uint16 startBps, uint16 endBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
         require(startBps >= 500 && startBps <= endBps, "Invalid start bps");
         require(endBps >= startBps && endBps <= 9500, "Invalid end bps");
@@ -587,7 +597,7 @@ contract Lender {
         emit TargetFreeDebtRatioUpdated(startBps, endBps);
     }
 
-    function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperator beforeDeadline {
+    function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
         require(_redeemFeeBps <= 300, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
@@ -610,6 +620,11 @@ contract Lender {
         require(msg.sender == pendingOperator, "Unauthorized");
         operator = pendingOperator;
         emit OperatorAccepted(pendingOperator);
+    }
+
+    function setManager(address _manager) external onlyOperatorOrManager {
+        manager = _manager;
+        emit ManagerUpdated(_manager);
     }
 
     function enableImmutabilityNow() external onlyOperator beforeDeadline {
@@ -638,6 +653,7 @@ contract Lender {
     event DelegationUpdated(address indexed delegator, address indexed delegatee, bool isDelegatee);
     event PendingOperatorUpdated(address indexed pendingOperator);
     event OperatorAccepted(address indexed operator);
+    event ManagerUpdated(address indexed manager);
     event LocalReserveFeeUpdated(uint256 feeBps);
     event RedemptionStatusUpdated(address indexed account, bool isRedeemable);
     event Liquidated(address indexed borrower, address indexed liquidator, uint repayAmount, uint collateralOut);

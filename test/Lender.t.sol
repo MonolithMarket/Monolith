@@ -100,6 +100,7 @@ contract LenderTest is Test {
         operatorAddr = address(0x123);
         
         // deploy lender
+        address managerAddr = address(0x456);
         lender = new Lender(
             ERC20(address(new ERC20Mock("Collateral", "COL"))),
             IChainlinkFeed(address(new FeedMock())),
@@ -108,6 +109,7 @@ contract LenderTest is Test {
             InterestModel(address(new InterestModelMock())),
             IFactory(address(new FactoryMock())),
             operatorAddr, // use operator address
+            managerAddr, // manager address
             5000, // 50% collateral factor
             1000e18, // 1000 Coin min debt
             365 days // 1 year immutability deadline
@@ -125,6 +127,7 @@ contract LenderTest is Test {
         FactoryMock newFactory = new FactoryMock();
 
         // Deploy new lender with the new mock contracts
+        address newManagerAddr = address(0x789);
         Lender newLender = new Lender(
             ERC20(address(newCollateral)),
             IChainlinkFeed(address(newFeed)),
@@ -133,6 +136,7 @@ contract LenderTest is Test {
             InterestModel(address(newInterestModel)),
             IFactory(address(newFactory)),
             operatorAddr, // use operator address
+            newManagerAddr, // manager address
             5000, // 50% collateral factor
             1000e18, // 1000 Coin min debt
             365 days // 1 year immutability deadline
@@ -2349,6 +2353,7 @@ contract LenderTest is Test {
         lender = Lender(lenderAddress);
         lens = new Lens();
         // Deploy a new Lender contract with the same immutable variables as the existing contract
+        // Note: The existing contract doesn't have a manager, so we use address(0)
         Lender newLenderImplementation = new Lender(
             lender.collateral(),
             lender.feed(),
@@ -2357,6 +2362,7 @@ contract LenderTest is Test {
             lender.interestModel(),
             lender.factory(),
             lender.operator(), // use existing operator
+            address(0), // no manager in old contract
             lender.collateralFactor(),
             lender.minDebt(),
             365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
@@ -3100,6 +3106,7 @@ contract LenderTest is Test {
             InterestModel(address(new InterestModelMock())),
             IFactory(address(factoryMock)),
             operatorAddr,
+            address(0xABC), // manager address
             5000, // 50% collateral factor
             1000e18, // 1000 Coin min debt
             365 days // 1 year immutability deadline

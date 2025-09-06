@@ -128,6 +128,7 @@ contract Factory {
         uint256 minDebt;
         uint256 timeUntilImmutability;
         address operator;
+        address manager;
     }
 
     function deploy(DeployParams memory params) external returns (address lender, address coin, address vault) {
@@ -144,6 +145,7 @@ contract Factory {
             interestModel,
             address(this),
             params.operator,
+            params.manager,
             params.collateralFactor,
             params.minDebt,
             params.timeUntilImmutability
