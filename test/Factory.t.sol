@@ -285,16 +285,17 @@ contract FactoryTest is Test {
         
         // Deploy new lending market
         vm.prank(deployerOperator);
-        (address lender, address coin, address vault) = factory.deploy(
-            name,
-            symbol,
-            collateralAddr,
-            feedAddr,
-            collateralFactor,
-            minDebt,
-            timeUntilImmutability,
-            deployerOperator
-        );
+        Factory.DeployParams memory params = Factory.DeployParams({
+            name: name,
+            symbol: symbol,
+            collateral: collateralAddr,
+            feed: feedAddr,
+            collateralFactor: collateralFactor,
+            minDebt: minDebt,
+            timeUntilImmutability: timeUntilImmutability,
+            operator: deployerOperator
+        });
+        (address lender, address coin, address vault) = factory.deploy(params);
         
         // Verify addresses are non-zero
         assertTrue(lender != address(0), "Lender address should be non-zero");
@@ -321,8 +322,10 @@ contract FactoryTest is Test {
         
         // Verify vault configuration
         Vault vaultContract = Vault(vault);
-        assertEq(vaultContract.name(), string(abi.encodePacked("Staked ", name)), "Vault name should be set correctly");
-        assertEq(vaultContract.symbol(), string(abi.encodePacked("s", symbol)), "Vault symbol should be set correctly");
+        string memory expectedVaultName = string(abi.encodePacked("Staked ", name));
+        string memory expectedVaultSymbol = string(abi.encodePacked("s", symbol));
+        assertEq(vaultContract.name(), expectedVaultName, "Vault name should be set correctly");
+        assertEq(vaultContract.symbol(), expectedVaultSymbol, "Vault symbol should be set correctly");
         assertEq(address(vaultContract.lender()), lender, "Vault lender should be set correctly");
     }
     
@@ -338,29 +341,31 @@ contract FactoryTest is Test {
         
         // Deploy first lending market
         vm.prank(deployerOperator);
-        (address lender1, address coin1, address vault1) = factory.deploy(
-            name1,
-            symbol1,
-            address(collateral),
-            address(priceFeed),
-            5000, // 50%
-            1000e18,
-            365 days,
-            deployerOperator
-        );
+        Factory.DeployParams memory params1 = Factory.DeployParams({
+            name: name1,
+            symbol: symbol1,
+            collateral: address(collateral),
+            feed: address(priceFeed),
+            collateralFactor: 5000, // 50%
+            minDebt: 1000e18,
+            timeUntilImmutability: 365 days,
+            operator: deployerOperator
+        });
+        (address lender1, address coin1, address vault1) = factory.deploy(params1);
         
         // Deploy second lending market
         vm.prank(deployerOperator);
-        (address lender2, address coin2, address vault2) = factory.deploy(
-            name2,
-            symbol2,
-            address(collateral),
-            address(priceFeed),
-            5000, // 50%
-            1000e18,
-            365 days,
-            deployerOperator
-        );
+        Factory.DeployParams memory params2 = Factory.DeployParams({
+            name: name2,
+            symbol: symbol2,
+            collateral: address(collateral),
+            feed: address(priceFeed),
+            collateralFactor: 5000, // 50%
+            minDebt: 1000e18,
+            timeUntilImmutability: 365 days,
+            operator: deployerOperator
+        });
+        (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
         // Verify deployments were recorded
         assertEq(factory.deploymentsLength(), 2, "Deployments length should be 2");

@@ -119,35 +119,37 @@ contract Factory {
         Lender(_deployment).pullGlobalReserves(msg.sender);
     }
 
-    function deploy(
-        string memory _name,
-        string memory _symbol,
-        address _collateral,
-        address _feed,
-        uint256 _collateralFactor,
-        uint256 _minDebt,
-        uint256 _timeUntilImmutability,
-        address _operator
-    ) external returns (address lender, address coin, address vault) {
+    struct DeployParams {
+        string name;
+        string symbol;
+        address collateral;
+        address feed;
+        uint256 collateralFactor;
+        uint256 minDebt;
+        uint256 timeUntilImmutability;
+        address operator;
+    }
+
+    function deploy(DeployParams memory params) external returns (address lender, address coin, address vault) {
         uint id = deployments.length;
         lender = LenderDeployer.getAddress(msg.sender, id);
         vault = VaultDeployer.getAddress(msg.sender, id);
         coin = CoinDeployer.getAddress(msg.sender, id);
         // these vars avoid stack too deep
         bytes memory lenderData = abi.encode(
-            _collateral,
-            _feed,
+            params.collateral,
+            params.feed,
             coin,
             vault,
             interestModel,
             address(this),
-            _operator,
-            _collateralFactor,
-            _minDebt,
-            _timeUntilImmutability
+            params.operator,
+            params.collateralFactor,
+            params.minDebt,
+            params.timeUntilImmutability
         );
-        bytes memory vaultData = abi.encode(_name, _symbol, lender);    
-        bytes memory coinData = abi.encode(lender, _name, _symbol);
+        bytes memory vaultData = abi.encode(params.name, params.symbol, lender);
+        bytes memory coinData = abi.encode(lender, params.name, params.symbol);
         LenderDeployer.deployLender(msg.sender, id, lenderData);
         CoinDeployer.deployCoin(msg.sender, id, coinData);
         VaultDeployer.deployVault(msg.sender, id, vaultData);
