@@ -2,6 +2,7 @@
 pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC20.sol";
+import "lib/solmate/src/tokens/ERC4626.sol";
 import "lib/solmate/src/utils/SafeTransferLib.sol";
 import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
@@ -51,16 +52,20 @@ contract Lender {
     uint public totalPaidDebt;
     uint public totalPaidDebtShares;
     uint public epoch;
+    uint public lastPsmAssets;
 
     // Constants and immutables
     Coin public immutable coin;
     ERC20 public immutable collateral;
+    ERC20 public immutable psmAsset;
+    ERC4626 public immutable psmVault;
     IChainlinkFeed public immutable feed;
     Vault public immutable vault;
     InterestModel public immutable interestModel;
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
+    uint public immutable deployTimestamp;
     uint public constant STALENESS_THRESHOLD = 25 hours; // standard 24 hours staleness + 1 hour buffer
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
@@ -82,6 +87,8 @@ contract Lender {
 
     constructor(
         ERC20 _collateral,
+        ERC20 _psmAsset, // optional
+        ERC4626 _psmVault, // optional
         IChainlinkFeed _feed,
         Coin _coin,
         Vault _vault,
@@ -95,7 +102,10 @@ contract Lender {
     ) {
         require(_collateralFactor <= 10000, "Invalid collateral factor");
         require(_timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
+        if(_psmVault != ERC4626(address(0))) require(_psmVault.asset() == _psmAsset, "PSM asset mismatch");
         collateral = _collateral;
+        psmAsset = _psmAsset;
+        psmVault = _psmVault;
         feed = _feed;
         coin = _coin;
         vault = _vault;
@@ -105,6 +115,7 @@ contract Lender {
         manager = _manager;
         collateralFactor = _collateralFactor;
         minDebt = _minDebt;
+        deployTimestamp = block.timestamp;
         immutabilityDeadline = block.timestamp + _timeUntilImmutability;
         lastAccrue = uint40(block.timestamp);
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
@@ -393,7 +404,53 @@ contract Lender {
         return amountOut;
     }
 
+    function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
+        accruePsmProfit();
+        assetOut = getSellAmountOut(coinIn);
+        require(assetOut >= minAssetOut, "insufficient amount out");
+        // get and burn coins from caller
+        coin.transferFrom(msg.sender, address(this), coinIn);
+        coin.burn(coinIn);
+        // give assets to caller
+        if(psmVault != ERC4626(address(0))) {
+            psmVault.withdraw(assetOut, msg.sender, address(this));
+        } else {
+            psmAsset.safeTransfer(msg.sender, assetOut);
+        }
+        emit Sold(msg.sender, coinIn, assetOut);
+    }
+
+    function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
+        accruePsmProfit();
+        uint coinFee;
+        (coinOut, coinFee) = getBuyAmountOut(assetIn);
+        require(coinOut >= minCoinOut, "insufficient amount out");
+
+        accruedLocalReserves += uint120(coinFee);
+
+        // get assets from caller
+        psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
+        if(psmVault != ERC4626(address(0))) {
+            psmVault.deposit(assetIn, address(this));
+        }
+        // give coins to caller
+        coin.mint(msg.sender, coinOut);
+        emit Bought(msg.sender, assetIn, coinOut);
+    }
+
+
     // Internal functions
+
+    function accruePsmProfit() internal {
+        if(psmVault != ERC4626(address(0))) {
+            uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
+            uint _lastPsmAssets = lastPsmAssets;
+            if(assets <= _lastPsmAssets) return; // avoids underflow in case of loss
+            uint profit = assets - _lastPsmAssets;
+            accruedLocalReserves += uint120(profit);
+            lastPsmAssets = assets;
+        }
+    }
 
     function updateBorrower(address borrower) internal {
         uint borrowerDebtShares = freeDebtShares[borrower];
@@ -509,7 +566,8 @@ contract Lender {
     // Getters
 
     function getFreeDebtRatio() public view returns (uint) {
-        return totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalPaidDebt + totalFreeDebt);
+        uint _adjustedTotalFreeDebt = totalFreeDebt + lastPsmAssets;
+        return _adjustedTotalFreeDebt == 0 ? 0 : _adjustedTotalFreeDebt * 10000 / (totalPaidDebt + _adjustedTotalFreeDebt);
     }
 
     function getDebtOf(address account) public view returns (uint) {
@@ -581,6 +639,69 @@ contract Lender {
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
 
+    function getSellAmountOut(uint coinIn) public view returns (uint assetOut) {
+        uint8 coinDecimals = 18;
+        uint8 assetDecimals = psmAsset.decimals();
+
+        if (coinDecimals > assetDecimals) {
+            // e.g., 18 decimals -> 6 decimals: divide by 10^(18-6) = 10^12
+            assetOut = coinIn / (10 ** (coinDecimals - assetDecimals));
+        } else if (assetDecimals > coinDecimals) {
+            // e.g., 6 decimals -> 18 decimals: multiply by 10^(18-6) = 10^12
+            assetOut = coinIn * (10 ** (assetDecimals - coinDecimals));
+        } else {
+            // Same decimals: 1:1 ratio
+            assetOut = coinIn;
+        }
+    }
+
+    function getBuyFeeBps() public view returns (uint) {
+        uint startTime = deployTimestamp;
+        uint deadline = immutabilityDeadline;
+        uint current = block.timestamp;
+
+        // Calculate the halfway point of the deadline period
+        uint halfTime = startTime + ((deadline - startTime) / 2);
+
+        if (current >= deadline || current < halfTime) {
+            return 0;
+        }
+
+        // fee ramps from 0% to 1% (100 bps) over the second half of the deadline period
+        // rampDuration = deadline - halfTime = (deadline - startTime) / 2
+        // timeIntoRamp = current - halfTime
+        // feeBps = timeIntoRamp * 100 / rampDuration
+        uint rampDuration = deadline - halfTime;
+        if (rampDuration == 0) return 100; // avoids division by zero
+
+        uint timeIntoRamp = current - halfTime;
+        uint buyFeeBps = timeIntoRamp * 100 / rampDuration;
+
+        // Cap at 100 bps (1%)
+        return buyFeeBps > 100 ? 100 : buyFeeBps;
+    }
+
+    function getBuyAmountOut(uint assetIn) public view returns (uint coinOut, uint coinFee) {
+        uint8 coinDecimals = 18;
+        uint8 assetDecimals = psmAsset.decimals();
+
+        if (assetDecimals > coinDecimals) {
+            // e.g., 6 decimals -> 18 decimals: divide by 10^(6-18) = 10^12
+            coinOut = assetIn / (10 ** (assetDecimals - coinDecimals));
+        } else if (coinDecimals > assetDecimals) {
+            // e.g., 18 decimals -> 6 decimals: multiply by 10^(18-6) = 10^12
+            coinOut = assetIn * (10 ** (coinDecimals - assetDecimals));
+        } else {
+            // Same decimals: 1:1 ratio
+            coinOut = assetIn;
+        }
+
+        // Apply buy fee
+        uint buyFeeBps = getBuyFeeBps();
+        coinFee = coinOut * buyFeeBps / 10000;
+        coinOut -= coinFee;
+    }
+
     // Setters
 
     function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline {
@@ -635,6 +756,7 @@ contract Lender {
 
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
+        accruePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
         accruedLocalReserves = 0;
     }
@@ -662,4 +784,6 @@ contract Lender {
     event WrittenOff(address indexed borrower, address indexed to, uint debt, uint collateral);
     event NewEpoch(uint epoch);
     event Redeemed(address indexed account, uint amountIn, uint amountOut);
+    event Sold(address indexed account, uint coinIn, uint assetOut);
+    event Bought(address indexed account, uint assetIn, uint coinOut);
 }
