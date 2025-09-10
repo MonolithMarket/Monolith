@@ -123,6 +123,8 @@ contract Factory {
         string name;
         string symbol;
         address collateral;
+        address psmAsset;
+        address psmVault;
         address feed;
         uint256 collateralFactor;
         uint256 minDebt;
@@ -139,6 +141,8 @@ contract Factory {
         // these vars avoid stack too deep
         bytes memory lenderData = abi.encode(
             params.collateral,
+            params.psmAsset,
+            params.psmVault,
             params.feed,
             coin,
             vault,

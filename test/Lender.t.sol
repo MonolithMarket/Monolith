@@ -3,6 +3,7 @@ pragma solidity 0.8.13;
 
 import {Test, console, console2} from "forge-std/Test.sol";
 import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
+import {ERC4626} from "lib/solmate/src/tokens/ERC4626.sol";
 import {Lens} from "src/Lens.sol";
 
 contract FeedMock {
@@ -103,6 +104,8 @@ contract LenderTest is Test {
         address managerAddr = address(0x456);
         lender = new Lender(
             ERC20(address(new ERC20Mock("Collateral", "COL"))),
+            ERC20(address(0)), // optional PSM asset
+            ERC4626(address(0)), // optional PSM vault
             IChainlinkFeed(address(new FeedMock())),
             Coin(address(new ERC20Mock("Coin", "COIN"))),
             Vault(address(new VaultMock())),
@@ -130,6 +133,8 @@ contract LenderTest is Test {
         address newManagerAddr = address(0x789);
         Lender newLender = new Lender(
             ERC20(address(newCollateral)),
+            ERC20(address(0)), // optional PSM asset
+            ERC4626(address(0)), // optional PSM vault
             IChainlinkFeed(address(newFeed)),
             Coin(address(newCoin)),
             Vault(address(newVault)),
@@ -2356,6 +2361,8 @@ contract LenderTest is Test {
         // Note: The existing contract doesn't have a manager, so we use address(0)
         Lender newLenderImplementation = new Lender(
             lender.collateral(),
+            ERC20(address(0)), // optional PSM asset
+            ERC4626(address(0)), // optional PSM vault
             lender.feed(),
             lender.coin(),
             lender.vault(),
@@ -3100,6 +3107,8 @@ contract LenderTest is Test {
         // Deploy a new lender with this factory
         Lender lenderWithCustomFactory = new Lender(
             ERC20(address(collateral)),
+            ERC20(address(0)), // optional PSM asset
+            ERC4626(address(0)), // optional PSM vault
             IChainlinkFeed(address(new FeedMock())),
             Coin(address(new ERC20Mock("Coin", "COIN"))),
             Vault(address(new VaultMock())),
