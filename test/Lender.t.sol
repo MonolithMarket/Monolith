@@ -102,21 +102,22 @@ contract LenderTest is Test {
         
         // deploy lender
         address managerAddr = address(0x456);
-        lender = new Lender(
-            ERC20(address(new ERC20Mock("Collateral", "COL"))),
-            ERC20(address(0)), // optional PSM asset
-            ERC4626(address(0)), // optional PSM vault
-            IChainlinkFeed(address(new FeedMock())),
-            Coin(address(new ERC20Mock("Coin", "COIN"))),
-            Vault(address(new VaultMock())),
-            InterestModel(address(new InterestModelMock())),
-            IFactory(address(new FactoryMock())),
-            operatorAddr, // use operator address
-            managerAddr, // manager address
-            5000, // 50% collateral factor
-            1000e18, // 1000 Coin min debt
-            365 days // 1 year immutability deadline
-        );
+        Lender.LenderParams memory lenderParams = Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COL"))),
+            psmAsset: ERC20(address(0)), // optional PSM asset
+            psmVault: ERC4626(address(0)), // optional PSM vault
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr, // use operator address
+            manager: managerAddr, // manager address
+            collateralFactor: 5000, // 50% collateral factor
+            minDebt: 1000e18, // 1000 Coin min debt
+            timeUntilImmutability: 365 days // 1 year immutability deadline
+        });
+        lender = new Lender(lenderParams);
     
     }
     
@@ -131,21 +132,22 @@ contract LenderTest is Test {
 
         // Deploy new lender with the new mock contracts
         address newManagerAddr = address(0x789);
-        Lender newLender = new Lender(
-            ERC20(address(newCollateral)),
-            ERC20(address(0)), // optional PSM asset
-            ERC4626(address(0)), // optional PSM vault
-            IChainlinkFeed(address(newFeed)),
-            Coin(address(newCoin)),
-            Vault(address(newVault)),
-            InterestModel(address(newInterestModel)),
-            IFactory(address(newFactory)),
-            operatorAddr, // use operator address
-            newManagerAddr, // manager address
-            5000, // 50% collateral factor
-            1000e18, // 1000 Coin min debt
-            365 days // 1 year immutability deadline
-        );
+        Lender.LenderParams memory newLenderParams = Lender.LenderParams({
+            collateral: ERC20(address(newCollateral)),
+            psmAsset: ERC20(address(0)), // optional PSM asset
+            psmVault: ERC4626(address(0)), // optional PSM vault
+            feed: IChainlinkFeed(address(newFeed)),
+            coin: Coin(address(newCoin)),
+            vault: Vault(address(newVault)),
+            interestModel: InterestModel(address(newInterestModel)),
+            factory: IFactory(address(newFactory)),
+            operator: operatorAddr, // use operator address
+            manager: newManagerAddr, // manager address
+            collateralFactor: 5000, // 50% collateral factor
+            minDebt: 1000e18, // 1000 Coin min debt
+            timeUntilImmutability: 365 days // 1 year immutability deadline
+        });
+        Lender newLender = new Lender(newLenderParams);
 
         // Verify all contract instances
         assertEq(address(newLender.collateral()), address(newCollateral), "Collateral address mismatch in constructor");
@@ -2359,21 +2361,22 @@ contract LenderTest is Test {
         lens = new Lens();
         // Deploy a new Lender contract with the same immutable variables as the existing contract
         // Note: The existing contract doesn't have a manager, so we use address(0)
-        Lender newLenderImplementation = new Lender(
-            lender.collateral(),
-            ERC20(address(0)), // optional PSM asset
-            ERC4626(address(0)), // optional PSM vault
-            lender.feed(),
-            lender.coin(),
-            lender.vault(),
-            lender.interestModel(),
-            lender.factory(),
-            lender.operator(), // use existing operator
-            address(0), // no manager in old contract
-            lender.collateralFactor(),
-            lender.minDebt(),
-            365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
-        );
+        Lender.LenderParams memory upgradeLenderParams = Lender.LenderParams({
+            collateral: lender.collateral(),
+            psmAsset: ERC20(address(0)), // optional PSM asset
+            psmVault: ERC4626(address(0)), // optional PSM vault
+            feed: lender.feed(),
+            coin: lender.coin(),
+            vault: lender.vault(),
+            interestModel: lender.interestModel(),
+            factory: lender.factory(),
+            operator: lender.operator(), // use existing operator
+            manager: address(0), // no manager in old contract
+            collateralFactor: lender.collateralFactor(),
+            minDebt: lender.minDebt(),
+            timeUntilImmutability: 365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
+        });
+        Lender newLenderImplementation = new Lender(upgradeLenderParams);
         
         // Replace the bytecode at the existing Lender address with the new implementation
         vm.etch(lenderAddress, address(newLenderImplementation).code);
@@ -3105,21 +3108,22 @@ contract LenderTest is Test {
         FactoryMock factoryMock = new FactoryMock();
         
         // Deploy a new lender with this factory
-        Lender lenderWithCustomFactory = new Lender(
-            ERC20(address(collateral)),
-            ERC20(address(0)), // optional PSM asset
-            ERC4626(address(0)), // optional PSM vault
-            IChainlinkFeed(address(new FeedMock())),
-            Coin(address(new ERC20Mock("Coin", "COIN"))),
-            Vault(address(new VaultMock())),
-            InterestModel(address(new InterestModelMock())),
-            IFactory(address(factoryMock)),
-            operatorAddr,
-            address(0xABC), // manager address
-            5000, // 50% collateral factor
-            1000e18, // 1000 Coin min debt
-            365 days // 1 year immutability deadline
-        );
+        Lender.LenderParams memory customFactoryParams = Lender.LenderParams({
+            collateral: ERC20(address(collateral)),
+            psmAsset: ERC20(address(0)), // optional PSM asset
+            psmVault: ERC4626(address(0)), // optional PSM vault
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(factoryMock)),
+            operator: operatorAddr,
+            manager: address(0xABC), // manager address
+            collateralFactor: 5000, // 50% collateral factor
+            minDebt: 1000e18, // 1000 Coin min debt
+            timeUntilImmutability: 365 days // 1 year immutability deadline
+        });
+        Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
         // Set local fee to 0% to make global fee effects more visible
         vm.prank(operatorAddr);

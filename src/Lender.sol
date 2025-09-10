@@ -84,39 +84,40 @@ contract Lender {
 
     address public manager;
 
+    struct LenderParams {
+        ERC20 collateral;
+        ERC20 psmAsset; // optional
+        ERC4626 psmVault; // optional
+        IChainlinkFeed feed;
+        Coin coin;
+        Vault vault;
+        InterestModel interestModel;
+        IFactory factory;
+        address operator;
+        address manager;
+        uint collateralFactor;
+        uint minDebt;
+        uint timeUntilImmutability;
+    }
 
-    constructor(
-        ERC20 _collateral,
-        ERC20 _psmAsset, // optional
-        ERC4626 _psmVault, // optional
-        IChainlinkFeed _feed,
-        Coin _coin,
-        Vault _vault,
-        InterestModel _interestModel,
-        IFactory _factory,
-        address _operator,
-        address _manager,
-        uint _collateralFactor,
-        uint _minDebt,
-        uint _timeUntilImmutability
-    ) {
-        require(_collateralFactor <= 10000, "Invalid collateral factor");
-        require(_timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
-        if(_psmVault != ERC4626(address(0))) require(_psmVault.asset() == _psmAsset, "PSM asset mismatch");
-        collateral = _collateral;
-        psmAsset = _psmAsset;
-        psmVault = _psmVault;
-        feed = _feed;
-        coin = _coin;
-        vault = _vault;
-        interestModel = _interestModel;
-        factory = _factory;
-        operator = _operator;
-        manager = _manager;
-        collateralFactor = _collateralFactor;
-        minDebt = _minDebt;
+    constructor(LenderParams memory params) {
+        require(params.collateralFactor <= 10000, "Invalid collateral factor");
+        require(params.timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
+        if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+        collateral = params.collateral;
+        psmAsset = params.psmAsset;
+        psmVault = params.psmVault;
+        feed = params.feed;
+        coin = params.coin;
+        vault = params.vault;
+        interestModel = params.interestModel;
+        factory = params.factory;
+        operator = params.operator;
+        manager = params.manager;
+        collateralFactor = params.collateralFactor;
+        minDebt = params.minDebt;
         deployTimestamp = block.timestamp;
-        immutabilityDeadline = block.timestamp + _timeUntilImmutability;
+        immutabilityDeadline = block.timestamp + params.timeUntilImmutability;
         lastAccrue = uint40(block.timestamp);
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
     }

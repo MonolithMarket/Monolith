@@ -110,21 +110,22 @@ contract LenderForkTest is Test {
        
         // Deploy a new Lender contract with the same immutable variables as the existing contract
         // Note: The existing contract doesn't have a manager, so we use address(0)
-        lender = new Lender(
-            deployedLender.collateral(),
-            ERC20(address(0)), // optional PSM asset
-            ERC4626(address(0)), // optional PSM vault
-            deployedLender.feed(),
-            coin,
-            deployedLender.vault(),
-            deployedLender.interestModel(),
-            deployedLender.factory(),
-            deployedLender.operator(), // use existing operator
-            address(0), // no manager in old contract
-            deployedLender.collateralFactor(),
-            deployedLender.minDebt(),
-            365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
-        );
+        Lender.LenderParams memory forkLenderParams = Lender.LenderParams({
+            collateral: deployedLender.collateral(),
+            psmAsset: ERC20(address(0)), // optional PSM asset
+            psmVault: ERC4626(address(0)), // optional PSM vault
+            feed: deployedLender.feed(),
+            coin: coin,
+            vault: deployedLender.vault(),
+            interestModel: deployedLender.interestModel(),
+            factory: deployedLender.factory(),
+            operator: deployedLender.operator(), // use existing operator
+            manager: address(0), // no manager in old contract
+            collateralFactor: deployedLender.collateralFactor(),
+            minDebt: deployedLender.minDebt(),
+            timeUntilImmutability: 365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
+        });
+        lender = new Lender(forkLenderParams);
     }
 
     function test_fix_repeated_redemptions_fork_takes_non_redeemable_collateral(uint256 collateralAmount1, uint256 nonRedeemableCollateralAmount) public {

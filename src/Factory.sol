@@ -139,21 +139,22 @@ contract Factory {
         vault = VaultDeployer.getAddress(msg.sender, id);
         coin = CoinDeployer.getAddress(msg.sender, id);
         // these vars avoid stack too deep
-        bytes memory lenderData = abi.encode(
-            params.collateral,
-            params.psmAsset,
-            params.psmVault,
-            params.feed,
-            coin,
-            vault,
-            interestModel,
-            address(this),
-            params.operator,
-            params.manager,
-            params.collateralFactor,
-            params.minDebt,
-            params.timeUntilImmutability
-        );
+        Lender.LenderParams memory lenderParams = Lender.LenderParams({
+            collateral: ERC20(params.collateral),
+            psmAsset: ERC20(params.psmAsset),
+            psmVault: ERC4626(params.psmVault),
+            feed: IChainlinkFeed(params.feed),
+            coin: Coin(coin),
+            vault: Vault(vault),
+            interestModel: InterestModel(interestModel),
+            factory: IFactory(address(this)),
+            operator: params.operator,
+            manager: params.manager,
+            collateralFactor: params.collateralFactor,
+            minDebt: params.minDebt,
+            timeUntilImmutability: params.timeUntilImmutability
+        });
+        bytes memory lenderData = abi.encode(lenderParams);
         bytes memory vaultData = abi.encode(params.name, params.symbol, lender);
         bytes memory coinData = abi.encode(lender, params.name, params.symbol);
         LenderDeployer.deployLender(msg.sender, id, lenderData);
