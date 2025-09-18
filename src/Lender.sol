@@ -567,7 +567,8 @@ contract Lender {
     // Getters
 
     function getFreeDebtRatio() public view returns (uint) {
-        return totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalPaidDebt + totalFreeDebt);
+        uint _adjustedTotalFreeDebt = totalFreeDebt + freePsmAssets;
+        return _adjustedTotalFreeDebt == 0 ? 0 : _adjustedTotalFreeDebt * 10000 / (totalPaidDebt + _adjustedTotalFreeDebt);
     }
 
     function getDebtOf(address account) public view returns (uint) {
