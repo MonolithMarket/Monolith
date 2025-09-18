@@ -443,7 +443,7 @@ contract Lender {
 
     // Internal functions
 
-    function takePsmProfit() internal {
+    function accruePsmProfit() internal {
         if(address(psmVault) != address(0)){
             uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
             if(assets <= freePsmAssets) return; // avoids underflow in case of loss
@@ -757,7 +757,7 @@ contract Lender {
 
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
-        takePsmProfit();
+        accruePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
         accruedLocalReserves = 0;
     }
