@@ -52,7 +52,7 @@ contract Lender {
     uint public totalPaidDebt;
     uint public totalPaidDebtShares;
     uint public epoch;
-    uint public lastPsmAssets;
+    uint public freePsmAssets;
 
     // Constants and immutables
     Coin public immutable coin;
@@ -406,8 +406,9 @@ contract Lender {
     }
 
     function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
-        accruePsmProfit();
         assetOut = getSellAmountOut(coinIn);
+        if(psmVault != ERC4626(address(0)))
+            freePsmAssets -= assetOut;
         require(assetOut >= minAssetOut, "insufficient amount out");
         // get and burn coins from caller
         coin.transferFrom(msg.sender, address(this), coinIn);
@@ -422,10 +423,11 @@ contract Lender {
     }
 
     function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
-        accruePsmProfit();
         uint coinFee;
         (coinOut, coinFee) = getBuyAmountOut(assetIn);
         require(coinOut >= minCoinOut, "insufficient amount out");
+        if(psmVault != ERC4626(address(0)))
+            freePsmAssets += assetIn;
 
         accruedLocalReserves += uint120(coinFee);
 
@@ -439,17 +441,15 @@ contract Lender {
         emit Bought(msg.sender, assetIn, coinOut);
     }
 
-
     // Internal functions
 
-    function accruePsmProfit() internal {
-        if(psmVault != ERC4626(address(0))) {
+    function takePsmProfit() internal {
+        if(address(psmVault) != address(0)){
             uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
-            uint _lastPsmAssets = lastPsmAssets;
-            if(assets <= _lastPsmAssets) return; // avoids underflow in case of loss
-            uint profit = assets - _lastPsmAssets;
+            if(assets <= freePsmAssets) return; // avoids underflow in case of loss
+            uint profit = assets - freePsmAssets;
             accruedLocalReserves += uint120(profit);
-            lastPsmAssets = assets;
+            freePsmAssets = assets;
         }
     }
 
@@ -567,8 +567,7 @@ contract Lender {
     // Getters
 
     function getFreeDebtRatio() public view returns (uint) {
-        uint _adjustedTotalFreeDebt = totalFreeDebt + lastPsmAssets;
-        return _adjustedTotalFreeDebt == 0 ? 0 : _adjustedTotalFreeDebt * 10000 / (totalPaidDebt + _adjustedTotalFreeDebt);
+        return totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalPaidDebt + totalFreeDebt);
     }
 
     function getDebtOf(address account) public view returns (uint) {
@@ -757,7 +756,7 @@ contract Lender {
 
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
-        accruePsmProfit();
+        takePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
         accruedLocalReserves = 0;
     }
