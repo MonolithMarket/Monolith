@@ -429,7 +429,7 @@ contract Lender {
         if(psmVault != ERC4626(address(0)))
             freePsmAssets += assetIn;
 
-        accruedLocalReserves += uint120(coinFee);
+        if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
 
         // get assets from caller
         psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
