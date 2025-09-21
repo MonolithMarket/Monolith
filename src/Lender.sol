@@ -706,8 +706,10 @@ contract Lender {
 
         // Apply buy fee
         uint buyFeeBps = getBuyFeeBps();
-        coinFee = coinOut * buyFeeBps / 10000;
-        coinOut -= coinFee;
+        if(buyFeeBps > 0) {
+            coinFee = coinOut * buyFeeBps / 10000;
+            coinOut -= coinFee;
+        }
     }
 
     // Setters
