@@ -120,6 +120,8 @@ contract Lender {
         immutabilityDeadline = block.timestamp + params.timeUntilImmutability;
         lastAccrue = uint40(block.timestamp);
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
+        if(psmVault != ERC4626(address(0)))
+            psmAsset.approve(address(psmVault), type(uint).max);
     }
 
     // Modifiers
@@ -439,6 +441,11 @@ contract Lender {
         // give coins to caller
         coin.mint(msg.sender, coinOut);
         emit Bought(msg.sender, assetIn, coinOut);
+    }
+
+    function reapprovePsmVault() external beforeDeadline {
+        if(psmVault != ERC4626(address(0)))
+            psmAsset.approve(address(psmVault), type(uint).max);
     }
 
     // Internal functions
