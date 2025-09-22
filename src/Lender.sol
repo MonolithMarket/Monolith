@@ -409,9 +409,8 @@ contract Lender {
 
     function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
         assetOut = getSellAmountOut(coinIn);
-        if(psmVault != ERC4626(address(0)))
-            freePsmAssets -= assetOut;
         require(assetOut >= minAssetOut, "insufficient amount out");
+        freePsmAssets -= assetOut;
         // get and burn coins from caller
         coin.transferFrom(msg.sender, address(this), coinIn);
         coin.burn(coinIn);
@@ -428,8 +427,7 @@ contract Lender {
         uint coinFee;
         (coinOut, coinFee) = getBuyAmountOut(assetIn);
         require(coinOut >= minCoinOut, "insufficient amount out");
-        if(psmVault != ERC4626(address(0)))
-            freePsmAssets += assetIn;
+        freePsmAssets += assetIn;
 
         if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
 
