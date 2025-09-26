@@ -457,7 +457,7 @@ contract Lender {
             uint profit = assets - freePsmAssets;
             accruedLocalReserves += uint120(profit);
             freePsmAssets = assets;
-        } else {
+        } else if(psmAsset != ERC20(address(0))) {
             // we do this in case the underlying asset may be a rebasing token that accrues profit
             uint bal = psmAsset.balanceOf(address(this));
             if(bal <= freePsmAssets) return; // avoids underflow in case of loss
