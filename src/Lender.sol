@@ -457,6 +457,13 @@ contract Lender {
             uint profit = assets - freePsmAssets;
             accruedLocalReserves += uint120(profit);
             freePsmAssets = assets;
+        } else {
+            // we do this in case the underlying asset may be a rebasing token that accrues profit
+            uint bal = psmAsset.balanceOf(address(this));
+            if(bal <= freePsmAssets) return; // avoids underflow in case of loss
+            uint profit = bal - freePsmAssets;
+            accruedLocalReserves += uint120(profit);
+            freePsmAssets = bal;
         }
     }
 
