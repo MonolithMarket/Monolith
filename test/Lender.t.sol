@@ -47,6 +47,18 @@ contract ERC20Mock is ERC20 {
     }
 }
 
+contract ERC20MockWithDecimals is ERC20 {
+    constructor(string memory name, string memory symbol, uint8 decimals_) ERC20(name, symbol, decimals_) {}
+
+    function mint(address to, uint256 amount) public {
+        _mint(to, amount);
+    }
+
+    function burn(uint256 amount) public {
+        _burn(msg.sender, amount);
+    }
+}
+
 contract VaultMock {
     function totalAssets() public view returns (uint256) {
         address(this); // silences pure function warning
@@ -88,6 +100,20 @@ contract FactoryMock {
 
     function setFee(uint newFee) external {
         fee = newFee;
+    }
+}
+
+contract Vault4626Mock is ERC4626 {
+    uint256 public profitMultiplier = 1e18; // 1.0 = 100% (no profit)
+
+    constructor(ERC20 asset) ERC4626(asset, "Mock Vault", "MV") {}
+
+    function totalAssets() public view virtual override returns (uint256) {
+        return asset.balanceOf(address(this)) * profitMultiplier / 1e18;
+    }
+
+    function setProfitMultiplier(uint256 _multiplier) external {
+        profitMultiplier = _multiplier;
     }
 }
 
@@ -3202,5 +3228,325 @@ contract LenderTest is Test {
         // Verify relationship between interest amounts based on fee difference
         assertApproxEqRel(thirdInterestAmount, expectedInterestWithTenPercentFee * 4, 0.1e18, 
             "Interest with 40% fee should be about 4x the interest with 10% fee");
+    }
+
+    // PSM Test Setup
+    function createLenderWithPSM() internal returns (Lender) {
+        ERC20Mock psmAsset = new ERC20Mock("PSM Asset", "PSMA");
+        Vault4626Mock psmVault = new Vault4626Mock(ERC20(psmAsset));
+
+        return new Lender(Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COLL"))),
+            psmAsset: ERC20(address(psmAsset)),
+            psmVault: ERC4626(address(psmVault)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 7500,
+            minDebt: 100e18,
+            timeUntilImmutability: 365 days
+        }));
+    }
+
+    function createLenderWithPSMAssetOnly() internal returns (Lender) {
+        ERC20Mock psmAsset = new ERC20Mock("PSM Asset", "PSMA");
+
+        return new Lender(Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COLL"))),
+            psmAsset: ERC20(address(psmAsset)),
+            psmVault: ERC4626(address(0)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 7500,
+            minDebt: 100e18,
+            timeUntilImmutability: 365 days
+        }));
+    }
+
+    function createLenderWithPSMAssetDecimals(uint8 decimals) internal returns (Lender) {
+        ERC20MockWithDecimals psmAsset = new ERC20MockWithDecimals("PSM Asset", "PSMA", decimals);
+
+        return new Lender(Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COLL"))),
+            psmAsset: ERC20(address(psmAsset)),
+            psmVault: ERC4626(address(0)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 7500,
+            minDebt: 100e18,
+            timeUntilImmutability: 365 days
+        }));
+    }
+
+    // PSM Tests
+    function testGetSellAmountOut() public {
+        // Test 18 decimals PSM asset (same as Coin - 1:1 ratio)
+        Lender psmLender18 = createLenderWithPSMAssetDecimals(18);
+        uint coinIn = 100e18;
+        uint expectedAssetOut18 = coinIn; // 1:1 ratio for same decimals
+        uint actualAssetOut18 = psmLender18.getSellAmountOut(coinIn);
+        assertEq(actualAssetOut18, expectedAssetOut18, "Sell amount out should be 1:1 for same decimals");
+
+        // Test 18 decimals -> 6 decimals conversion
+        Lender psmLender6 = createLenderWithPSMAssetDecimals(6);
+        uint coinIn18to6 = 100e18;
+        uint expectedAssetOut6 = coinIn18to6 / 1e12; // divide by 10^(18-6) = 10^12 = 1000000000000
+        uint actualAssetOut6 = psmLender6.getSellAmountOut(coinIn18to6);
+        assertEq(actualAssetOut6, expectedAssetOut6, "18->6 decimals conversion should work");
+        assertEq(actualAssetOut6, 100e6, "18->6 decimals should give 100 * 10^6");
+
+        // Test with different amounts for 6 decimal PSM asset
+        uint coinIn2 = 50e18;
+        uint expectedAssetOut2 = coinIn2 / 1e12; // 50e18 / 1e12 = 50e6
+        uint actualAssetOut2 = psmLender6.getSellAmountOut(coinIn2);
+        assertEq(actualAssetOut2, expectedAssetOut2, "50e18 coin should give 50e6 asset");
+        assertEq(actualAssetOut2, 50e6, "50e18 -> 6 decimals should give 50 * 10^6");
+
+        // Test edge case: amount that would truncate due to integer division
+        uint smallCoinIn = 1e12; // 0.000001e18 = very small amount
+        uint expectedSmallOut = smallCoinIn / 1e12; // 1e12 / 1e12 = 1
+        uint actualSmallOut = psmLender6.getSellAmountOut(smallCoinIn);
+        assertEq(actualSmallOut, expectedSmallOut, "Small amount should truncate correctly");
+        assertEq(actualSmallOut, 1, "1e12 coin -> 6 decimals should give 1 asset unit");
+    }
+
+    function testGetBuyAmountOutAndFee() public {
+        // Test with 18 decimal PSM asset (1:1 ratio)
+        Lender psmLender18 = createLenderWithPSMAssetDecimals(18);
+
+        // Test buy fee calculation over time with 18 decimal asset
+        uint assetIn18 = 100e18;
+
+        // At deployment (fee should be 0 in first half)
+        uint currentTime = psmLender18.deployTimestamp();
+        vm.warp(currentTime);
+        (uint coinOut, uint coinFee) = psmLender18.getBuyAmountOut(assetIn18);
+        assertEq(coinFee, 0, "Fee should be 0 at deployment");
+        assertEq(coinOut, assetIn18, "Coin out should equal asset in when no fee (18 decimals)");
+
+        // Just before deadline (fee should be close to 100 bps = 1%)
+        uint deadline = psmLender18.immutabilityDeadline();
+        vm.warp(deadline - 1);
+        uint buyFeeBps = psmLender18.getBuyFeeBps();
+        assertGe(buyFeeBps, 99, "Fee should be at least 99 bps just before deadline");
+        assertLe(buyFeeBps, 100, "Fee should be at most 100 bps just before deadline");
+
+        (coinOut, coinFee) = psmLender18.getBuyAmountOut(assetIn18);
+        uint expectedFee18 = assetIn18 * buyFeeBps / 10000;
+        assertEq(coinFee, expectedFee18, "Coin fee should match calculated fee for 18 decimal asset");
+        assertEq(coinOut, assetIn18 - expectedFee18, "Coin out should be asset in minus fee");
+
+        // Test with 6 decimal PSM asset (conversion required)
+        Lender psmLender6 = createLenderWithPSMAssetDecimals(6);
+        uint assetIn6 = 100e6; // 100 USDC-like tokens
+
+        // At deployment (no fee)
+        vm.warp(psmLender6.deployTimestamp());
+        (coinOut, coinFee) = psmLender6.getBuyAmountOut(assetIn6);
+        assertEq(coinFee, 0, "Fee should be 0 at deployment for 6 decimal asset");
+        uint expectedCoinOut6 = assetIn6 * 1e12; // 6 decimals -> 18 decimals: multiply by 10^(18-6)
+        assertEq(coinOut, expectedCoinOut6, "Coin out should be converted from 6 to 18 decimals");
+
+        // Just before deadline (with fee)
+        vm.warp(psmLender6.immutabilityDeadline() - 1);
+        buyFeeBps = psmLender6.getBuyFeeBps();
+        assertGe(buyFeeBps, 99, "Fee should be at least 99 bps just before deadline");
+
+        (coinOut, coinFee) = psmLender6.getBuyAmountOut(assetIn6);
+        expectedCoinOut6 = assetIn6 * 1e12; // First convert to 18 decimals
+        uint expectedFee6 = expectedCoinOut6 * buyFeeBps / 10000; // Then apply fee
+        uint expectedCoinOutAfterFee6 = expectedCoinOut6 - expectedFee6;
+        assertEq(coinFee, expectedFee6, "Coin fee should match calculated fee for 6 decimal asset");
+        assertEq(coinOut, expectedCoinOutAfterFee6, "Coin out should be converted and have fee deducted");
+    }
+
+    function testSellPSMAsset() public {
+        Lender psmLender = createLenderWithPSMAssetOnly();
+        ERC20 psmAsset = psmLender.psmAsset();
+        Coin coin = psmLender.coin();
+
+        // Setup: use buy to set up freePsmAssets
+        ERC20Mock(address(psmAsset)).mint(address(this), 1000e18);
+        psmAsset.approve(address(psmLender), 1000e18);
+
+        // Buy at deployment time (0 fee)
+        vm.warp(psmLender.deployTimestamp());
+        psmLender.buy(1000e18, 999e18); // Should work with 0 fee
+
+        // Now test sell
+        uint coinIn = 50e18;
+        uint minAssetOut = 49e18;
+
+        // We already have coins from the buy, but let's mint more if needed
+        uint currentCoinBalance = coin.balanceOf(address(this));
+        if (currentCoinBalance < coinIn) {
+            ERC20Mock(address(coin)).mint(address(this), coinIn - currentCoinBalance);
+        }
+        coin.approve(address(psmLender), coinIn);
+
+        uint coinBalanceBefore = coin.balanceOf(address(this));
+        uint psmAssetBalanceBefore = psmAsset.balanceOf(address(this));
+
+        psmLender.sell(coinIn, minAssetOut);
+
+        uint coinBalanceAfter = coin.balanceOf(address(this));
+        uint psmAssetBalanceAfter = psmAsset.balanceOf(address(this));
+
+        assertEq(coinBalanceBefore - coinBalanceAfter, coinIn, "Coin balance should decrease by coinIn");
+        assertGe(psmAssetBalanceAfter - psmAssetBalanceBefore, minAssetOut, "PSM asset balance should increase by at least minAssetOut");
+    }
+
+    function testBuyPSMAsset() public {
+        Lender psmLender = createLenderWithPSMAssetOnly();
+        ERC20 psmAsset = psmLender.psmAsset();
+        Coin coin = psmLender.coin();
+
+        // Give PSM assets to this contract
+        ERC20Mock(address(psmAsset)).mint(address(this), 100e18);
+        psmAsset.approve(address(psmLender), 100e18);
+
+        uint assetIn = 50e18;
+        uint minCoinOut = 49e18; // Slightly less than 50e18
+
+        uint coinBalanceBefore = coin.balanceOf(address(this));
+        uint psmAssetBalanceBefore = psmAsset.balanceOf(address(this));
+
+        psmLender.buy(assetIn, minCoinOut);
+
+        uint coinBalanceAfter = coin.balanceOf(address(this));
+        uint psmAssetBalanceAfter = psmAsset.balanceOf(address(this));
+
+        assertEq(psmAssetBalanceBefore - psmAssetBalanceAfter, assetIn, "PSM asset balance should decrease by assetIn");
+        assertGe(coinBalanceAfter - coinBalanceBefore, minCoinOut, "Coin balance should increase by at least minCoinOut");
+    }
+
+    function testSellWithPSMVault() public {
+        Lender psmLender = createLenderWithPSM();
+        ERC4626 psmVault = psmLender.psmVault();
+        ERC20 psmAsset = psmLender.psmAsset();
+        Coin coin = psmLender.coin();
+
+        // Setup: deposit assets into vault and transfer shares to lender
+        ERC20Mock(address(psmAsset)).mint(address(this), 1000e18);
+        psmAsset.approve(address(psmVault), 1000e18);
+        uint shares = psmVault.deposit(1000e18, address(this));
+        psmVault.transfer(address(psmLender), shares);
+
+        // Accrue PSM profit to set freePsmAssets
+        vm.prank(psmLender.operator());
+        psmLender.pullLocalReserves();
+
+        // Mint coin for selling
+        ERC20Mock(address(coin)).mint(address(this), 100e18);
+        coin.approve(address(psmLender), 100e18);
+
+        // Test sell with vault
+        uint coinIn = 50e18;
+        uint minAssetOut = 45e18; // Account for potential fees/rounding
+
+        uint coinBalanceBefore = coin.balanceOf(address(this));
+        uint psmAssetBalanceBefore = psmAsset.balanceOf(address(this));
+
+        psmLender.sell(coinIn, minAssetOut);
+
+        uint coinBalanceAfter = coin.balanceOf(address(this));
+        uint psmAssetBalanceAfter = psmAsset.balanceOf(address(this));
+
+        assertEq(coinBalanceBefore - coinBalanceAfter, coinIn, "Coin balance should decrease by coinIn");
+        assertGe(psmAssetBalanceAfter - psmAssetBalanceBefore, minAssetOut, "PSM asset balance should increase by at least minAssetOut");
+    }
+
+    function testReapprovePsmVault() public {
+        Lender psmLender = createLenderWithPSM();
+
+        vm.prank(psmLender.operator());
+        psmLender.reapprovePsmVault();
+
+        ERC20 psmAsset = psmLender.psmAsset();
+        ERC4626 psmVault = psmLender.psmVault();
+
+        uint allowance = psmAsset.allowance(address(psmLender), address(psmVault));
+        assertEq(allowance, type(uint).max, "PSM vault should have max allowance on PSM asset");
+    }
+
+    function testAccruePsmProfit() public {
+        Lender psmLender = createLenderWithPSM();
+        Vault4626Mock psmVault = Vault4626Mock(address(psmLender.psmVault()));
+        ERC20 psmAsset = psmLender.psmAsset();
+
+        // Setup: users buy PSM assets
+        ERC20Mock(address(psmAsset)).mint(address(this), 1000e18);
+        psmAsset.approve(address(psmLender), 1000e18);
+
+        // Buy PSM assets at deployment time (0 fee)
+        vm.warp(psmLender.deployTimestamp());
+        psmLender.buy(1000e18, 999e18); // Buy 1000e18 PSM assets, expect at least 999e18 coins
+
+        uint freePsmAssetsBefore = psmLender.freePsmAssets();
+
+        // Simulate 10% profit in the vault (1.1x multiplier)
+        psmVault.setProfitMultiplier(1.1e18);
+
+        uint lenderShares = psmVault.balanceOf(address(psmLender));
+        uint vaultTotalAssets = psmVault.totalAssets();
+        uint previewRedeemAmount = psmVault.previewRedeem(lenderShares);
+
+        // Basic sanity checks
+        assertEq(lenderShares, 1000e18, "Lender should have 1000e18 shares from buy");
+        assertEq(vaultTotalAssets, 1100e18, "Vault total assets should be 1100e18 with 10% profit");
+        assertEq(previewRedeemAmount, 1100e18, "Preview redeem should return 1100e18");
+        assertEq(freePsmAssetsBefore, 1000e18, "Free PSM assets should be 1000e18 after buy");
+
+        // Call pullLocalReserves which internally calls accruePsmProfit and mints reserves to operator
+        address operator = psmLender.operator();
+        Coin coin = psmLender.coin();
+        uint operatorCoinBalanceBefore = coin.balanceOf(operator);
+
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+
+        uint operatorCoinBalanceAfter = coin.balanceOf(operator);
+
+        // Expected profit = previewRedeem - freePsmAssets = 1100e18 - 1000e18 = 100e18
+        uint expectedProfit = previewRedeemAmount - freePsmAssetsBefore;
+        assertEq(expectedProfit, 100e18, "Expected profit should be 10% of 1000e18");
+        assertEq(operatorCoinBalanceAfter - operatorCoinBalanceBefore, expectedProfit, "Operator should receive profit as coins");
+
+        // Test that subsequent calls don't accrue more profit (freePsmAssets now equals previewRedeem)
+        uint operatorCoinBalanceBeforeSecond = operatorCoinBalanceAfter;
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+        uint operatorCoinBalanceAfterSecond = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfterSecond, operatorCoinBalanceBeforeSecond, "Should not accrue additional profit on second call");
+
+        // Test loss scenario (multiplier < 1.0) - should not accrue negative profit
+        psmVault.setProfitMultiplier(0.9e18); // 10% loss
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+        uint operatorCoinBalanceAfterLoss = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfterLoss, operatorCoinBalanceBeforeSecond, "Should not accrue negative profit on loss");
+    }
+
+    function testPSMFunctionsRevertWhenNoPSMAsset() public {
+        // Use regular lender without PSM
+        vm.expectRevert("PSM asset was not set");
+        lender.sell(100e18, 90e18);
+
+        vm.expectRevert("PSM asset was not set");
+        lender.buy(100e18, 90e18);
     }
 }
