@@ -408,6 +408,7 @@ contract Lender {
     }
 
     function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
+        require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         assetOut = getSellAmountOut(coinIn);
         require(assetOut >= minAssetOut, "insufficient amount out");
         freePsmAssets -= assetOut;
@@ -424,6 +425,7 @@ contract Lender {
     }
 
     function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
+        require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         uint coinFee;
         (coinOut, coinFee) = getBuyAmountOut(assetIn);
         require(coinOut >= minCoinOut, "insufficient amount out");
