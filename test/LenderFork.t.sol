@@ -123,7 +123,10 @@ contract LenderForkTest is Test {
             manager: address(0), // no manager in old contract
             collateralFactor: deployedLender.collateralFactor(),
             minDebt: deployedLender.minDebt(),
-            timeUntilImmutability: 365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
+            timeUntilImmutability: 365 days, // dummy immutability deadline (this won't matter since we're replacing bytecode)
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         lender = new Lender(forkLenderParams);
     }

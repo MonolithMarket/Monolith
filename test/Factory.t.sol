@@ -297,10 +297,13 @@ contract FactoryTest is Test {
             minDebt: minDebt,
             timeUntilImmutability: timeUntilImmutability,
             operator: deployerOperator,
-            manager: managerAddr
+            manager: managerAddr,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         (address lender, address coin, address vault) = factory.deploy(params);
-        
+
         // Verify addresses are non-zero
         assertTrue(lender != address(0), "Lender address should be non-zero");
         assertTrue(coin != address(0), "Coin address should be non-zero");
@@ -357,7 +360,10 @@ contract FactoryTest is Test {
             minDebt: 1000e18,
             timeUntilImmutability: 365 days,
             operator: deployerOperator,
-            manager: managerAddr1
+            manager: managerAddr1,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         (address lender1, address coin1, address vault1) = factory.deploy(params1);
 
@@ -374,7 +380,10 @@ contract FactoryTest is Test {
             minDebt: 1000e18,
             timeUntilImmutability: 365 days,
             operator: deployerOperator,
-            manager: managerAddr2
+            manager: managerAddr2,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
@@ -421,7 +430,10 @@ contract FactoryTest is Test {
             minDebt: minDebt,
             timeUntilImmutability: timeUntilImmutability,
             operator: deployerOperator,
-            manager: managerAddr
+            manager: managerAddr,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 

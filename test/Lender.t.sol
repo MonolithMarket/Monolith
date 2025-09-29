@@ -141,7 +141,10 @@ contract LenderTest is Test {
             manager: managerAddr, // manager address
             collateralFactor: 5000, // 50% collateral factor
             minDebt: 1000e18, // 1000 Coin min debt
-            timeUntilImmutability: 365 days // 1 year immutability deadline
+            timeUntilImmutability: 365 days, // 1 year immutability deadline
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         lender = new Lender(lenderParams);
     
@@ -171,7 +174,10 @@ contract LenderTest is Test {
             manager: newManagerAddr, // manager address
             collateralFactor: 5000, // 50% collateral factor
             minDebt: 1000e18, // 1000 Coin min debt
-            timeUntilImmutability: 365 days // 1 year immutability deadline
+            timeUntilImmutability: 365 days, // 1 year immutability deadline
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         Lender newLender = new Lender(newLenderParams);
 
@@ -2400,7 +2406,10 @@ contract LenderTest is Test {
             manager: address(0), // no manager in old contract
             collateralFactor: lender.collateralFactor(),
             minDebt: lender.minDebt(),
-            timeUntilImmutability: 365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
+            timeUntilImmutability: 365 days, // dummy immutability deadline (this won't matter since we're replacing bytecode)
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         Lender newLenderImplementation = new Lender(upgradeLenderParams);
         
@@ -3147,7 +3156,10 @@ contract LenderTest is Test {
             manager: address(0xABC), // manager address
             collateralFactor: 5000, // 50% collateral factor
             minDebt: 1000e18, // 1000 Coin min debt
-            timeUntilImmutability: 365 days // 1 year immutability deadline
+            timeUntilImmutability: 365 days, // 1 year immutability deadline
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         });
         Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
@@ -3248,7 +3260,10 @@ contract LenderTest is Test {
             manager: address(0),
             collateralFactor: 7500,
             minDebt: 100e18,
-            timeUntilImmutability: 365 days
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         }));
     }
 
@@ -3268,7 +3283,10 @@ contract LenderTest is Test {
             manager: address(0),
             collateralFactor: 7500,
             minDebt: 100e18,
-            timeUntilImmutability: 365 days
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         }));
     }
 
@@ -3288,7 +3306,10 @@ contract LenderTest is Test {
             manager: address(0),
             collateralFactor: 7500,
             minDebt: 100e18,
-            timeUntilImmutability: 365 days
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000
         }));
     }
 
