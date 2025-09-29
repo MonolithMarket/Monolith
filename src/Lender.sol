@@ -30,9 +30,9 @@ contract Lender {
     using FixedPointMathLib for uint256;
 
     // single 256-bit slot
-    uint16 public targetFreeDebtRatioStartBps = 2000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
-    uint16 public targetFreeDebtRatioEndBps = 4000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
-    uint16 public redeemFeeBps = 30; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
+    uint16 public targetFreeDebtRatioStartBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    uint16 public targetFreeDebtRatioEndBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    uint16 public redeemFeeBps; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
     uint64 public expRate; // max result is 693147180559945309 which is within uint64 range
     uint40 public lastAccrue; // max uint40 is year 36812
     uint88 public lastBorrowRateMantissa = uint88(2e16); // max uint88 is equivalent to 309485000% APR
@@ -101,6 +101,7 @@ contract Lender {
         uint64 halfLife;
         uint16 targetFreeDebtRatioStartBps;
         uint16 targetFreeDebtRatioEndBps;
+        uint16 redeemFeeBps;
     }
 
     constructor(LenderParams memory params) {
@@ -109,6 +110,7 @@ contract Lender {
         require(params.halfLife >= 12 hours && params.halfLife <= 30 days, "Invalid half life");
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
+        require(params.redeemFeeBps <= 300, "Invalid redeem fee bps");
         if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
         collateral = params.collateral;
         psmAsset = params.psmAsset;
@@ -128,6 +130,7 @@ contract Lender {
         expRate = uint64(uint(wadLn(2*1e18)) / params.halfLife);
         targetFreeDebtRatioStartBps = params.targetFreeDebtRatioStartBps;
         targetFreeDebtRatioEndBps = params.targetFreeDebtRatioEndBps;
+        redeemFeeBps = params.redeemFeeBps;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
             psmAsset.approve(address(psmVault), type(uint).max);

@@ -126,7 +126,8 @@ contract LenderForkTest is Test {
             timeUntilImmutability: 365 days, // dummy immutability deadline (this won't matter since we're replacing bytecode)
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
         });
         lender = new Lender(forkLenderParams);
     }

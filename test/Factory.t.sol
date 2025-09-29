@@ -300,7 +300,8 @@ contract FactoryTest is Test {
             manager: managerAddr,
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 
@@ -363,7 +364,8 @@ contract FactoryTest is Test {
             manager: managerAddr1,
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
         });
         (address lender1, address coin1, address vault1) = factory.deploy(params1);
 
@@ -383,7 +385,8 @@ contract FactoryTest is Test {
             manager: managerAddr2,
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
         });
         (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
@@ -433,7 +436,8 @@ contract FactoryTest is Test {
             manager: managerAddr,
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 
