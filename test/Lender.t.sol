@@ -3320,6 +3320,30 @@ contract LenderTest is Test {
         }));
     }
 
+      function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns (Lender) {
+        ERC20MockWithDecimals psmAsset = new ERC20MockWithDecimals("PSM Asset", "PSMA", decimals);
+        Vault4626Mock psmVault = new Vault4626Mock(ERC20(psmAsset));
+        return new Lender(Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COLL"))),
+            psmAsset: ERC20(address(psmAsset)),
+            psmVault: ERC4626(address(psmVault)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 7500,
+            minDebt: 100e18,
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
+        }));
+    }
+
     // PSM Tests
     function testGetSellAmountOut() public {
         // Test 18 decimals PSM asset (same as Coin - 1:1 ratio)
@@ -3553,6 +3577,65 @@ contract LenderTest is Test {
         uint expectedProfit = previewRedeemAmount - freePsmAssetsBefore;
         assertEq(expectedProfit, 100e18, "Expected profit should be 10% of 1000e18");
         assertEq(operatorCoinBalanceAfter - operatorCoinBalanceBefore, expectedProfit, "Operator should receive profit as coins");
+
+        // Test that subsequent calls don't accrue more profit (freePsmAssets now equals previewRedeem)
+        uint operatorCoinBalanceBeforeSecond = operatorCoinBalanceAfter;
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+        uint operatorCoinBalanceAfterSecond = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfterSecond, operatorCoinBalanceBeforeSecond, "Should not accrue additional profit on second call");
+
+        // Test loss scenario (multiplier < 1.0) - should not accrue negative profit
+        psmVault.setProfitMultiplier(0.9e18); // 10% loss
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+        uint operatorCoinBalanceAfterLoss = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfterLoss, operatorCoinBalanceBeforeSecond, "Should not accrue negative profit on loss");
+    }
+
+    function testAccruePsmProfit_with_PSMAsset6Decimals() public {
+        Lender psmLender = createLenderWithPSMVaultAssetDecimals(6);
+        Vault4626Mock psmVault = Vault4626Mock(address(psmLender.psmVault()));
+        ERC20 psmAsset = psmLender.psmAsset();
+
+        // Setup: users buy PSM assets
+        ERC20Mock(address(psmAsset)).mint(address(this), 1000e6);
+        psmAsset.approve(address(psmLender), 1000e6);
+
+        // Buy PSM assets at deployment time (0 fee)
+        vm.warp(psmLender.deployTimestamp());
+        psmLender.buy(1000e6, 999e18); // Buy 1000e6 PSM assets, expect at least 999e18 coins
+
+        uint freePsmAssetsBefore = psmLender.freePsmAssets();
+
+        // Simulate 10% profit in the vault (1.1x multiplier)
+        psmVault.setProfitMultiplier(1.1e18);
+
+        uint lenderShares = psmVault.balanceOf(address(psmLender));
+        uint vaultTotalAssets = psmVault.totalAssets();
+        uint previewRedeemAmount = psmVault.previewRedeem(lenderShares);
+
+        // Basic sanity checks
+        assertEq(lenderShares, 1000e6, "Lender should have 1000e6 shares from buy");
+        assertEq(vaultTotalAssets, 1100e6, "Vault total assets should be 1100e6 with 10% profit");
+        assertEq(previewRedeemAmount, 1100e6, "Preview redeem should return 1100e6");
+        assertEq(freePsmAssetsBefore, 1000e6, "Free PSM assets should be 1000e6 after buy");
+
+        // Call pullLocalReserves which internally calls accruePsmProfit and mints reserves to operator
+        address operator = psmLender.operator();
+        Coin coin = psmLender.coin();
+        uint operatorCoinBalanceBefore = coin.balanceOf(operator);
+
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+
+        uint operatorCoinBalanceAfter = coin.balanceOf(operator);
+
+        // Expected profit = previewRedeem - freePsmAssets = 1100e6 - 1000e6 = 100e6
+        uint expectedProfit = previewRedeemAmount - freePsmAssetsBefore;
+        assertEq(expectedProfit, 100e6, "Expected profit should be 10% of 1000e6");
+        // Receive coin profit in 18 decimals
+        assertEq(operatorCoinBalanceAfter - operatorCoinBalanceBefore, expectedProfit * 10**12, "Operator should receive profit as coins");
 
         // Test that subsequent calls don't accrue more profit (freePsmAssets now equals previewRedeem)
         uint operatorCoinBalanceBeforeSecond = operatorCoinBalanceAfter;
