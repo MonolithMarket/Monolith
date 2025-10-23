@@ -71,7 +71,12 @@ contract Lender {
    
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
-
+    
+    // For accrueInterest() try-catch
+    uint256 private constant INTEREST_CALCULATION_GAS_REQUIREMENT = 40_000;
+    // For writeOff() try-catch in liquidate() 
+    uint256 private constant WRITEOFF_GAS_REQUIREMENT = 120_000;
+    
     // Mappings
     mapping(address => uint) public _cachedCollateralBalances; // should not be read externally in most cases
     mapping(address => uint) public freeDebtShares;
@@ -168,6 +173,8 @@ contract Lender {
         uint timeElapsed = block.timestamp - lastAccrue;
         if(timeElapsed == 0) return;
 
+        uint256 gasBefore = gasleft();
+
         try interestModel.calculateInterest(
             totalPaidDebt,
             lastBorrowRateMantissa,
@@ -201,7 +208,9 @@ contract Lender {
             lastBorrowRateMantissa = uint88(currBorrowRate);
             cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         } catch {
-            // If the call reverts, do nothing.
+            // If the call failed, check if sufficient gas was provided
+            // We need to ensure the caller provided enough gas for accrueInterest to execute
+            require(gasBefore >= INTEREST_CALCULATION_GAS_REQUIREMENT, "Not enough gas for accrueInterest");
         }
     }
 
@@ -352,8 +361,14 @@ contract Lender {
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
+        
+        uint256 gasBefore = gasleft();
         // try to write off remaining debt. Call externally and catch error to prevent liquidation failure
-        try this.writeOff(borrower, msg.sender) {} catch {}
+        try this.writeOff(borrower, msg.sender) {} catch {
+            // If the call failed, check if sufficient gas was provided
+            // We need to ensure the caller provided enough gas for writeOff to execute
+            require(gasBefore >= WRITEOFF_GAS_REQUIREMENT, "Not enough gas for writeOff");
+        }
         return collateralReward;
     }
 
