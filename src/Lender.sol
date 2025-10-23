@@ -111,7 +111,7 @@ contract Lender {
         require(params.halfLife >= 12 hours && params.halfLife <= 30 days, "Invalid half life");
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
-        require(params.redeemFeeBps <= 300, "Invalid redeem fee bps");
+        require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
         if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
         collateral = params.collateral;
         psmAsset = params.psmAsset;
