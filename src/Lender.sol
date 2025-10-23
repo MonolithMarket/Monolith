@@ -376,13 +376,14 @@ contract Lender {
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
-                // 3. send collateral to caller
-                collateral.safeTransfer(to, collateralBalance);
-                if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralBalance;
                 
+                if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralBalance;
                 _cachedCollateralBalances[borrower] = 0;
                 emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
+                
+                // 3. send collateral to caller
+                collateral.safeTransfer(to, collateralBalance);
             }
         }
     }
