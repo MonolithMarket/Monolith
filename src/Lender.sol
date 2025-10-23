@@ -37,6 +37,7 @@ contract Lender {
     uint40 public lastAccrue; // max uint40 is year 36812
     uint88 public lastBorrowRateMantissa = uint88(2e16); // max uint88 is equivalent to 309485000% APR
     uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    
 
     // single 256-bit slot
     uint16 public cachedGlobalFeeBps;
@@ -53,7 +54,8 @@ contract Lender {
     uint public totalPaidDebtShares;
     uint public epoch;
     uint public freePsmAssets;
-    uint public stalenessThreshold; 
+    uint32 public stalenessThreshold; 
+    uint16 public maxBorrowDeltaBps; // max acceptable rounding error in bps when borrowing (e.g., 200 = 2%)
     
     // Constants and immutables
     Coin public immutable coin;
@@ -110,6 +112,7 @@ contract Lender {
         uint16 targetFreeDebtRatioEndBps;
         uint16 redeemFeeBps;
         uint32 stalenessThreshold;
+        uint16 maxBorrowDeltaBps;
     }
 
     constructor(LenderParams memory params) {
@@ -119,6 +122,8 @@ contract Lender {
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
         require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
+        require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 5%
+        require(params.minDebt >= 1e10, "Invalid min debt"); 
         if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
         collateral = params.collateral;
         psmAsset = params.psmAsset;
@@ -139,6 +144,7 @@ contract Lender {
         targetFreeDebtRatioStartBps = params.targetFreeDebtRatioStartBps;
         targetFreeDebtRatioEndBps = params.targetFreeDebtRatioEndBps;
         redeemFeeBps = params.redeemFeeBps;
+        maxBorrowDeltaBps = params.maxBorrowDeltaBps;
         stalenessThreshold = params.stalenessThreshold;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
@@ -548,17 +554,33 @@ contract Lender {
             uint shares = totalFreeDebt == 0 ? 
                     amount : 
                     amount.mulDivUp(totalFreeDebtShares, totalFreeDebt);
+            
+            // Update state first
             totalFreeDebt += amount;
             totalFreeDebtShares += shares;
             freeDebtShares[account] += shares;
+
+            // Calculate actual debt increase after share conversion (in the new state)
+            uint256 actualDebtIncrease = shares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
+            // Enforce max-delta guard: actual debt must not exceed requested by more than maxBorrowDeltaBps
+            uint256 maxAllowedDebtIncrease = amount * (10000 + maxBorrowDeltaBps) / 10000;
+            require(actualDebtIncrease <= maxAllowedDebtIncrease, "Borrow delta exceeds max");
         } else {
             // Handle paid debt 
             uint256 shares = totalPaidDebt == 0 ? 
                 amount : 
                 amount.mulDivUp(totalPaidDebtShares, totalPaidDebt);
+            
+            // Update state first
             totalPaidDebt += amount;
             totalPaidDebtShares += shares;
             paidDebtShares[account] += shares;
+            
+            // Calculate actual debt increase after share conversion (in the new state)
+            uint256 actualDebtIncrease = shares.mulDivUp(totalPaidDebt, totalPaidDebtShares);
+            // Enforce max-delta guard: actual debt must not exceed requested by more than maxBorrowDeltaBps
+            uint256 maxAllowedDebtIncrease = amount * (10000 + maxBorrowDeltaBps) / 10000;
+            require(actualDebtIncrease <= maxAllowedDebtIncrease, "Borrow delta exceeds max");
         }
     }
 
@@ -796,6 +818,12 @@ contract Lender {
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
     }
 
+    function setMaxBorrowDeltaBps(uint16 _maxBorrowDeltaBps) external onlyOperatorOrManager beforeDeadline {
+        require(_maxBorrowDeltaBps <= 200 && _maxBorrowDeltaBps >= 50, "Invalid borrow delta bps"); // Max 5%
+        maxBorrowDeltaBps = _maxBorrowDeltaBps;
+        emit MaxBorrowDeltaBpsUpdated(_maxBorrowDeltaBps);
+    }
+
     function setLocalReserveFeeBps(uint _feeBps) external onlyOperator {
         accrueInterest();
         require(_feeBps <= 1000, "Invalid fee");
@@ -843,6 +871,7 @@ contract Lender {
     event HalfLifeUpdated(uint64 halfLife);
     event TargetFreeDebtRatioUpdated(uint16 startBps, uint16 endBps);
     event RedeemFeeBpsUpdated(uint16 redeemFeeBps);
+    event MaxBorrowDeltaBpsUpdated(uint16 maxBorrowDeltaBps);
     event DelegationUpdated(address indexed delegator, address indexed delegatee, bool isDelegatee);
     event PendingOperatorUpdated(address indexed pendingOperator);
     event OperatorAccepted(address indexed operator);

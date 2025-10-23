@@ -146,7 +146,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 48 hours
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50
         });
         lender = new Lender(lenderParams);
     
@@ -181,7 +182,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 48 hours
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50
         });
         Lender newLender = new Lender(newLenderParams);
 
@@ -2416,15 +2418,17 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 24 hours
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50
         });
         Lender newLenderImplementation = new Lender(upgradeLenderParams);
         (uint256 price, uint256 updatedAt) = lender.getFeedPrice();
-        // Set the stalenessThreshold to 24 hours to avoid price staleness issues during the test
+        // Set the stalenessThreshold to 24 hours to avoid price staleness issues during the test and maxBorrowDeltaBps to 50 bps
+        bytes32 combinedValue = bytes32(uint256(24 hours) | (uint256(50) << 32));
         vm.store(
             address(lender),
-            bytes32(uint256(11)), // stalenessThreshold is at slot 11
-            bytes32(uint256(24 hours))
+            bytes32(uint256(11)), // stalenessThreshold and maxBorrowDeltaBps are at slot 11
+            combinedValue
         );
      
         // Replace the bytecode at the existing Lender address with the new implementation
@@ -3175,7 +3179,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 24 hours
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50
         });
         Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
@@ -3281,7 +3286,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 24 hours
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50
         }));
     }
 
@@ -3306,7 +3312,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 24 hours
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50
         }));
     }
 
@@ -3331,7 +3338,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 24 hours
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50
         }));
     }
 
@@ -3356,7 +3364,8 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
-            stalenessThreshold: 24 hours
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50
         }));
     }
 
