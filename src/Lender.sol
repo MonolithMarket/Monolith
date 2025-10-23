@@ -525,7 +525,7 @@ contract Lender {
     function increaseDebt(address account, uint256 amount) internal {
         if (isRedeemable[account]) {
             // Handle free debt
-            uint shares = totalFreeDebtShares == 0 ? 
+            uint shares = totalFreeDebt == 0 ? 
                     amount : 
                     amount.mulDivUp(totalFreeDebtShares, totalFreeDebt);
             totalFreeDebt += amount;
@@ -533,7 +533,7 @@ contract Lender {
             freeDebtShares[account] += shares;
         } else {
             // Handle paid debt 
-            uint256 shares = totalPaidDebtShares == 0 ? 
+            uint256 shares = totalPaidDebt == 0 ? 
                 amount : 
                 amount.mulDivUp(totalPaidDebtShares, totalPaidDebt);
             totalPaidDebt += amount;
@@ -566,8 +566,8 @@ contract Lender {
             }
             
             paidDebtShares[account] -= shares;
-            totalPaidDebtShares -= shares;
-            totalPaidDebt -= amount;
+            totalPaidDebtShares = totalPaidDebtShares <= shares ? 0 : totalPaidDebtShares - shares; // prevent underflow
+            totalPaidDebt = totalPaidDebt <= amount ? 0 : totalPaidDebt - amount; // prevent underflow
         }
     }
 
