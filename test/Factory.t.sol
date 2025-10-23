@@ -301,7 +301,8 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 
@@ -365,7 +366,8 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours
         });
         (address lender1, address coin1, address vault1) = factory.deploy(params1);
 
@@ -386,7 +388,8 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours
         });
         (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
@@ -437,7 +440,8 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 

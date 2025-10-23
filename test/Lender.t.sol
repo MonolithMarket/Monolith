@@ -145,7 +145,8 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours
         });
         lender = new Lender(lenderParams);
     
@@ -179,7 +180,8 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours
         });
         Lender newLender = new Lender(newLenderParams);
 
@@ -194,6 +196,7 @@ contract LenderTest is Test {
         assertEq(newLender.collateralFactor(), 5000, "Collateral factor mismatch in constructor");
         assertEq(newLender.minDebt(), 1000e18, "Minimum debt mismatch in constructor");
         assertEq(newLender.immutabilityDeadline(), block.timestamp + 365 days, "Immutability deadline mismatch in constructor");
+        assertEq(newLender.stalenessThreshold(), 48 hours, "Staleness threshold mismatch in constructor");
     }
 
     function test_depositCollateral(uint depositAmount, bool chooseRedeemable) public {
@@ -2412,10 +2415,18 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         });
         Lender newLenderImplementation = new Lender(upgradeLenderParams);
-        
+        (uint256 price, uint256 updatedAt) = lender.getFeedPrice();
+        // Set the stalenessThreshold to 24 hours to avoid price staleness issues during the test
+        vm.store(
+            address(lender),
+            bytes32(uint256(11)), // stalenessThreshold is at slot 11
+            bytes32(uint256(24 hours))
+        );
+     
         // Replace the bytecode at the existing Lender address with the new implementation
         vm.etch(lenderAddress, address(newLenderImplementation).code);
         
@@ -3163,7 +3174,8 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         });
         Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
@@ -3268,7 +3280,8 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         }));
     }
 
@@ -3292,7 +3305,8 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         }));
     }
 
@@ -3316,7 +3330,8 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         }));
     }
 
@@ -3340,7 +3355,8 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         }));
     }
 
@@ -3651,7 +3667,7 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         uint operatorCoinBalanceAfterLoss = coin.balanceOf(operator);
         assertEq(operatorCoinBalanceAfterLoss, operatorCoinBalanceBeforeSecond, "Should not accrue negative profit on loss");
     }
-    
+
     function testPSMFunctionsRevertWhenNoPSMAsset() public {
         // Use regular lender without PSM
         vm.expectRevert("PSM asset was not set");

@@ -53,7 +53,8 @@ contract Lender {
     uint public totalPaidDebtShares;
     uint public epoch;
     uint public freePsmAssets;
-
+    uint public stalenessThreshold; 
+    
     // Constants and immutables
     Coin public immutable coin;
     ERC20 public immutable collateral;
@@ -67,7 +68,7 @@ contract Lender {
     uint public immutable minDebt;
     uint public immutable deployTimestamp;
     uint public immutable psmAssetDecimals;
-    uint public constant STALENESS_THRESHOLD = 25 hours; // standard 24 hours staleness + 1 hour buffer
+   
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
 
@@ -103,6 +104,7 @@ contract Lender {
         uint16 targetFreeDebtRatioStartBps;
         uint16 targetFreeDebtRatioEndBps;
         uint16 redeemFeeBps;
+        uint32 stalenessThreshold;
     }
 
     constructor(LenderParams memory params) {
@@ -132,6 +134,7 @@ contract Lender {
         targetFreeDebtRatioStartBps = params.targetFreeDebtRatioStartBps;
         targetFreeDebtRatioEndBps = params.targetFreeDebtRatioEndBps;
         redeemFeeBps = params.redeemFeeBps;
+        stalenessThreshold = params.stalenessThreshold;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
             psmAsset.approve(address(psmVault), type(uint).max);
@@ -638,9 +641,9 @@ contract Lender {
         uint currentTime = block.timestamp;
         uint timeElapsed = currentTime >= updatedAt ? currentTime - updatedAt : 0;
 
-        if (timeElapsed > STALENESS_THRESHOLD) {
+        if (timeElapsed > stalenessThreshold) {
             reduceOnly = true;
-            uint stalenessDuration = timeElapsed - STALENESS_THRESHOLD;
+            uint stalenessDuration = timeElapsed - stalenessThreshold;
             if (stalenessDuration < STALENESS_UNWIND_DURATION) {
                 price = price * (STALENESS_UNWIND_DURATION - stalenessDuration) / STALENESS_UNWIND_DURATION;
             } else {

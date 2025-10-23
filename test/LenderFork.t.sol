@@ -127,7 +127,8 @@ contract LenderForkTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours
         });
         lender = new Lender(forkLenderParams);
     }
