@@ -66,6 +66,7 @@ contract Lender {
     uint public immutable collateralFactor;
     uint public immutable minDebt;
     uint public immutable deployTimestamp;
+    uint public immutable psmAssetDecimals;
     uint public constant STALENESS_THRESHOLD = 25 hours; // standard 24 hours staleness + 1 hour buffer
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
@@ -134,6 +135,11 @@ contract Lender {
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
             psmAsset.approve(address(psmVault), type(uint).max);
+        uint256 _psmAssetDecimals;
+        if (psmAsset != ERC20(address(0))) {
+            _psmAssetDecimals = psmAsset.decimals();
+        } 
+        psmAssetDecimals = _psmAssetDecimals;
     }
 
     // Modifiers
@@ -376,7 +382,7 @@ contract Lender {
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
-                
+
                 if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralBalance;
                 _cachedCollateralBalances[borrower] = 0;
                 emit WrittenOff(borrower, to, debt, collateralBalance);
@@ -468,14 +474,14 @@ contract Lender {
             uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
             if(assets <= freePsmAssets) return; // avoids underflow in case of loss
             uint profit = assets - freePsmAssets;
-            accruedLocalReserves += uint120(profit);
+            accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = assets;
         } else if(psmAsset != ERC20(address(0))) {
             // we do this in case the underlying asset may be a rebasing token that accrues profit
             uint bal = psmAsset.balanceOf(address(this));
             if(bal <= freePsmAssets) return; // avoids underflow in case of loss
             uint profit = bal - freePsmAssets;
-            accruedLocalReserves += uint120(profit);
+            accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = bal;
         }
     }
@@ -594,7 +600,7 @@ contract Lender {
     // Getters
 
     function getFreeDebtRatio() public view returns (uint) {
-        uint _adjustedTotalFreeDebt = totalFreeDebt + freePsmAssets;
+        uint _adjustedTotalFreeDebt = totalFreeDebt + normalizePsmAssets(freePsmAssets);
         return _adjustedTotalFreeDebt == 0 ? 0 : _adjustedTotalFreeDebt * 10000 / (totalPaidDebt + _adjustedTotalFreeDebt);
     }
 
@@ -729,6 +735,19 @@ contract Lender {
         if(buyFeeBps > 0) {
             coinFee = coinOut * buyFeeBps / 10000;
             coinOut -= coinFee;
+        }
+    }
+
+    /// @notice Normalizes PSM asset amount to 18 decimals
+    /// @param assets The amount of PSM asset to normalize
+    /// @return The normalized amount with 18 decimals
+    function normalizePsmAssets(uint256 assets) internal view returns (uint256) {
+        if (psmAssetDecimals == 18) {
+            return assets;
+        } else if (psmAssetDecimals > 18) {
+            return assets / (10 ** (psmAssetDecimals - 18));
+        } else if (psmAssetDecimals < 18) {
+            return assets * (10 ** (18 - psmAssetDecimals));
         }
     }
 
