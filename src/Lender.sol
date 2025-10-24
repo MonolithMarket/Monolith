@@ -54,7 +54,6 @@ contract Lender {
     uint public totalPaidDebtShares;
     uint public epoch;
     uint public freePsmAssets;
-    uint32 public stalenessThreshold; 
     uint16 public maxBorrowDeltaBps; // max acceptable rounding error in bps when borrowing (e.g., 200 = 2%)
     
     // Constants and immutables
@@ -70,7 +69,8 @@ contract Lender {
     uint public immutable minDebt;
     uint public immutable deployTimestamp;
     uint public immutable psmAssetDecimals;
-   
+    uint public immutable stalenessThreshold; 
+
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
     

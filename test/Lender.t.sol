@@ -2423,12 +2423,11 @@ contract LenderTest is Test {
         });
         Lender newLenderImplementation = new Lender(upgradeLenderParams);
         (uint256 price, uint256 updatedAt) = lender.getFeedPrice();
-        // Set the stalenessThreshold to 24 hours to avoid price staleness issues during the test and maxBorrowDeltaBps to 50 bps
-        bytes32 combinedValue = bytes32(uint256(24 hours) | (uint256(50) << 32));
+        // Set the maxBorrowDeltaBps to 50 bps
         vm.store(
             address(lender),
-            bytes32(uint256(11)), // stalenessThreshold and maxBorrowDeltaBps are at slot 11
-            combinedValue
+            bytes32(uint256(11)), // maxBorrowDeltaBps is at slot 11
+            bytes32(uint256(50))
         );
      
         // Replace the bytecode at the existing Lender address with the new implementation
