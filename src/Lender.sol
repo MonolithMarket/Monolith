@@ -196,7 +196,7 @@ contract Lender {
             accruedGlobalReserves += globalReserveFee;
             // we remove reserve fees from interest before calculating how much to give to stakers
             uint interestAfterFees = interest - localReserveFee - globalReserveFee;
-            uint totalStaked = vault.totalAssets();
+            uint totalStaked = coin.balanceOf(address(vault));
             if(totalStaked < totalPaidDebt) { // this also implies totalPaidDebt > 0 and guards the division below
                 // if total staked is less than paid debt, giving all interest to stakers would
                 // result in higher supply rate than borrow rate which is undesirable.
@@ -790,6 +790,44 @@ contract Lender {
             return assets / (10 ** (psmAssetDecimals - 18));
         } else if (psmAssetDecimals < 18) {
             return assets * (10 ** (18 - psmAssetDecimals));
+        }
+    }
+
+    /// @notice Calculates the pending interest that would be earned by vault stakers if accrueInterest() were called
+    /// @dev This is used by the Vault to include pending yield in totalAssets() for ERC-4626 compliance
+    /// @return pendingVaultInterest The amount of interest that would be minted to the vault
+    function getPendingInterest() external view returns (uint256 pendingVaultInterest) {
+        uint timeElapsed = block.timestamp - lastAccrue;
+        if(timeElapsed == 0) return 0;
+
+        uint256 gasBefore = gasleft();
+        
+        try interestModel.calculateInterest(
+            totalPaidDebt,
+            lastBorrowRateMantissa,
+            timeElapsed,
+            expRate,
+            getFreeDebtRatio(),
+            targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps
+        ) returns (uint, uint interest) {
+            uint120 localReserveFee = uint120(interest * feeBps / 10000);
+            uint120 globalReserveFee = uint120(interest * cachedGlobalFeeBps / 10000);
+            // we remove reserve fees from interest before calculating how much to give to stakers
+            uint interestAfterFees = interest - localReserveFee - globalReserveFee;
+            uint totalStaked = coin.balanceOf(address(vault));
+            if(totalStaked < totalPaidDebt) { // this also implies totalPaidDebt > 0 and guards the division below
+                // if total staked is less than paid debt, giving all interest to stakers would
+                // result in higher supply rate than borrow rate which is undesirable.
+                // we cap the supply rate at the borrow rate and give the rest to local reserves.
+                uint stakedInterest = interestAfterFees * totalStaked / totalPaidDebt;
+                return stakedInterest;
+            } else {
+                // if total staked is greater than paid debt, we give all interest to stakers
+                return interestAfterFees;
+            }
+        } catch {
+            require(gasBefore >= INTEREST_CALCULATION_GAS_REQUIREMENT, "Not enough gas for accrueInterest");
         }
     }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {Vault, ILender, ERC20, ERC4626} from "src/Vault.sol";
 
 contract ERC20Mock is ERC20 {
@@ -25,6 +25,10 @@ contract LenderMock is ILender {
 
     function accrueInterest() external override {
         // Do nothing in the mock
+    }
+
+    function getPendingInterest() external view override returns (uint256 pendingVaultInterest) {
+        return 0;
     }
 }
 
@@ -129,8 +133,8 @@ contract VaultTest is Test {
     function test_mintFirstTime() public {
         uint256 mintAmount = 100e18;
 
-        // Prepare: mint tokens to user
-        underlying.mint(user, mintAmount + 1e18); // Extra for the MIN_SHARES
+        // Prepare: mint tokens to user - need extra for MIN_SHARES
+        underlying.mint(user, mintAmount + MIN_SHARES);
 
         // User approves and mints
         vm.startPrank(user);
@@ -141,10 +145,10 @@ contract VaultTest is Test {
         
         // Verify results - for the first mint, user actually gets (mintAmount - MIN_SHARES) shares
         // because MIN_SHARES are transferred to address(0)
-        assertEq(actualAssets, mintAmount - MIN_SHARES, "First mint should return correct assets value");
-        assertEq(vault.balanceOf(user), mintAmount - MIN_SHARES, "User should have mintAmount - MIN_SHARES shares");
+        assertEq(actualAssets, mintAmount + MIN_SHARES, "First mint should return correct assets value");
+        assertEq(vault.balanceOf(user), mintAmount, "User should have mintAmount shares");
         assertEq(vault.balanceOf(address(0)), MIN_SHARES, "Zero address should receive MIN_SHARES");
-        assertEq(vault.totalSupply(), mintAmount, "Total supply should be mintAmount");
+        assertEq(vault.totalSupply(), mintAmount + MIN_SHARES, "Total supply should be mintAmount + MIN_SHARE");
         assertApproxEqAbs(underlying.balanceOf(address(vault)), mintAmount, 0.01e18, "Vault should hold approximately mintAmount of underlying");
         
         vm.stopPrank();
@@ -203,4 +207,100 @@ contract VaultTest is Test {
         vm.stopPrank();
     }
 
+    function test_previewDepositMatchesActual() public {
+        uint256 depositAmount = 100e18;
+
+        // Prepare: mint tokens to user
+        underlying.mint(user, depositAmount);
+
+        // Get preview before deposit
+        uint256 previewedShares = vault.previewDeposit(depositAmount);
+        console2.log("Previewed shares for deposit", previewedShares);
+        // User deposits
+        vm.startPrank(user);
+        underlying.approve(address(vault), depositAmount);
+        uint256 actualShares = vault.deposit(depositAmount, user);
+        console2.log("Actual shares received from deposit", actualShares);
+        vm.stopPrank();
+
+        // Verify preview matches actual
+        assertEq(previewedShares, actualShares, "previewDeposit should match actual deposit return value");
+        assertEq(actualShares, depositAmount - MIN_SHARES, "First deposit should return depositAmount - MIN_SHARES");
+    }
+
+    function test_previewMintMatchesActual() public {
+        uint256 sharesToMint = 100e18;
+
+        // Get preview before mint
+        uint256 previewedAssets = vault.previewMint(sharesToMint);
+        console2.log("Previewed assets for minting", previewedAssets);
+        // Prepare: mint tokens to user based on preview
+        underlying.mint(user, previewedAssets);
+
+        // User mints
+        vm.startPrank(user);
+        underlying.approve(address(vault), previewedAssets);
+        uint256 actualAssets = vault.mint(sharesToMint, user);
+        console2.log("Actual assets used for minting", actualAssets);
+        vm.stopPrank();
+
+        // Verify preview matches actual
+        assertEq(previewedAssets, actualAssets, "previewMint should match actual mint return value");
+        assertEq(actualAssets, sharesToMint + MIN_SHARES, "First mint should cost sharesToMint + MIN_SHARES");
+        assertEq(vault.balanceOf(user), sharesToMint, "User should receive exactly sharesToMint");
+    }
+
+    function test_previewDepositSubsequent() public {
+        uint256 firstDeposit = 100e18;
+        uint256 secondDeposit = 50e18;
+
+        // First deposit
+        underlying.mint(user, firstDeposit);
+        vm.startPrank(user);
+        underlying.approve(address(vault), firstDeposit);
+        vault.deposit(firstDeposit, user);
+        vm.stopPrank();
+
+        // Preview second deposit
+        address anotherUser = address(0xCAFE);
+        uint256 previewedShares = vault.previewDeposit(secondDeposit);
+
+        // Execute second deposit
+        underlying.mint(anotherUser, secondDeposit);
+        vm.startPrank(anotherUser);
+        underlying.approve(address(vault), secondDeposit);
+        uint256 actualShares = vault.deposit(secondDeposit, anotherUser);
+        vm.stopPrank();
+
+        // Verify preview matches actual for subsequent deposits
+        assertEq(previewedShares, actualShares, "previewDeposit should match actual for subsequent deposits");
+    }
+
+    function test_previewMintSubsequent() public {
+        uint256 firstDeposit = 100e18;
+        uint256 sharesToMint = 50e18;
+
+        // First deposit
+        underlying.mint(user, firstDeposit);
+        vm.startPrank(user);
+        underlying.approve(address(vault), firstDeposit);
+        vault.deposit(firstDeposit, user);
+        vm.stopPrank();
+
+        // Preview mint for subsequent deposit
+        address anotherUser = address(0xCAFE);
+        uint256 previewedAssets = vault.previewMint(sharesToMint);
+
+        // Execute mint
+        underlying.mint(anotherUser, previewedAssets);
+        vm.startPrank(anotherUser);
+        underlying.approve(address(vault), previewedAssets);
+        uint256 actualAssets = vault.mint(sharesToMint, anotherUser);
+        vm.stopPrank();
+
+        // Verify preview matches actual for subsequent mints
+        assertEq(previewedAssets, actualAssets, "previewMint should match actual for subsequent mints");
+    }
+
 }
+
