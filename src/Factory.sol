@@ -84,21 +84,25 @@ contract Factory {
 
     function setPendingOperator(address _pendingOperator) external onlyOperator {
         pendingOperator = _pendingOperator;
+        emit PendingOperatorUpdated(_pendingOperator);
     }
 
     function acceptOperator() external {
         require(msg.sender == pendingOperator, "Only pending operator can accept");
         operator = pendingOperator;
         pendingOperator = address(0);
+        emit OperatorUpdated(operator);
     }
 
     function setFeeRecipient(address _feeRecipient) external onlyOperator {
         feeRecipient = _feeRecipient;
+        emit FeeRecipientUpdated(_feeRecipient);
     }
 
     function setFeeBps(uint256 _feeBps) external onlyOperator {
         require(_feeBps <= MAX_FEE_BPS, "Feebps must be less than or equal to 1000");
         feeBps = _feeBps;
+        emit FeeBpsUpdated(_feeBps);
     }
 
     function setCustomFeeBps(address _address, uint256 _feeBps) external onlyOperator {
@@ -179,4 +183,8 @@ contract Factory {
 
     event CustomFeeBpsSet(address indexed lender, uint256 feeBps);
     event Deployed(address indexed lender, address indexed coin, address indexed vault);
+    event OperatorUpdated(address indexed operator);
+    event PendingOperatorUpdated(address indexed pendingOperator);
+    event FeeRecipientUpdated(address indexed feeRecipient);
+    event FeeBpsUpdated(uint256 feeBps);
 }

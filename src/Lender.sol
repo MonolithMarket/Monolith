@@ -947,12 +947,14 @@ contract Lender {
 
     function enableImmutabilityNow() external onlyOperator beforeDeadline {
         immutabilityDeadline = block.timestamp;
+        emit ImmutabilityEnabled(block.timestamp);
     }
 
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
         accruePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
+        emit AccruedLocalReserves(accruedLocalReserves);
         accruedLocalReserves = 0;
     }
 
@@ -960,6 +962,7 @@ contract Lender {
         require(msg.sender == address(factory), "Unauthorized");
         accrueInterest();
         coin.mint(_to, accruedGlobalReserves);
+        emit AccruedGlobalReserves(accruedGlobalReserves);
         accruedGlobalReserves = 0;
     }
 
@@ -982,4 +985,7 @@ contract Lender {
     event Redeemed(address indexed account, uint amountIn, uint amountOut);
     event Sold(address indexed account, uint coinIn, uint assetOut);
     event Bought(address indexed account, uint assetIn, uint coinOut);
+    event ImmutabilityEnabled(uint256 timestamp);
+    event AccruedLocalReserves(uint256 amount);
+    event AccruedGlobalReserves(uint256 amount);
 }
