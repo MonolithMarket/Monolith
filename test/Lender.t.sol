@@ -2047,9 +2047,9 @@ contract LenderTest is Test {
         vm.startPrank(redeemer);
         coin.approve(address(lender), redeemAmount);
         
-        // In disallowed liquidations mode, getRedeemAmountOut should return 0
-        uint out = lender.redeem(redeemAmount, 0);
-        assertEq(out, 0, "In disallowed liquidations mode, redeem should return 0");
+        // In disallowed liquidations mode, getRedeemAmountOut should return 0 and thus reverting
+        vm.expectRevert("amount out is zero");
+        lender.redeem(redeemAmount, 0);
         vm.stopPrank();
     }
     

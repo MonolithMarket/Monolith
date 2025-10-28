@@ -453,6 +453,7 @@ contract Lender {
         accrueInterest();
         // calculate amountOut in internal 18 decimals
         uint internalAmountOut = getRedeemAmountOut(amountIn);
+        require(internalAmountOut > 0, "amount out is zero");
         // Convert to token decimals (rounds down)
         amountOut = internalToCollateral(internalAmountOut);
         require(amountOut >= minAmountOut, "insufficient amount out");
