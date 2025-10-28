@@ -71,6 +71,7 @@ contract Lender {
     uint public immutable psmAssetDecimals;
     uint public immutable collateralDecimals;
     uint public immutable stalenessThreshold; 
+    uint public immutable minTotalSupply;
 
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
@@ -80,7 +81,7 @@ contract Lender {
     uint256 private constant INTEREST_CALCULATION_GAS_REQUIREMENT = 40_000;
     // For writeOff() try-catch in liquidate() 
     uint256 private constant WRITEOFF_GAS_REQUIREMENT = 120_000;
-    
+
     // Mappings
     mapping(address => uint) public _cachedCollateralBalances; // should not be read externally in most cases
     mapping(address => uint) public freeDebtShares;
@@ -115,6 +116,7 @@ contract Lender {
         uint16 redeemFeeBps;
         uint32 stalenessThreshold;
         uint16 maxBorrowDeltaBps;
+        uint128 minTotalSupply;
     }
 
     constructor(LenderParams memory params) {
@@ -126,6 +128,7 @@ contract Lender {
         require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 5%
         require(params.minDebt >= 1e10, "Invalid min debt"); 
+        require(params.minTotalSupply > 0, "Invalid min total supply");
         if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
         
         // Validate collateral decimals
@@ -154,6 +157,7 @@ contract Lender {
         redeemFeeBps = params.redeemFeeBps;
         maxBorrowDeltaBps = params.maxBorrowDeltaBps;
         stalenessThreshold = params.stalenessThreshold;
+        minTotalSupply = params.minTotalSupply;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
             psmAsset.approve(address(psmVault), type(uint).max);
@@ -488,14 +492,17 @@ contract Lender {
         accrueInterest();
         assetOut = getSellAmountOut(coinIn);
         require(assetOut >= minAssetOut, "insufficient amount out");
-        freePsmAssets -= assetOut;
         // get and burn coins from caller
         coin.transferFrom(msg.sender, address(this), coinIn);
         coin.burn(coinIn);
         // give assets to caller
         if(psmVault != ERC4626(address(0))) {
-            psmVault.withdraw(assetOut, msg.sender, address(this));
+            uint256 sharesOut = psmVault.previewDeposit(assetOut);
+            assetOut = psmVault.redeem(sharesOut, msg.sender, address(this));
+            freePsmAssets -= assetOut;
+            require(assetOut >= minAssetOut, "redeem failed");
         } else {
+            freePsmAssets -= assetOut;
             psmAsset.safeTransfer(msg.sender, assetOut);
         }
         emit Sold(msg.sender, coinIn, assetOut);
@@ -514,7 +521,9 @@ contract Lender {
         // get assets from caller
         psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
         if(psmVault != ERC4626(address(0))) {
-            psmVault.deposit(assetIn, address(this));
+            require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
+            uint256 shares = psmVault.deposit(assetIn, address(this));
+            require(shares > 0, "PSM deposit failed");
         }
         // give coins to caller
         coin.mint(msg.sender, coinOut);

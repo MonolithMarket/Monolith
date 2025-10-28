@@ -141,6 +141,7 @@ contract Factory {
         uint16 redeemFeeBps;
         uint32 stalenessThreshold;
         uint16 maxBorrowDeltaBps;
+        uint128 minTotalSupply;
     }
 
     function deploy(DeployParams memory params) external returns (address lender, address coin, address vault) {
@@ -168,7 +169,8 @@ contract Factory {
             targetFreeDebtRatioEndBps: params.targetFreeDebtRatioEndBps,
             redeemFeeBps: params.redeemFeeBps,
             stalenessThreshold: params.stalenessThreshold,
-            maxBorrowDeltaBps: params.maxBorrowDeltaBps
+            maxBorrowDeltaBps: params.maxBorrowDeltaBps,
+            minTotalSupply: params.minTotalSupply
         });
         bytes memory lenderData = abi.encode(lenderParams);
         bytes memory vaultData = abi.encode(params.name, params.symbol, lender);

@@ -129,7 +129,8 @@ contract LenderForkTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         lender = new Lender(forkLenderParams);
     }

@@ -147,7 +147,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         lender = new Lender(lenderParams);
     
@@ -183,7 +184,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         Lender newLender = new Lender(newLenderParams);
 
@@ -2419,7 +2421,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         Lender newLenderImplementation = new Lender(upgradeLenderParams);
         (uint256 price, uint256 updatedAt) = lender.getFeedPrice();
@@ -3179,7 +3182,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
@@ -3286,7 +3290,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3312,7 +3317,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3338,7 +3344,8 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3364,7 +3371,8 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
-            maxBorrowDeltaBps: 50
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3564,6 +3572,13 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         Vault4626Mock psmVault = Vault4626Mock(address(psmLender.psmVault()));
         ERC20 psmAsset = psmLender.psmAsset();
 
+        // Make initial deposit to have min total supply
+        uint256 initialDeposit = 1e18;
+        ERC20Mock(address(psmAsset)).mint(address(this), initialDeposit);
+        psmAsset.approve(address(psmVault), initialDeposit);
+        psmVault.deposit(initialDeposit, address(this));
+        uint256 initialSupply = psmVault.totalSupply();
+
         // Setup: users buy PSM assets
         ERC20Mock(address(psmAsset)).mint(address(this), 1000e18);
         psmAsset.approve(address(psmLender), 1000e18);
@@ -3583,7 +3598,7 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
 
         // Basic sanity checks
         assertEq(lenderShares, 1000e18, "Lender should have 1000e18 shares from buy");
-        assertEq(vaultTotalAssets, 1100e18, "Vault total assets should be 1100e18 with 10% profit");
+        assertEq(vaultTotalAssets, 1100e18 + initialSupply * 1.1e18 / 1e18, "Vault total assets should be 1100e18 with 10% profit");
         assertEq(previewRedeemAmount, 1100e18, "Preview redeem should return 1100e18");
         assertEq(freePsmAssetsBefore, 1000e18, "Free PSM assets should be 1000e18 after buy");
 
@@ -3622,6 +3637,13 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         Vault4626Mock psmVault = Vault4626Mock(address(psmLender.psmVault()));
         ERC20 psmAsset = psmLender.psmAsset();
 
+        // Make initial deposit to have min total supply
+        uint256 initialDeposit = 1e18;
+        ERC20Mock(address(psmAsset)).mint(address(this), initialDeposit);
+        psmAsset.approve(address(psmVault), initialDeposit);
+        psmVault.deposit(initialDeposit, address(this));
+        uint256 initialSupply = psmVault.totalSupply();
+
         // Setup: users buy PSM assets
         ERC20Mock(address(psmAsset)).mint(address(this), 1000e6);
         psmAsset.approve(address(psmLender), 1000e6);
@@ -3641,7 +3663,7 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
 
         // Basic sanity checks
         assertEq(lenderShares, 1000e6, "Lender should have 1000e6 shares from buy");
-        assertEq(vaultTotalAssets, 1100e6, "Vault total assets should be 1100e6 with 10% profit");
+        assertEq(vaultTotalAssets, 1100e6 + initialSupply * 1.1e18 / 1e18, "Vault total assets should be 1100e6 with 10% profit");
         assertEq(previewRedeemAmount, 1100e6, "Preview redeem should return 1100e6");
         assertEq(freePsmAssetsBefore, 1000e6, "Free PSM assets should be 1000e6 after buy");
 
