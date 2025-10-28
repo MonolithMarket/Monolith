@@ -3684,4 +3684,114 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         vm.expectRevert("PSM asset was not set");
         lender.buy(100e18, 90e18);
     }
+
+    function testLensGetDebtOf() public {
+        Lens testLens = new Lens();
+        
+        // Setup: create a borrower with debt
+        address borrower = address(0xBEEF);
+        ERC20 collateral = lender.collateral();
+        Coin coin = lender.coin();
+        
+        uint collateralAmount = 10000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Give borrower collateral
+        deal(address(collateral), borrower, collateralAmount);
+        
+        // Borrower creates a position with paid debt (non-redeemable)
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // opt out of redemptions
+        vm.stopPrank();
+        
+        // Get initial debt
+        uint lenderDebt = lender.getDebtOf(borrower);
+        uint lensDebt = testLens.getDebtOf(lender, borrower);
+        
+        // Initially, both should be the same (no interest accrued yet)
+        assertEq(lensDebt, lenderDebt, "Initial debt should match");
+        assertEq(lensDebt, borrowAmount, "Initial debt should equal borrow amount");
+        
+        // Fast forward time to accrue interest
+        vm.warp(block.timestamp + 365 days);
+        
+        // The Lender's getDebtOf still returns stale debt (without accrued interest)
+        uint staleDebt = lender.getDebtOf(borrower);
+        assertEq(staleDebt, borrowAmount, "Lender getDebtOf should return stale debt");
+        
+        // The Lens getDebtOf should include accrued interest
+        uint currentDebt = testLens.getDebtOf(lender, borrower);
+        assertGt(currentDebt, staleDebt, "Lens getDebtOf should include accrued interest");
+        
+        // After accruing interest, the debts should match
+        lender.accrueInterest();
+        uint accruedDebt = lender.getDebtOf(borrower);
+        uint lensDebtAfterAccrue = testLens.getDebtOf(lender, borrower);
+        
+        assertEq(accruedDebt, lensDebtAfterAccrue, "Debt should match after accrual");
+        assertGt(accruedDebt, borrowAmount, "Accrued debt should be greater than initial borrow");
+    }
+
+    function testLensGetDebtOfWithRedemptions() public {
+        Lens testLens = new Lens();
+        
+        // Setup: create borrowers with redeemable debt
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        address redeemer = address(0xCAFE);
+        
+        ERC20 collateral = lender.collateral();
+        Coin coin = lender.coin();
+        
+        uint collateralAmount = 10000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Setup borrower1 with redeemable debt
+        deal(address(collateral), borrower1, collateralAmount);
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Setup borrower2 with redeemable debt
+        deal(address(collateral), borrower2, collateralAmount);
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Get initial debts
+        uint borrower1DebtBefore = testLens.getDebtOf(lender, borrower1);
+        uint borrower2DebtBefore = testLens.getDebtOf(lender, borrower2);
+        
+        assertEq(borrower1DebtBefore, borrowAmount, "Borrower1 initial debt should equal borrow amount");
+        assertEq(borrower2DebtBefore, borrowAmount, "Borrower2 initial debt should equal borrow amount");
+        
+        // Perform a redemption
+        uint redeemAmount = 1000e18;
+        deal(address(coin), redeemer, redeemAmount);
+        
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, 0);
+        vm.stopPrank();
+        
+        // After redemption, total free debt should decrease
+        uint totalFreeDebtAfter = lender.totalFreeDebt();
+        assertEq(totalFreeDebtAfter, borrowAmount * 2 - redeemAmount, "Total free debt should decrease by redeem amount");
+        
+        // Lens should correctly account for the redemption
+        uint borrower1DebtAfter = testLens.getDebtOf(lender, borrower1);
+        uint borrower2DebtAfter = testLens.getDebtOf(lender, borrower2);
+        
+        // Both borrowers should have reduced debt proportionally
+        assertLt(borrower1DebtAfter, borrower1DebtBefore, "Borrower1 debt should decrease after redemption");
+        assertLt(borrower2DebtAfter, borrower2DebtBefore, "Borrower2 debt should decrease after redemption");
+        
+        // The debt should be approximately half of the redeemed amount each
+        assertApproxEqAbs(borrower1DebtAfter, borrowAmount - redeemAmount / 2, 1, "Borrower1 debt should decrease by ~half of redeemed amount");
+        assertApproxEqAbs(borrower2DebtAfter, borrowAmount - redeemAmount / 2, 1, "Borrower2 debt should decrease by ~half of redeemed amount");
+    }
 }
+
