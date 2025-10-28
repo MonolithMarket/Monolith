@@ -69,10 +69,12 @@ contract Lender {
     uint public immutable minDebt;
     uint public immutable deployTimestamp;
     uint public immutable psmAssetDecimals;
+    uint public immutable collateralDecimals;
     uint public immutable stalenessThreshold; 
 
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
+    uint public constant MAX_DECIMALS = 30; // Maximum allowed token decimals
     
     // For accrueInterest() try-catch
     uint256 private constant INTEREST_CALCULATION_GAS_REQUIREMENT = 40_000;
@@ -125,6 +127,12 @@ contract Lender {
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 5%
         require(params.minDebt >= 1e10, "Invalid min debt"); 
         if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+        
+        // Validate collateral decimals
+        uint256 _collateralDecimals = params.collateral.decimals();
+        require(_collateralDecimals <= MAX_DECIMALS, "Collateral decimals exceed maximum");
+        collateralDecimals = _collateralDecimals;
+        
         collateral = params.collateral;
         psmAsset = params.psmAsset;
         psmVault = params.psmVault;
@@ -225,25 +233,37 @@ contract Lender {
         updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
-            if(!isRedeemable[account]) nonRedeemableCollateral += uint(collateralDelta);
+            // Convert incoming collateral to internal 18 decimals
+            uint256 collateralAmount = uint(collateralDelta);
+            uint256 internalAmount = collateralToInternal(collateralAmount);
             
-            // Deposit collateral
-            _cachedCollateralBalances[account] += uint(collateralDelta);
-            collateral.safeTransferFrom(msg.sender, address(this), uint(collateralDelta));
+            if(!isRedeemable[account]) nonRedeemableCollateral += internalAmount;
+            
+            // Store in internal 18 decimals
+            _cachedCollateralBalances[account] += internalAmount;
+            // Transfer actual token amount
+            collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
         } else if (collateralDelta < 0) {
+            // Convert from internal 18 decimals to token decimals (rounds down)
+            uint256 internalAmount = uint(-collateralDelta);
+            uint256 collateralAmount = internalToCollateral(internalAmount);
+            
             // Ensure sufficient collateral for non-redeemable accounts
             if (isRedeemable[account]) {
+                // Calculate total redeemable in internal representation
+                uint256 totalInternalCollateral = collateralToInternal(collateral.balanceOf(address(this)));
                 require(
-                    collateral.balanceOf(address(this)) - uint256(-collateralDelta) >= nonRedeemableCollateral,
+                    totalInternalCollateral - internalAmount >= nonRedeemableCollateral,
                     "Insufficient redeemable collateral"
                 );
             } else {
-                nonRedeemableCollateral -= uint256(-collateralDelta);
+                nonRedeemableCollateral -= internalAmount;
             }
  
-            // Withdraw collateral
-            _cachedCollateralBalances[account] -= uint(-collateralDelta);
-            collateral.safeTransfer(msg.sender, uint(-collateralDelta));
+            // Withdraw collateral (stored in internal representation)
+            _cachedCollateralBalances[account] -= internalAmount;
+            // Transfer actual token amount (rounded down)
+            collateral.safeTransfer(msg.sender, collateralAmount);
         }
 
         // Handle debt changes
@@ -332,8 +352,8 @@ contract Lender {
         /// @notice Liquidates an unsafe position
     /// @param borrower The account to be liquidated
     /// @param repayAmount The amount of debt to repay
-    /// @param minCollateralOut The minimum amount of collateral to receive
-    /// @return The amount of collateral received
+    /// @param minCollateralOut The minimum amount of collateral to receive (in token decimals)
+    /// @return The amount of collateral received (in token decimals)
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
         updateBorrower(borrower);
@@ -341,7 +361,7 @@ contract Lender {
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
         uint debt = getDebtOf(borrower);
-        uint collateralBalance = _cachedCollateralBalances[borrower];
+        uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
         require(liquidatableDebt > 0, "insufficient liquidatable debt");
@@ -352,17 +372,20 @@ contract Lender {
         // apply repayment
         decreaseDebt(borrower, repayAmount);
 
-        // calculate collateral reward
+        // calculate collateral reward (in internal 18 decimals)
         uint liqIncentiveBps = getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
-        uint collateralReward = collateralRewardValue * 1e18 / price;
-        collateralReward = collateralReward > collateralBalance ? collateralBalance : collateralReward;
+        uint internalCollateralReward = collateralRewardValue * 1e18 / price;
+        internalCollateralReward = internalCollateralReward > collateralBalance ? collateralBalance : internalCollateralReward;
+        
+        // Convert to token decimals for transfer (rounds down)
+        uint collateralReward = internalToCollateral(internalCollateralReward);
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
-        if(collateralReward > 0) {
+        if(internalCollateralReward > 0) {
             collateral.safeTransfer(msg.sender, collateralReward);
-            _cachedCollateralBalances[borrower] = collateralBalance - collateralReward;
-            if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralReward;
+            _cachedCollateralBalances[borrower] = collateralBalance - internalCollateralReward;
+            if(!isRedeemable[borrower]) nonRedeemableCollateral -= internalCollateralReward;
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
@@ -389,7 +412,7 @@ contract Lender {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
-            uint collateralBalance = _cachedCollateralBalances[borrower];
+            uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
             (uint price,, bool allowLiquidations) = getCollateralPrice();
             require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
@@ -409,33 +432,42 @@ contract Lender {
 
                 if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralBalance;
                 _cachedCollateralBalances[borrower] = 0;
-                emit WrittenOff(borrower, to, debt, collateralBalance);
+                
+                // Convert to token decimals for transfer (rounds down)
+                uint collateralAmount = internalToCollateral(collateralBalance);
+                emit WrittenOff(borrower, to, debt, collateralAmount);
                 writtenOff = true;
                 
                 // 3. send collateral to caller
-                collateral.safeTransfer(to, collateralBalance);
+                collateral.safeTransfer(to, collateralAmount);
             }
         }
     }
 
     /// @notice Redeems Coin for collateral at current market price minus a fee
     /// @param amountIn The amount of Coin to redeem
-    /// @param minAmountOut The minimum amount of collateral to receive
-    /// @return amountOut The amount of collateral received
+    /// @param minAmountOut The minimum amount of collateral to receive (in token decimals)
+    /// @return amountOut The amount of collateral received (in token decimals)
     /// @dev Redemptions requires sufficient redeemable collateral to seize and free debt to repay
     function redeem(uint amountIn, uint minAmountOut) external returns (uint amountOut) {
         accrueInterest();
-        // calculate amountOut
-        amountOut = getRedeemAmountOut(amountIn);
+        // calculate amountOut in internal 18 decimals
+        uint internalAmountOut = getRedeemAmountOut(amountIn);
+        // Convert to token decimals (rounds down)
+        amountOut = internalToCollateral(internalAmountOut);
         require(amountOut >= minAmountOut, "insufficient amount out");
-        require(collateral.balanceOf(address(this)) - amountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
+        
+        // Check redeemable collateral in internal representation
+        uint256 totalInternalCollateral = collateralToInternal(collateral.balanceOf(address(this)));
+        require(totalInternalCollateral - internalAmountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
+        
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn;
         coin.transferFrom(msg.sender, address(this), amountIn);
         coin.burn(amountIn);
 
-        // distribute collateral redemption per free debt share
-        epochRedeemedCollateral[epoch] += amountOut.mulDivUp(1e36, totalFreeDebtShares);
+        // distribute collateral redemption per free debt share (in internal representation)
+        epochRedeemedCollateral[epoch] += internalAmountOut.mulDivUp(1e36, totalFreeDebtShares);
 
         collateral.safeTransfer(msg.sender, amountOut);
 
@@ -706,12 +738,13 @@ contract Lender {
 
     /// @notice Calculates the amount of collateral received for redeeming Coin
     /// @param amountIn The amount of Coin to redeem
-    /// @return amountOut The amount of collateral to receive
+    /// @return amountOut The amount of collateral to receive (in internal 18 decimals)
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         if(!allowLiquidations) return 0;
         // multiply amountIn by price then apply redeem fee to amountIn
+        // Result is in internal 18 decimals
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
 
@@ -788,8 +821,34 @@ contract Lender {
             return assets;
         } else if (psmAssetDecimals > 18) {
             return assets / (10 ** (psmAssetDecimals - 18));
-        } else if (psmAssetDecimals < 18) {
+        } else {
             return assets * (10 ** (18 - psmAssetDecimals));
+        }
+    }
+
+    /// @notice Converts collateral amount from token decimals to internal 18 decimals
+    /// @param amount The amount in collateral token decimals
+    /// @return The amount normalized to 18 decimals
+    function collateralToInternal(uint256 amount) public view returns (uint256) {
+        if (collateralDecimals == 18) {
+            return amount;
+        } else if (collateralDecimals > 18) {
+            return amount / (10 ** (collateralDecimals - 18));
+        } else {
+            return amount * (10 ** (18 - collateralDecimals));
+        }
+    }
+
+    /// @notice Converts collateral amount from internal 18 decimals to token decimals
+    /// @param amount The amount in 18 decimals
+    /// @return The amount in collateral token decimals
+    function internalToCollateral(uint256 amount) public view returns (uint256) {
+        if (collateralDecimals == 18) {
+            return amount;
+        } else if (collateralDecimals > 18) {
+            return amount * (10 ** (collateralDecimals - 18));
+        } else {
+            return amount / (10 ** (18 - collateralDecimals));
         }
     }
 
