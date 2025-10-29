@@ -251,6 +251,7 @@ contract Lender {
             
             // Store in internal 18 decimals
             _cachedCollateralBalances[account] += internalAmount;
+            collateralAmount = collateralDecimals > 18 ? internalToCollateral(internalAmount) : collateralAmount;
             // Transfer actual token amount
             collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
         } else if (collateralDelta < 0) {
