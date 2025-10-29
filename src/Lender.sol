@@ -22,6 +22,7 @@ interface IChainlinkFeed {
 
 interface IFactory {
     function getFeeOf(address _lender) external view returns (uint256);
+    function minDebtFloor() external view returns (uint256);
 }
 
 contract Lender {
@@ -67,6 +68,7 @@ contract Lender {
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
+    uint public immutable minDebtFloor;
     uint public immutable deployTimestamp;
     uint public immutable psmAssetDecimals;
     uint public immutable collateralDecimals;
@@ -127,9 +129,13 @@ contract Lender {
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
         require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 5%
-        require(params.minDebt >= 1e10, "Invalid min debt"); 
-        require(params.minTotalSupply > 0, "Invalid min total supply");
-        if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+        minDebtFloor = IFactory(params.factory).minDebtFloor();
+        require(params.minDebt >= minDebtFloor, "Invalid min debt");
+       
+        if(params.psmVault != ERC4626(address(0))) {
+            require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+            require(params.minTotalSupply > 0, "Invalid min total supply");
+        }
         
         // Validate collateral decimals
         uint256 _collateralDecimals = params.collateral.decimals();

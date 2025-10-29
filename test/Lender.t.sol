@@ -93,6 +93,7 @@ contract InterestModelMock {
 
 contract FactoryMock {
     uint public fee = 1000; // 10% default fee
+    uint public minDebtFloor = 1e15;
 
     function getFeeOf(address) external view returns (uint) {
         return fee;
@@ -2399,6 +2400,12 @@ contract LenderTest is Test {
         // Get the existing Lender contract address
         address lenderAddress = 0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A;
         lender = Lender(lenderAddress);
+        vm.mockCall(
+            address(lender.factory()),
+            abi.encodeWithSelector(IFactory(lender.factory()).minDebtFloor.selector),
+            abi.encode(1e15)
+        );
+
         lens = new Lens();
         // Deploy a new Lender contract with the same immutable variables as the existing contract
         // Note: The existing contract doesn't have a manager, so we use address(0)

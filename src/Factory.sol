@@ -62,14 +62,16 @@ contract Factory {
     address public feeRecipient;
     uint256 public feeBps;
     address public immutable interestModel;
+    uint256 public immutable minDebtFloor;
     uint256 public constant MAX_FEE_BPS = 1000; // 10%
 
     address[] public deployments;
     mapping(address => bool) public isDeployed;
     mapping(address => uint256) public customFeeBps;
 
-    constructor(address _operator) {
+    constructor(address _operator, uint256 _minDebtFloor) {
         operator = _operator;
+        minDebtFloor = _minDebtFloor;
         interestModel = InterestModelDeployer.deploy();
     }
 

@@ -81,6 +81,7 @@ contract InterestModelMock {
 
 contract FactoryMock {
     uint public fee = 1000; // 10% default fee
+    uint public minDebtFloor = 1e15;
 
     function getFeeOf(address) external view returns (uint) {
         return fee;
@@ -132,6 +133,11 @@ contract LenderForkTest is Test {
             maxBorrowDeltaBps: 50,
             minTotalSupply: 1
         });
+        vm.mockCall(
+            address(deployedLender.factory()),
+            abi.encodeWithSelector(IFactory(deployedLender.factory()).minDebtFloor.selector),
+            abi.encode(1e15)
+        );
         lender = new Lender(forkLenderParams);
     }
 
