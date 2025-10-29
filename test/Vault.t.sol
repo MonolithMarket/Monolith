@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import {Test, console2} from "forge-std/Test.sol";
 import {Vault, ILender, ERC20, ERC4626} from "src/Vault.sol";
