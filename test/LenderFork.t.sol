@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import {Test, console, console2} from "forge-std/Test.sol";
 import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
@@ -81,6 +81,7 @@ contract InterestModelMock {
 
 contract FactoryMock {
     uint public fee = 1000; // 10% default fee
+    uint public minDebtFloor = 1e15;
 
     function getFeeOf(address) external view returns (uint) {
         return fee;
@@ -127,8 +128,16 @@ contract LenderForkTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
+        vm.mockCall(
+            address(deployedLender.factory()),
+            abi.encodeWithSelector(IFactory(deployedLender.factory()).minDebtFloor.selector),
+            abi.encode(1e15)
+        );
         lender = new Lender(forkLenderParams);
     }
 

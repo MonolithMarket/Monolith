@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import "src/Factory.sol";
@@ -37,7 +37,7 @@ contract ChainlinkMock {
 // Add TestFactory after the mock contracts and before FactoryTest
 // TestFactory inherits from Factory and adds test helpers
 contract TestFactory is Factory {
-    constructor(address _operator) Factory(_operator) {}
+    constructor(address _operator, uint256 _minDebtFloor) Factory(_operator, _minDebtFloor) {}
     
     // Helper function for testing that directly adds a deployment
     function addTestDeployment(address _deployment) external {
@@ -56,6 +56,7 @@ contract FactoryTest is Test {
     // Test constants
     uint256 constant DEFAULT_FEE_BPS = 500; // 5%
     uint256 constant MAX_FEE_BPS = 1000; // 10%
+    uint256 constant MIN_DEBT_FLOOR = 1e15;
     
     function setUp() public {
         // Set operator and fee recipient addresses
@@ -67,7 +68,7 @@ contract FactoryTest is Test {
         priceFeed = new ChainlinkMock();
         
         // Deploy factory with operator address
-        factory = new Factory(operatorAddr);
+        factory = new Factory(operatorAddr, MIN_DEBT_FLOOR);
         
         // Set fee recipient
         vm.prank(operatorAddr);
@@ -81,7 +82,7 @@ contract FactoryTest is Test {
     function test_constructor() public {
         // Deploy a new factory for testing constructor
         address newOperator = address(0x789);
-        Factory newFactory = new Factory(newOperator);
+        Factory newFactory = new Factory(newOperator, MIN_DEBT_FLOOR);
         
         // Verify initial state
         assertEq(newFactory.operator(), newOperator, "Operator should be set correctly");
@@ -301,7 +302,10 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 
@@ -365,7 +369,10 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         (address lender1, address coin1, address vault1) = factory.deploy(params1);
 
@@ -386,7 +393,10 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
@@ -437,7 +447,10 @@ contract FactoryTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 
@@ -463,7 +476,7 @@ contract FactoryTest is Test {
         LenderMock mockLender = new LenderMock();
         
         // Deploy a test factory with the testing helper method
-        TestFactory testFactory = new TestFactory(operatorAddr);
+        TestFactory testFactory = new TestFactory(operatorAddr, MIN_DEBT_FLOOR);
         
         // Set the fee recipient
         vm.prank(operatorAddr);
@@ -486,7 +499,7 @@ contract FactoryTest is Test {
         LenderMock mockLender = new LenderMock();
         
         // Deploy a test factory with the testing helper method
-        TestFactory testFactory = new TestFactory(operatorAddr);
+        TestFactory testFactory = new TestFactory(operatorAddr, MIN_DEBT_FLOOR);
         
         // Set the fee recipient
         vm.prank(operatorAddr);

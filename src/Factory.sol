@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import "lib/solmate/src/utils/CREATE3.sol";
 import "src/Lender.sol";
@@ -62,14 +62,16 @@ contract Factory {
     address public feeRecipient;
     uint256 public feeBps;
     address public immutable interestModel;
+    uint256 public immutable minDebtFloor;
     uint256 public constant MAX_FEE_BPS = 1000; // 10%
 
     address[] public deployments;
     mapping(address => bool) public isDeployed;
     mapping(address => uint256) public customFeeBps;
 
-    constructor(address _operator) {
+    constructor(address _operator, uint256 _minDebtFloor) {
         operator = _operator;
+        minDebtFloor = _minDebtFloor;
         interestModel = InterestModelDeployer.deploy();
     }
 
@@ -84,21 +86,25 @@ contract Factory {
 
     function setPendingOperator(address _pendingOperator) external onlyOperator {
         pendingOperator = _pendingOperator;
+        emit PendingOperatorUpdated(_pendingOperator);
     }
 
     function acceptOperator() external {
         require(msg.sender == pendingOperator, "Only pending operator can accept");
         operator = pendingOperator;
         pendingOperator = address(0);
+        emit OperatorUpdated(operator);
     }
 
     function setFeeRecipient(address _feeRecipient) external onlyOperator {
         feeRecipient = _feeRecipient;
+        emit FeeRecipientUpdated(_feeRecipient);
     }
 
     function setFeeBps(uint256 _feeBps) external onlyOperator {
         require(_feeBps <= MAX_FEE_BPS, "Feebps must be less than or equal to 1000");
         feeBps = _feeBps;
+        emit FeeBpsUpdated(_feeBps);
     }
 
     function setCustomFeeBps(address _address, uint256 _feeBps) external onlyOperator {
@@ -135,6 +141,9 @@ contract Factory {
         uint16 targetFreeDebtRatioStartBps;
         uint16 targetFreeDebtRatioEndBps;
         uint16 redeemFeeBps;
+        uint32 stalenessThreshold;
+        uint16 maxBorrowDeltaBps;
+        uint128 minTotalSupply;
     }
 
     function deploy(DeployParams memory params) external returns (address lender, address coin, address vault) {
@@ -160,7 +169,10 @@ contract Factory {
             halfLife: params.halfLife,
             targetFreeDebtRatioStartBps: params.targetFreeDebtRatioStartBps,
             targetFreeDebtRatioEndBps: params.targetFreeDebtRatioEndBps,
-            redeemFeeBps: params.redeemFeeBps
+            redeemFeeBps: params.redeemFeeBps,
+            stalenessThreshold: params.stalenessThreshold,
+            maxBorrowDeltaBps: params.maxBorrowDeltaBps,
+            minTotalSupply: params.minTotalSupply
         });
         bytes memory lenderData = abi.encode(lenderParams);
         bytes memory vaultData = abi.encode(params.name, params.symbol, lender);
@@ -175,4 +187,8 @@ contract Factory {
 
     event CustomFeeBpsSet(address indexed lender, uint256 feeBps);
     event Deployed(address indexed lender, address indexed coin, address indexed vault);
+    event OperatorUpdated(address indexed operator);
+    event PendingOperatorUpdated(address indexed pendingOperator);
+    event FeeRecipientUpdated(address indexed feeRecipient);
+    event FeeBpsUpdated(uint256 feeBps);
 }

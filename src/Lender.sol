@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import "lib/solmate/src/tokens/ERC20.sol";
 import "lib/solmate/src/tokens/ERC4626.sol";
@@ -22,6 +22,7 @@ interface IChainlinkFeed {
 
 interface IFactory {
     function getFeeOf(address _lender) external view returns (uint256);
+    function minDebtFloor() external view returns (uint256);
 }
 
 contract Lender {
@@ -37,6 +38,7 @@ contract Lender {
     uint40 public lastAccrue; // max uint40 is year 36812
     uint88 public lastBorrowRateMantissa = uint88(2e16); // max uint88 is equivalent to 309485000% APR
     uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    
 
     // single 256-bit slot
     uint16 public cachedGlobalFeeBps;
@@ -53,7 +55,8 @@ contract Lender {
     uint public totalPaidDebtShares;
     uint public epoch;
     uint public freePsmAssets;
-
+    uint16 public maxBorrowDeltaBps; // max acceptable rounding error in bps when borrowing (e.g., 200 = 2%)
+    
     // Constants and immutables
     Coin public immutable coin;
     ERC20 public immutable collateral;
@@ -65,10 +68,21 @@ contract Lender {
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
+    uint public immutable minDebtFloor;
     uint public immutable deployTimestamp;
-    uint public constant STALENESS_THRESHOLD = 25 hours; // standard 24 hours staleness + 1 hour buffer
+    uint public immutable psmAssetDecimals;
+    uint public immutable collateralDecimals;
+    uint public immutable stalenessThreshold; 
+    uint public immutable minTotalSupply;
+
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
+    uint public constant MAX_DECIMALS = 30; // Maximum allowed token decimals
+    
+    // For accrueInterest() try-catch
+    uint256 private constant INTEREST_CALCULATION_GAS_REQUIREMENT = 40_000;
+    // For writeOff() try-catch in liquidate() 
+    uint256 private constant WRITEOFF_GAS_REQUIREMENT = 120_000;
 
     // Mappings
     mapping(address => uint) public _cachedCollateralBalances; // should not be read externally in most cases
@@ -102,16 +116,32 @@ contract Lender {
         uint16 targetFreeDebtRatioStartBps;
         uint16 targetFreeDebtRatioEndBps;
         uint16 redeemFeeBps;
+        uint32 stalenessThreshold;
+        uint16 maxBorrowDeltaBps;
+        uint128 minTotalSupply;
     }
 
     constructor(LenderParams memory params) {
-        require(params.collateralFactor <= 10000, "Invalid collateral factor");
+        require(params.collateralFactor <= 8500, "Invalid collateral factor");
         require(params.timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
-        require(params.halfLife >= 12 hours && params.halfLife <= 30 days, "Invalid half life");
+        require(params.halfLife >= 24 hours && params.halfLife <= 30 days, "Invalid half life");
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
-        require(params.redeemFeeBps <= 300, "Invalid redeem fee bps");
-        if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+        require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
+        require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 5%
+        minDebtFloor = IFactory(params.factory).minDebtFloor();
+        require(params.minDebt >= minDebtFloor, "Invalid min debt");
+       
+        if(params.psmVault != ERC4626(address(0))) {
+            require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+            require(params.minTotalSupply > 0, "Invalid min total supply");
+        }
+        
+        // Validate collateral decimals
+        uint256 _collateralDecimals = params.collateral.decimals();
+        require(_collateralDecimals <= MAX_DECIMALS, "Collateral decimals exceed maximum");
+        collateralDecimals = _collateralDecimals;
+        
         collateral = params.collateral;
         psmAsset = params.psmAsset;
         psmVault = params.psmVault;
@@ -131,9 +161,17 @@ contract Lender {
         targetFreeDebtRatioStartBps = params.targetFreeDebtRatioStartBps;
         targetFreeDebtRatioEndBps = params.targetFreeDebtRatioEndBps;
         redeemFeeBps = params.redeemFeeBps;
+        maxBorrowDeltaBps = params.maxBorrowDeltaBps;
+        stalenessThreshold = params.stalenessThreshold;
+        minTotalSupply = params.minTotalSupply;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
             psmAsset.approve(address(psmVault), type(uint).max);
+        uint256 _psmAssetDecimals;
+        if (psmAsset != ERC20(address(0))) {
+            _psmAssetDecimals = psmAsset.decimals();
+        } 
+        psmAssetDecimals = _psmAssetDecimals;
     }
 
     // Modifiers
@@ -159,6 +197,8 @@ contract Lender {
         uint timeElapsed = block.timestamp - lastAccrue;
         if(timeElapsed == 0) return;
 
+        uint256 gasBefore = gasleft();
+
         try interestModel.calculateInterest(
             totalPaidDebt,
             lastBorrowRateMantissa,
@@ -174,7 +214,7 @@ contract Lender {
             accruedGlobalReserves += globalReserveFee;
             // we remove reserve fees from interest before calculating how much to give to stakers
             uint interestAfterFees = interest - localReserveFee - globalReserveFee;
-            uint totalStaked = vault.totalAssets();
+            uint totalStaked = coin.balanceOf(address(vault));
             if(totalStaked < totalPaidDebt) { // this also implies totalPaidDebt > 0 and guards the division below
                 // if total staked is less than paid debt, giving all interest to stakers would
                 // result in higher supply rate than borrow rate which is undesirable.
@@ -192,7 +232,9 @@ contract Lender {
             lastBorrowRateMantissa = uint88(currBorrowRate);
             cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         } catch {
-            // If the call reverts, do nothing.
+            // If the call failed, check if sufficient gas was provided
+            // We need to ensure the caller provided enough gas for accrueInterest to execute
+            require(gasBefore >= INTEREST_CALCULATION_GAS_REQUIREMENT, "Not enough gas for accrueInterest");
         }
     }
 
@@ -201,25 +243,38 @@ contract Lender {
         updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
-            if(!isRedeemable[account]) nonRedeemableCollateral += uint(collateralDelta);
+            // Convert incoming collateral to internal 18 decimals
+            uint256 collateralAmount = uint(collateralDelta);
+            uint256 internalAmount = collateralToInternal(collateralAmount);
             
-            // Deposit collateral
-            _cachedCollateralBalances[account] += uint(collateralDelta);
-            collateral.safeTransferFrom(msg.sender, address(this), uint(collateralDelta));
+            if(!isRedeemable[account]) nonRedeemableCollateral += internalAmount;
+            
+            // Store in internal 18 decimals
+            _cachedCollateralBalances[account] += internalAmount;
+            collateralAmount = collateralDecimals > 18 ? internalToCollateral(internalAmount) : collateralAmount;
+            // Transfer actual token amount
+            collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
         } else if (collateralDelta < 0) {
+            // Convert from internal 18 decimals to token decimals (rounds down)
+            uint256 internalAmount = uint(-collateralDelta);
+            uint256 collateralAmount = internalToCollateral(internalAmount);
+            
             // Ensure sufficient collateral for non-redeemable accounts
             if (isRedeemable[account]) {
+                // Calculate total redeemable in internal representation
+                uint256 totalInternalCollateral = collateralToInternal(collateral.balanceOf(address(this)));
                 require(
-                    collateral.balanceOf(address(this)) - uint256(-collateralDelta) >= nonRedeemableCollateral,
+                    totalInternalCollateral - internalAmount >= nonRedeemableCollateral,
                     "Insufficient redeemable collateral"
                 );
             } else {
-                nonRedeemableCollateral -= uint256(-collateralDelta);
+                nonRedeemableCollateral -= internalAmount;
             }
  
-            // Withdraw collateral
-            _cachedCollateralBalances[account] -= uint(-collateralDelta);
-            collateral.safeTransfer(msg.sender, uint(-collateralDelta));
+            // Withdraw collateral (stored in internal representation)
+            _cachedCollateralBalances[account] -= internalAmount;
+            // Transfer actual token amount (rounded down)
+            collateral.safeTransfer(msg.sender, collateralAmount);
         }
 
         // Handle debt changes
@@ -308,8 +363,8 @@ contract Lender {
         /// @notice Liquidates an unsafe position
     /// @param borrower The account to be liquidated
     /// @param repayAmount The amount of debt to repay
-    /// @param minCollateralOut The minimum amount of collateral to receive
-    /// @return The amount of collateral received
+    /// @param minCollateralOut The minimum amount of collateral to receive (in token decimals)
+    /// @return The amount of collateral received (in token decimals)
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
         updateBorrower(borrower);
@@ -317,7 +372,7 @@ contract Lender {
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
         uint debt = getDebtOf(borrower);
-        uint collateralBalance = _cachedCollateralBalances[borrower];
+        uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
         require(liquidatableDebt > 0, "insufficient liquidatable debt");
@@ -328,23 +383,32 @@ contract Lender {
         // apply repayment
         decreaseDebt(borrower, repayAmount);
 
-        // calculate collateral reward
+        // calculate collateral reward (in internal 18 decimals)
         uint liqIncentiveBps = getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
-        uint collateralReward = collateralRewardValue * 1e18 / price;
-        collateralReward = collateralReward > collateralBalance ? collateralBalance : collateralReward;
+        uint internalCollateralReward = collateralRewardValue * 1e18 / price;
+        internalCollateralReward = internalCollateralReward > collateralBalance ? collateralBalance : internalCollateralReward;
+        
+        // Convert to token decimals for transfer (rounds down)
+        uint collateralReward = internalToCollateral(internalCollateralReward);
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
-        if(collateralReward > 0) {
+        if(internalCollateralReward > 0) {
             collateral.safeTransfer(msg.sender, collateralReward);
-            _cachedCollateralBalances[borrower] = collateralBalance - collateralReward;
-            if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralReward;
+            _cachedCollateralBalances[borrower] = collateralBalance - internalCollateralReward;
+            if(!isRedeemable[borrower]) nonRedeemableCollateral -= internalCollateralReward;
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
+        
+        uint256 gasBefore = gasleft();
         // try to write off remaining debt. Call externally and catch error to prevent liquidation failure
-        try this.writeOff(borrower, msg.sender) {} catch {}
+        try this.writeOff(borrower, msg.sender) {} catch {
+            // If the call failed, check if sufficient gas was provided
+            // We need to ensure the caller provided enough gas for writeOff to execute
+            require(gasBefore >= WRITEOFF_GAS_REQUIREMENT, "Not enough gas for writeOff");
+        }
         return collateralReward;
     }
 
@@ -359,7 +423,7 @@ contract Lender {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
-            uint collateralBalance = _cachedCollateralBalances[borrower];
+            uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
             (uint price,, bool allowLiquidations) = getCollateralPrice();
             require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
@@ -376,35 +440,46 @@ contract Lender {
                     totalFreeDebt += freeDebtIncrease;
                     totalPaidDebt += paidDebtIncrease;
                 }
-                // 3. send collateral to caller
-                collateral.safeTransfer(to, collateralBalance);
+
                 if(!isRedeemable[borrower]) nonRedeemableCollateral -= collateralBalance;
-                
                 _cachedCollateralBalances[borrower] = 0;
-                emit WrittenOff(borrower, to, debt, collateralBalance);
+                
+                // Convert to token decimals for transfer (rounds down)
+                uint collateralAmount = internalToCollateral(collateralBalance);
+                emit WrittenOff(borrower, to, debt, collateralAmount);
                 writtenOff = true;
+                
+                // 3. send collateral to caller
+                collateral.safeTransfer(to, collateralAmount);
             }
         }
     }
 
     /// @notice Redeems Coin for collateral at current market price minus a fee
     /// @param amountIn The amount of Coin to redeem
-    /// @param minAmountOut The minimum amount of collateral to receive
-    /// @return amountOut The amount of collateral received
+    /// @param minAmountOut The minimum amount of collateral to receive (in token decimals)
+    /// @return amountOut The amount of collateral received (in token decimals)
     /// @dev Redemptions requires sufficient redeemable collateral to seize and free debt to repay
     function redeem(uint amountIn, uint minAmountOut) external returns (uint amountOut) {
         accrueInterest();
-        // calculate amountOut
-        amountOut = getRedeemAmountOut(amountIn);
+        // calculate amountOut in internal 18 decimals
+        uint internalAmountOut = getRedeemAmountOut(amountIn);
+        require(internalAmountOut > 0, "amount out is zero");
+        // Convert to token decimals (rounds down)
+        amountOut = internalToCollateral(internalAmountOut);
         require(amountOut >= minAmountOut, "insufficient amount out");
-        require(collateral.balanceOf(address(this)) - amountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
+        
+        // Check redeemable collateral in internal representation
+        uint256 totalInternalCollateral = collateralToInternal(collateral.balanceOf(address(this)));
+        require(totalInternalCollateral - internalAmountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
+        
         // repay on behalf of free debtors
         totalFreeDebt -= amountIn;
         coin.transferFrom(msg.sender, address(this), amountIn);
         coin.burn(amountIn);
 
-        // distribute collateral redemption per free debt share
-        epochRedeemedCollateral[epoch] += amountOut.mulDivUp(1e36, totalFreeDebtShares);
+        // distribute collateral redemption per free debt share (in internal representation)
+        epochRedeemedCollateral[epoch] += internalAmountOut.mulDivUp(1e36, totalFreeDebtShares);
 
         collateral.safeTransfer(msg.sender, amountOut);
 
@@ -421,16 +496,20 @@ contract Lender {
 
     function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
+        accrueInterest();
         assetOut = getSellAmountOut(coinIn);
         require(assetOut >= minAssetOut, "insufficient amount out");
-        freePsmAssets -= assetOut;
         // get and burn coins from caller
         coin.transferFrom(msg.sender, address(this), coinIn);
         coin.burn(coinIn);
         // give assets to caller
         if(psmVault != ERC4626(address(0))) {
-            psmVault.withdraw(assetOut, msg.sender, address(this));
+            uint256 sharesOut = psmVault.previewDeposit(assetOut);
+            assetOut = psmVault.redeem(sharesOut, msg.sender, address(this));
+            freePsmAssets -= assetOut;
+            require(assetOut >= minAssetOut, "redeem failed");
         } else {
+            freePsmAssets -= assetOut;
             psmAsset.safeTransfer(msg.sender, assetOut);
         }
         emit Sold(msg.sender, coinIn, assetOut);
@@ -438,6 +517,7 @@ contract Lender {
 
     function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
+        accrueInterest();
         uint coinFee;
         (coinOut, coinFee) = getBuyAmountOut(assetIn);
         require(coinOut >= minCoinOut, "insufficient amount out");
@@ -448,7 +528,9 @@ contract Lender {
         // get assets from caller
         psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
         if(psmVault != ERC4626(address(0))) {
-            psmVault.deposit(assetIn, address(this));
+            require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
+            uint256 shares = psmVault.deposit(assetIn, address(this));
+            require(shares > 0, "PSM deposit failed");
         }
         // give coins to caller
         coin.mint(msg.sender, coinOut);
@@ -467,14 +549,14 @@ contract Lender {
             uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
             if(assets <= freePsmAssets) return; // avoids underflow in case of loss
             uint profit = assets - freePsmAssets;
-            accruedLocalReserves += uint120(profit);
+            accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = assets;
         } else if(psmAsset != ERC20(address(0))) {
             // we do this in case the underlying asset may be a rebasing token that accrues profit
             uint bal = psmAsset.balanceOf(address(this));
             if(bal <= freePsmAssets) return; // avoids underflow in case of loss
             uint profit = bal - freePsmAssets;
-            accruedLocalReserves += uint120(profit);
+            accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = bal;
         }
     }
@@ -518,20 +600,36 @@ contract Lender {
     function increaseDebt(address account, uint256 amount) internal {
         if (isRedeemable[account]) {
             // Handle free debt
-            uint shares = totalFreeDebtShares == 0 ? 
+            uint shares = totalFreeDebt == 0 ? 
                     amount : 
                     amount.mulDivUp(totalFreeDebtShares, totalFreeDebt);
+            
+            // Update state first
             totalFreeDebt += amount;
             totalFreeDebtShares += shares;
             freeDebtShares[account] += shares;
+
+            // Calculate actual debt increase after share conversion (in the new state)
+            uint256 actualDebtIncrease = shares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
+            // Enforce max-delta guard: actual debt must not exceed requested by more than maxBorrowDeltaBps
+            uint256 maxAllowedDebtIncrease = amount * (10000 + maxBorrowDeltaBps) / 10000;
+            require(actualDebtIncrease <= maxAllowedDebtIncrease, "Borrow delta exceeds max");
         } else {
             // Handle paid debt 
-            uint256 shares = totalPaidDebtShares == 0 ? 
+            uint256 shares = totalPaidDebt == 0 ? 
                 amount : 
                 amount.mulDivUp(totalPaidDebtShares, totalPaidDebt);
+            
+            // Update state first
             totalPaidDebt += amount;
             totalPaidDebtShares += shares;
             paidDebtShares[account] += shares;
+            
+            // Calculate actual debt increase after share conversion (in the new state)
+            uint256 actualDebtIncrease = shares.mulDivUp(totalPaidDebt, totalPaidDebtShares);
+            // Enforce max-delta guard: actual debt must not exceed requested by more than maxBorrowDeltaBps
+            uint256 maxAllowedDebtIncrease = amount * (10000 + maxBorrowDeltaBps) / 10000;
+            require(actualDebtIncrease <= maxAllowedDebtIncrease, "Borrow delta exceeds max");
         }
     }
 
@@ -559,8 +657,8 @@ contract Lender {
             }
             
             paidDebtShares[account] -= shares;
-            totalPaidDebtShares -= shares;
-            totalPaidDebt -= amount;
+            totalPaidDebtShares = totalPaidDebtShares <= shares ? 0 : totalPaidDebtShares - shares; // prevent underflow
+            totalPaidDebt = totalPaidDebt <= amount ? 0 : totalPaidDebt - amount; // prevent underflow
         }
     }
 
@@ -593,7 +691,7 @@ contract Lender {
     // Getters
 
     function getFreeDebtRatio() public view returns (uint) {
-        uint _adjustedTotalFreeDebt = totalFreeDebt + freePsmAssets;
+        uint _adjustedTotalFreeDebt = totalFreeDebt + normalizePsmAssets(freePsmAssets);
         return _adjustedTotalFreeDebt == 0 ? 0 : _adjustedTotalFreeDebt * 10000 / (totalPaidDebt + _adjustedTotalFreeDebt);
     }
 
@@ -629,9 +727,9 @@ contract Lender {
         uint currentTime = block.timestamp;
         uint timeElapsed = currentTime >= updatedAt ? currentTime - updatedAt : 0;
 
-        if (timeElapsed > STALENESS_THRESHOLD) {
+        if (timeElapsed > stalenessThreshold) {
             reduceOnly = true;
-            uint stalenessDuration = timeElapsed - STALENESS_THRESHOLD;
+            uint stalenessDuration = timeElapsed - stalenessThreshold;
             if (stalenessDuration < STALENESS_UNWIND_DURATION) {
                 price = price * (STALENESS_UNWIND_DURATION - stalenessDuration) / STALENESS_UNWIND_DURATION;
             } else {
@@ -657,12 +755,13 @@ contract Lender {
 
     /// @notice Calculates the amount of collateral received for redeeming Coin
     /// @param amountIn The amount of Coin to redeem
-    /// @return amountOut The amount of collateral to receive
+    /// @return amountOut The amount of collateral to receive (in internal 18 decimals)
     function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         if(!allowLiquidations) return 0;
         // multiply amountIn by price then apply redeem fee to amountIn
+        // Result is in internal 18 decimals
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
 
@@ -731,6 +830,83 @@ contract Lender {
         }
     }
 
+    /// @notice Normalizes PSM asset amount to 18 decimals
+    /// @param assets The amount of PSM asset to normalize
+    /// @return The normalized amount with 18 decimals
+    function normalizePsmAssets(uint256 assets) internal view returns (uint256) {
+        if (psmAssetDecimals == 18) {
+            return assets;
+        } else if (psmAssetDecimals > 18) {
+            return assets / (10 ** (psmAssetDecimals - 18));
+        } else {
+            return assets * (10 ** (18 - psmAssetDecimals));
+        }
+    }
+
+    /// @notice Converts collateral amount from token decimals to internal 18 decimals
+    /// @param amount The amount in collateral token decimals
+    /// @return The amount normalized to 18 decimals
+    function collateralToInternal(uint256 amount) public view returns (uint256) {
+        if (collateralDecimals == 18) {
+            return amount;
+        } else if (collateralDecimals > 18) {
+            return amount / (10 ** (collateralDecimals - 18));
+        } else {
+            return amount * (10 ** (18 - collateralDecimals));
+        }
+    }
+
+    /// @notice Converts collateral amount from internal 18 decimals to token decimals
+    /// @param amount The amount in 18 decimals
+    /// @return The amount in collateral token decimals
+    function internalToCollateral(uint256 amount) public view returns (uint256) {
+        if (collateralDecimals == 18) {
+            return amount;
+        } else if (collateralDecimals > 18) {
+            return amount * (10 ** (collateralDecimals - 18));
+        } else {
+            return amount / (10 ** (18 - collateralDecimals));
+        }
+    }
+
+    /// @notice Calculates the pending interest that would be earned by vault stakers if accrueInterest() were called
+    /// @dev This is used by the Vault to include pending yield in totalAssets() for ERC-4626 compliance
+    /// @return pendingVaultInterest The amount of interest that would be minted to the vault
+    function getPendingInterest() external view returns (uint256 pendingVaultInterest) {
+        uint timeElapsed = block.timestamp - lastAccrue;
+        if(timeElapsed == 0) return 0;
+
+        uint256 gasBefore = gasleft();
+        
+        try interestModel.calculateInterest(
+            totalPaidDebt,
+            lastBorrowRateMantissa,
+            timeElapsed,
+            expRate,
+            getFreeDebtRatio(),
+            targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps
+        ) returns (uint, uint interest) {
+            uint120 localReserveFee = uint120(interest * feeBps / 10000);
+            uint120 globalReserveFee = uint120(interest * cachedGlobalFeeBps / 10000);
+            // we remove reserve fees from interest before calculating how much to give to stakers
+            uint interestAfterFees = interest - localReserveFee - globalReserveFee;
+            uint totalStaked = coin.balanceOf(address(vault));
+            if(totalStaked < totalPaidDebt) { // this also implies totalPaidDebt > 0 and guards the division below
+                // if total staked is less than paid debt, giving all interest to stakers would
+                // result in higher supply rate than borrow rate which is undesirable.
+                // we cap the supply rate at the borrow rate and give the rest to local reserves.
+                uint stakedInterest = interestAfterFees * totalStaked / totalPaidDebt;
+                return stakedInterest;
+            } else {
+                // if total staked is greater than paid debt, we give all interest to stakers
+                return interestAfterFees;
+            }
+        } catch {
+            require(gasBefore >= INTEREST_CALCULATION_GAS_REQUIREMENT, "Not enough gas for accrueInterest");
+        }
+    }
+
     // Setters
 
     function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline {
@@ -754,6 +930,12 @@ contract Lender {
         require(_redeemFeeBps <= 300, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
+    }
+
+    function setMaxBorrowDeltaBps(uint16 _maxBorrowDeltaBps) external onlyOperatorOrManager beforeDeadline {
+        require(_maxBorrowDeltaBps <= 200 && _maxBorrowDeltaBps >= 50, "Invalid borrow delta bps"); // Max 5%
+        maxBorrowDeltaBps = _maxBorrowDeltaBps;
+        emit MaxBorrowDeltaBpsUpdated(_maxBorrowDeltaBps);
     }
 
     function setLocalReserveFeeBps(uint _feeBps) external onlyOperator {
@@ -781,12 +963,14 @@ contract Lender {
 
     function enableImmutabilityNow() external onlyOperator beforeDeadline {
         immutabilityDeadline = block.timestamp;
+        emit ImmutabilityEnabled(block.timestamp);
     }
 
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
         accruePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
+        emit AccruedLocalReserves(accruedLocalReserves);
         accruedLocalReserves = 0;
     }
 
@@ -794,6 +978,7 @@ contract Lender {
         require(msg.sender == address(factory), "Unauthorized");
         accrueInterest();
         coin.mint(_to, accruedGlobalReserves);
+        emit AccruedGlobalReserves(accruedGlobalReserves);
         accruedGlobalReserves = 0;
     }
 
@@ -803,6 +988,7 @@ contract Lender {
     event HalfLifeUpdated(uint64 halfLife);
     event TargetFreeDebtRatioUpdated(uint16 startBps, uint16 endBps);
     event RedeemFeeBpsUpdated(uint16 redeemFeeBps);
+    event MaxBorrowDeltaBpsUpdated(uint16 maxBorrowDeltaBps);
     event DelegationUpdated(address indexed delegator, address indexed delegatee, bool isDelegatee);
     event PendingOperatorUpdated(address indexed pendingOperator);
     event OperatorAccepted(address indexed operator);
@@ -815,4 +1001,7 @@ contract Lender {
     event Redeemed(address indexed account, uint amountIn, uint amountOut);
     event Sold(address indexed account, uint coinIn, uint assetOut);
     event Bought(address indexed account, uint assetIn, uint coinOut);
+    event ImmutabilityEnabled(uint256 timestamp);
+    event AccruedLocalReserves(uint256 amount);
+    event AccruedGlobalReserves(uint256 amount);
 }

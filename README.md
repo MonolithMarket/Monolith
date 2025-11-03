@@ -49,7 +49,7 @@ We use traditional discounted-price liquidations based on collateral price oracl
 
 If the value of a positions's debt exceeds the value of collateral * collateral factor, debt can be fully or partially repaid by any liquidator in exchange for collateral + liquidation incentive.
 
-After each liquidation, the protocol makes an attempt to write off the remaining debt in case the debt value exceeds the value of the collateral (regardless of the collateral factor).
+After each liquidation, the protocol makes an attempt to write off the remaining debt in case the debt value exceeds 100 times the value of the collateral (regardless of the collateral factor).
 
 Write-offs simply redistribute the remaining debt and collateral equally among all other borrowers (regardless of their redemption status). This causes borrowers to absorb bad debt. Write-offs can also be triggered independently of liquidations.
 

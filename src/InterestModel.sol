@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import "lib/solmate/src/utils/SignedWadMath.sol";
 
@@ -55,6 +55,12 @@ contract InterestModel {
         } else {
             currBorrowRate = _lastRate;
             interest = _totalPaidDebt * _lastRate * _timeElapsed / 365 days / 1e18;
+        }
+        
+        // If interest would overflow uint120 (cast in Lender), skip accrual
+        // Also check if currBorrowRate would overflow uint88 (cast in Lender)
+        if (interest > type(uint120).max || currBorrowRate > type(uint88).max) {
+            return (_lastRate, 0);
         }
     }
 }

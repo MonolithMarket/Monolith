@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 import {Test, console, console2} from "forge-std/Test.sol";
 import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
@@ -93,6 +93,7 @@ contract InterestModelMock {
 
 contract FactoryMock {
     uint public fee = 1000; // 10% default fee
+    uint public minDebtFloor = 1e15;
 
     function getFeeOf(address) external view returns (uint) {
         return fee;
@@ -145,7 +146,10 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         lender = new Lender(lenderParams);
     
@@ -179,7 +183,10 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         Lender newLender = new Lender(newLenderParams);
 
@@ -194,6 +201,7 @@ contract LenderTest is Test {
         assertEq(newLender.collateralFactor(), 5000, "Collateral factor mismatch in constructor");
         assertEq(newLender.minDebt(), 1000e18, "Minimum debt mismatch in constructor");
         assertEq(newLender.immutabilityDeadline(), block.timestamp + 365 days, "Immutability deadline mismatch in constructor");
+        assertEq(newLender.stalenessThreshold(), 48 hours, "Staleness threshold mismatch in constructor");
     }
 
     function test_depositCollateral(uint depositAmount, bool chooseRedeemable) public {
@@ -2042,9 +2050,9 @@ contract LenderTest is Test {
         vm.startPrank(redeemer);
         coin.approve(address(lender), redeemAmount);
         
-        // In disallowed liquidations mode, getRedeemAmountOut should return 0
-        uint out = lender.redeem(redeemAmount, 0);
-        assertEq(out, 0, "In disallowed liquidations mode, redeem should return 0");
+        // In disallowed liquidations mode, getRedeemAmountOut should return 0 and thus reverting
+        vm.expectRevert("amount out is zero");
+        lender.redeem(redeemAmount, 0);
         vm.stopPrank();
     }
     
@@ -2392,6 +2400,12 @@ contract LenderTest is Test {
         // Get the existing Lender contract address
         address lenderAddress = 0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A;
         lender = Lender(lenderAddress);
+        vm.mockCall(
+            address(lender.factory()),
+            abi.encodeWithSelector(IFactory(lender.factory()).minDebtFloor.selector),
+            abi.encode(1e15)
+        );
+
         lens = new Lens();
         // Deploy a new Lender contract with the same immutable variables as the existing contract
         // Note: The existing contract doesn't have a manager, so we use address(0)
@@ -2412,10 +2426,20 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         Lender newLenderImplementation = new Lender(upgradeLenderParams);
-        
+        (uint256 price, uint256 updatedAt) = lender.getFeedPrice();
+        // Set the maxBorrowDeltaBps to 50 bps
+        vm.store(
+            address(lender),
+            bytes32(uint256(11)), // maxBorrowDeltaBps is at slot 11
+            bytes32(uint256(50))
+        );
+     
         // Replace the bytecode at the existing Lender address with the new implementation
         vm.etch(lenderAddress, address(newLenderImplementation).code);
         
@@ -3163,7 +3187,10 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         });
         Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
@@ -3268,7 +3295,10 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3292,7 +3322,10 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3316,7 +3349,37 @@ contract LenderTest is Test {
             halfLife: 7 days,
             targetFreeDebtRatioStartBps: 2000,
             targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
+        }));
+    }
+
+function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns (Lender) {
+        ERC20MockWithDecimals psmAsset = new ERC20MockWithDecimals("PSM Asset", "PSMA", decimals);
+        Vault4626Mock psmVault = new Vault4626Mock(ERC20(psmAsset));
+        return new Lender(Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COLL"))),
+            psmAsset: ERC20(address(psmAsset)),
+            psmVault: ERC4626(address(psmVault)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 7500,
+            minDebt: 100e18,
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
         }));
     }
 
@@ -3516,6 +3579,13 @@ contract LenderTest is Test {
         Vault4626Mock psmVault = Vault4626Mock(address(psmLender.psmVault()));
         ERC20 psmAsset = psmLender.psmAsset();
 
+        // Make initial deposit to have min total supply
+        uint256 initialDeposit = 1e18;
+        ERC20Mock(address(psmAsset)).mint(address(this), initialDeposit);
+        psmAsset.approve(address(psmVault), initialDeposit);
+        psmVault.deposit(initialDeposit, address(this));
+        uint256 initialSupply = psmVault.totalSupply();
+
         // Setup: users buy PSM assets
         ERC20Mock(address(psmAsset)).mint(address(this), 1000e18);
         psmAsset.approve(address(psmLender), 1000e18);
@@ -3535,7 +3605,7 @@ contract LenderTest is Test {
 
         // Basic sanity checks
         assertEq(lenderShares, 1000e18, "Lender should have 1000e18 shares from buy");
-        assertEq(vaultTotalAssets, 1100e18, "Vault total assets should be 1100e18 with 10% profit");
+        assertEq(vaultTotalAssets, 1100e18 + initialSupply * 1.1e18 / 1e18, "Vault total assets should be 1100e18 with 10% profit");
         assertEq(previewRedeemAmount, 1100e18, "Preview redeem should return 1100e18");
         assertEq(freePsmAssetsBefore, 1000e18, "Free PSM assets should be 1000e18 after buy");
 
@@ -3569,6 +3639,72 @@ contract LenderTest is Test {
         assertEq(operatorCoinBalanceAfterLoss, operatorCoinBalanceBeforeSecond, "Should not accrue negative profit on loss");
     }
 
+    function testAccruePsmProfit_with_PSMAsset6Decimals() public {
+        Lender psmLender = createLenderWithPSMVaultAssetDecimals(6);
+        Vault4626Mock psmVault = Vault4626Mock(address(psmLender.psmVault()));
+        ERC20 psmAsset = psmLender.psmAsset();
+
+        // Make initial deposit to have min total supply
+        uint256 initialDeposit = 1e18;
+        ERC20Mock(address(psmAsset)).mint(address(this), initialDeposit);
+        psmAsset.approve(address(psmVault), initialDeposit);
+        psmVault.deposit(initialDeposit, address(this));
+        uint256 initialSupply = psmVault.totalSupply();
+
+        // Setup: users buy PSM assets
+        ERC20Mock(address(psmAsset)).mint(address(this), 1000e6);
+        psmAsset.approve(address(psmLender), 1000e6);
+
+        // Buy PSM assets at deployment time (0 fee)
+        vm.warp(psmLender.deployTimestamp());
+        psmLender.buy(1000e6, 999e18); // Buy 1000e6 PSM assets, expect at least 999e18 coins
+
+        uint freePsmAssetsBefore = psmLender.freePsmAssets();
+
+        // Simulate 10% profit in the vault (1.1x multiplier)
+        psmVault.setProfitMultiplier(1.1e18);
+
+        uint lenderShares = psmVault.balanceOf(address(psmLender));
+        uint vaultTotalAssets = psmVault.totalAssets();
+        uint previewRedeemAmount = psmVault.previewRedeem(lenderShares);
+
+        // Basic sanity checks
+        assertEq(lenderShares, 1000e6, "Lender should have 1000e6 shares from buy");
+        assertEq(vaultTotalAssets, 1100e6 + initialSupply * 1.1e18 / 1e18, "Vault total assets should be 1100e6 with 10% profit");
+        assertEq(previewRedeemAmount, 1100e6, "Preview redeem should return 1100e6");
+        assertEq(freePsmAssetsBefore, 1000e6, "Free PSM assets should be 1000e6 after buy");
+
+        // Call pullLocalReserves which internally calls accruePsmProfit and mints reserves to operator
+        address operator = psmLender.operator();
+        Coin coin = psmLender.coin();
+        uint operatorCoinBalanceBefore = coin.balanceOf(operator);
+
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+
+        uint operatorCoinBalanceAfter = coin.balanceOf(operator);
+
+        // Expected profit = previewRedeem - freePsmAssets = 1100e6 - 1000e6 = 100e6
+        uint expectedProfit = previewRedeemAmount - freePsmAssetsBefore;
+        assertEq(expectedProfit, 100e6, "Expected profit should be 10% of 1000e6");
+        // Receive coin profit in 18 decimals
+        assertEq(operatorCoinBalanceAfter - operatorCoinBalanceBefore, expectedProfit * 10**12, "Operator should receive profit as coins");
+
+        // Test that subsequent calls don't accrue more profit (freePsmAssets now equals previewRedeem)
+        uint operatorCoinBalanceBeforeSecond = operatorCoinBalanceAfter;
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+        uint operatorCoinBalanceAfterSecond = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfterSecond, operatorCoinBalanceBeforeSecond, "Should not accrue additional profit on second call");
+
+        // Test loss scenario (multiplier < 1.0) - should not accrue negative profit
+        psmVault.setProfitMultiplier(0.9e18); // 10% loss
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+        uint operatorCoinBalanceAfterLoss = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfterLoss, operatorCoinBalanceBeforeSecond, "Should not accrue negative profit on loss");
+    }
+
     function testPSMFunctionsRevertWhenNoPSMAsset() public {
         // Use regular lender without PSM
         vm.expectRevert("PSM asset was not set");
@@ -3577,4 +3713,114 @@ contract LenderTest is Test {
         vm.expectRevert("PSM asset was not set");
         lender.buy(100e18, 90e18);
     }
+
+    function testLensGetDebtOf() public {
+        Lens testLens = new Lens();
+        
+        // Setup: create a borrower with debt
+        address borrower = address(0xBEEF);
+        ERC20 collateral = lender.collateral();
+        Coin coin = lender.coin();
+        
+        uint collateralAmount = 10000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Give borrower collateral
+        deal(address(collateral), borrower, collateralAmount);
+        
+        // Borrower creates a position with paid debt (non-redeemable)
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // opt out of redemptions
+        vm.stopPrank();
+        
+        // Get initial debt
+        uint lenderDebt = lender.getDebtOf(borrower);
+        uint lensDebt = testLens.getDebtOf(lender, borrower);
+        
+        // Initially, both should be the same (no interest accrued yet)
+        assertEq(lensDebt, lenderDebt, "Initial debt should match");
+        assertEq(lensDebt, borrowAmount, "Initial debt should equal borrow amount");
+        
+        // Fast forward time to accrue interest
+        vm.warp(block.timestamp + 365 days);
+        
+        // The Lender's getDebtOf still returns stale debt (without accrued interest)
+        uint staleDebt = lender.getDebtOf(borrower);
+        assertEq(staleDebt, borrowAmount, "Lender getDebtOf should return stale debt");
+        
+        // The Lens getDebtOf should include accrued interest
+        uint currentDebt = testLens.getDebtOf(lender, borrower);
+        assertGt(currentDebt, staleDebt, "Lens getDebtOf should include accrued interest");
+        
+        // After accruing interest, the debts should match
+        lender.accrueInterest();
+        uint accruedDebt = lender.getDebtOf(borrower);
+        uint lensDebtAfterAccrue = testLens.getDebtOf(lender, borrower);
+        
+        assertEq(accruedDebt, lensDebtAfterAccrue, "Debt should match after accrual");
+        assertGt(accruedDebt, borrowAmount, "Accrued debt should be greater than initial borrow");
+    }
+
+    function testLensGetDebtOfWithRedemptions() public {
+        Lens testLens = new Lens();
+        
+        // Setup: create borrowers with redeemable debt
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        address redeemer = address(0xCAFE);
+        
+        ERC20 collateral = lender.collateral();
+        Coin coin = lender.coin();
+        
+        uint collateralAmount = 10000e18;
+        uint borrowAmount = 2000e18;
+        
+        // Setup borrower1 with redeemable debt
+        deal(address(collateral), borrower1, collateralAmount);
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Setup borrower2 with redeemable debt
+        deal(address(collateral), borrower2, collateralAmount);
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+        vm.stopPrank();
+        
+        // Get initial debts
+        uint borrower1DebtBefore = testLens.getDebtOf(lender, borrower1);
+        uint borrower2DebtBefore = testLens.getDebtOf(lender, borrower2);
+        
+        assertEq(borrower1DebtBefore, borrowAmount, "Borrower1 initial debt should equal borrow amount");
+        assertEq(borrower2DebtBefore, borrowAmount, "Borrower2 initial debt should equal borrow amount");
+        
+        // Perform a redemption
+        uint redeemAmount = 1000e18;
+        deal(address(coin), redeemer, redeemAmount);
+        
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        lender.redeem(redeemAmount, 0);
+        vm.stopPrank();
+        
+        // After redemption, total free debt should decrease
+        uint totalFreeDebtAfter = lender.totalFreeDebt();
+        assertEq(totalFreeDebtAfter, borrowAmount * 2 - redeemAmount, "Total free debt should decrease by redeem amount");
+        
+        // Lens should correctly account for the redemption
+        uint borrower1DebtAfter = testLens.getDebtOf(lender, borrower1);
+        uint borrower2DebtAfter = testLens.getDebtOf(lender, borrower2);
+        
+        // Both borrowers should have reduced debt proportionally
+        assertLt(borrower1DebtAfter, borrower1DebtBefore, "Borrower1 debt should decrease after redemption");
+        assertLt(borrower2DebtAfter, borrower2DebtBefore, "Borrower2 debt should decrease after redemption");
+        
+        // The debt should be approximately half of the redeemed amount each
+        assertApproxEqAbs(borrower1DebtAfter, borrowAmount - redeemAmount / 2, 1, "Borrower1 debt should decrease by ~half of redeemed amount");
+        assertApproxEqAbs(borrower2DebtAfter, borrowAmount - redeemAmount / 2, 1, "Borrower2 debt should decrease by ~half of redeemed amount");
+    }
 }
+
