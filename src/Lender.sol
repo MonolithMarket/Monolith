@@ -2,6 +2,7 @@
 pragma solidity 0.8.13;
 
 import "lib/solmate/src/tokens/ERC20.sol";
+import "lib/solmate/src/tokens/ERC4626.sol";
 import "lib/solmate/src/utils/SafeTransferLib.sol";
 import "lib/solmate/src/utils/FixedPointMathLib.sol";
 import "./Coin.sol";
@@ -29,12 +30,12 @@ contract Lender {
     using FixedPointMathLib for uint256;
 
     // single 256-bit slot
-    uint16 public targetFreeDebtRatioStartBps = 2000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
-    uint16 public targetFreeDebtRatioEndBps = 4000; // max uint16 is 65535 bps which is outside of the range [0, 10000]
-    uint16 public redeemFeeBps = 30; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
-    uint64 public expRate = uint64(uint(wadLn(2*1e18)) / 7 days); // max result is 693147180559945309 which is within uint64 range
+    uint16 public targetFreeDebtRatioStartBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    uint16 public targetFreeDebtRatioEndBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
+    uint16 public redeemFeeBps; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
+    uint64 public expRate; // max result is 693147180559945309 which is within uint64 range
     uint40 public lastAccrue; // max uint40 is year 36812
-    uint88 public lastBorrowRateMantissa = uint88(5e15); // max uint88 is equivalent to 309485000% APR
+    uint88 public lastBorrowRateMantissa = uint88(2e16); // max uint88 is equivalent to 309485000% APR
     uint16 public feeBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
 
     // single 256-bit slot
@@ -51,16 +52,20 @@ contract Lender {
     uint public totalPaidDebt;
     uint public totalPaidDebtShares;
     uint public epoch;
+    uint public freePsmAssets;
 
     // Constants and immutables
     Coin public immutable coin;
     ERC20 public immutable collateral;
+    ERC20 public immutable psmAsset;
+    ERC4626 public immutable psmVault;
     IChainlinkFeed public immutable feed;
     Vault public immutable vault;
     InterestModel public immutable interestModel;
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
+    uint public immutable deployTimestamp;
     uint public constant STALENESS_THRESHOLD = 25 hours; // standard 24 hours staleness + 1 hour buffer
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
@@ -77,38 +82,69 @@ contract Lender {
     mapping(uint => uint) public epochRedeemedCollateral;
     uint256 public nonRedeemableCollateral;
 
-    constructor(
-        ERC20 _collateral,
-        IChainlinkFeed _feed,
-        Coin _coin,
-        Vault _vault,
-        InterestModel _interestModel,
-        IFactory _factory,
-        address _operator,
-        uint _collateralFactor,
-        uint _minDebt,
-        uint _timeUntilImmutability
-    ) {
-        require(_collateralFactor <= 10000, "Invalid collateral factor");
-        require(_timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
-        collateral = _collateral;
-        feed = _feed;
-        coin = _coin;
-        vault = _vault;
-        interestModel = _interestModel;
-        factory = _factory;
-        operator = _operator;
-        collateralFactor = _collateralFactor;
-        minDebt = _minDebt;
-        immutabilityDeadline = block.timestamp + _timeUntilImmutability;
+    address public manager;
+
+    struct LenderParams {
+        ERC20 collateral;
+        ERC20 psmAsset; // optional
+        ERC4626 psmVault; // optional
+        IChainlinkFeed feed;
+        Coin coin;
+        Vault vault;
+        InterestModel interestModel;
+        IFactory factory;
+        address operator;
+        address manager;
+        uint collateralFactor;
+        uint minDebt;
+        uint timeUntilImmutability;
+        uint64 halfLife;
+        uint16 targetFreeDebtRatioStartBps;
+        uint16 targetFreeDebtRatioEndBps;
+        uint16 redeemFeeBps;
+    }
+
+    constructor(LenderParams memory params) {
+        require(params.collateralFactor <= 10000, "Invalid collateral factor");
+        require(params.timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
+        require(params.halfLife >= 12 hours && params.halfLife <= 30 days, "Invalid half life");
+        require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
+        require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
+        require(params.redeemFeeBps <= 300, "Invalid redeem fee bps");
+        if(params.psmVault != ERC4626(address(0))) require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
+        collateral = params.collateral;
+        psmAsset = params.psmAsset;
+        psmVault = params.psmVault;
+        feed = params.feed;
+        coin = params.coin;
+        vault = params.vault;
+        interestModel = params.interestModel;
+        factory = params.factory;
+        operator = params.operator;
+        manager = params.manager;
+        collateralFactor = params.collateralFactor;
+        minDebt = params.minDebt;
+        deployTimestamp = block.timestamp;
+        immutabilityDeadline = block.timestamp + params.timeUntilImmutability;
         lastAccrue = uint40(block.timestamp);
+        expRate = uint64(uint(wadLn(2*1e18)) / params.halfLife);
+        targetFreeDebtRatioStartBps = params.targetFreeDebtRatioStartBps;
+        targetFreeDebtRatioEndBps = params.targetFreeDebtRatioEndBps;
+        redeemFeeBps = params.redeemFeeBps;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
+        if(psmVault != ERC4626(address(0)))
+            psmAsset.approve(address(psmVault), type(uint).max);
     }
 
     // Modifiers
-    
+
     modifier onlyOperator() {
         require(msg.sender == operator, "Unauthorized");
+        _;
+    }
+
+    modifier onlyOperatorOrManager() {
+        require(msg.sender == operator || msg.sender == manager, "Unauthorized");
         _;
     }
 
@@ -187,6 +223,7 @@ contract Lender {
         }
 
         // Handle debt changes
+        int actualDebtDelta = debtDelta;
         if (debtDelta > 0) {
             // Borrow
             uint amount = uint256(debtDelta);
@@ -198,6 +235,7 @@ contract Lender {
             uint debt = getDebtOf(account);
             if(debt <= amount) {
                 amount = debt;
+                actualDebtDelta = -int(debt); // Use actual debt repaid for full repayment
                 decreaseDebt(account, type(uint).max);
             } else {
                 decreaseDebt(account, amount);
@@ -211,7 +249,7 @@ contract Lender {
         if(debtDelta != 0) require(debtBalance == 0 || debtBalance >= minDebt, "Debt below minimum and larger than 0");
 
         // Emit event before the first early return
-        emit PositionAdjusted(account, collateralDelta, debtDelta);
+        emit PositionAdjusted(account, collateralDelta, actualDebtDelta);
 
         // Skip remaining invariants if caller does not reduce collateral AND does not increase debt
         if(collateralDelta >= 0 && debtDelta <= 0) return;
@@ -381,7 +419,65 @@ contract Lender {
         return amountOut;
     }
 
+    function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
+        require(psmAsset != ERC20(address(0)), "PSM asset was not set");
+        assetOut = getSellAmountOut(coinIn);
+        require(assetOut >= minAssetOut, "insufficient amount out");
+        freePsmAssets -= assetOut;
+        // get and burn coins from caller
+        coin.transferFrom(msg.sender, address(this), coinIn);
+        coin.burn(coinIn);
+        // give assets to caller
+        if(psmVault != ERC4626(address(0))) {
+            psmVault.withdraw(assetOut, msg.sender, address(this));
+        } else {
+            psmAsset.safeTransfer(msg.sender, assetOut);
+        }
+        emit Sold(msg.sender, coinIn, assetOut);
+    }
+
+    function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
+        require(psmAsset != ERC20(address(0)), "PSM asset was not set");
+        uint coinFee;
+        (coinOut, coinFee) = getBuyAmountOut(assetIn);
+        require(coinOut >= minCoinOut, "insufficient amount out");
+        freePsmAssets += assetIn;
+
+        if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
+
+        // get assets from caller
+        psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
+        if(psmVault != ERC4626(address(0))) {
+            psmVault.deposit(assetIn, address(this));
+        }
+        // give coins to caller
+        coin.mint(msg.sender, coinOut);
+        emit Bought(msg.sender, assetIn, coinOut);
+    }
+
+    function reapprovePsmVault() external beforeDeadline {
+        if(psmVault != ERC4626(address(0)))
+            psmAsset.approve(address(psmVault), type(uint).max);
+    }
+
     // Internal functions
+
+    function accruePsmProfit() internal {
+        if(address(psmVault) != address(0)){
+            uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
+            if(assets <= freePsmAssets) return; // avoids underflow in case of loss
+            uint profit = assets - freePsmAssets;
+            accruedLocalReserves += uint120(profit);
+            freePsmAssets = assets;
+        } else if(psmAsset != ERC20(address(0))) {
+            // we do this in case the underlying asset may be a rebasing token that accrues profit
+            uint bal = psmAsset.balanceOf(address(this));
+            if(bal <= freePsmAssets) return; // avoids underflow in case of loss
+            uint profit = bal - freePsmAssets;
+            accruedLocalReserves += uint120(profit);
+            freePsmAssets = bal;
+        }
+    }
 
     function updateBorrower(address borrower) internal {
         uint borrowerDebtShares = freeDebtShares[borrower];
@@ -479,25 +575,26 @@ contract Lender {
 
     function getLiquidationIncentiveBps(uint collateralBalance, uint price, uint debt) internal view returns(uint) {
         uint collateralValue = collateralBalance * price / 1e18;
-        if (collateralValue == 0) return 100; // avoid division by zero, return 1% incentive
+        if (collateralValue == 0) return 0; // avoid division by zero, return 0% incentive
         uint ltvBps = debt * 10000 / collateralValue;
         uint _collateralFactor = collateralFactor; // gas optimization
         uint maxLtvBps = _collateralFactor + 500; // range is [_collateralFactor, _collateralFactor + 5%]
 
         if (ltvBps <= _collateralFactor) {
-            return 100; // 1% incentive
+            return 0; // 0% incentive
         } else if (ltvBps >= maxLtvBps) {
             return 1000; // 10% incentive
         } else {
-            // linear interpolation between 1% and 10% incentive
-            return 100 + (ltvBps - _collateralFactor) * 900 / (maxLtvBps - _collateralFactor);
+            // linear interpolation between 0% and 10% incentive
+            return (ltvBps - _collateralFactor) * 1000 / (maxLtvBps - _collateralFactor);
         }
     }
 
     // Getters
 
     function getFreeDebtRatio() public view returns (uint) {
-        return totalFreeDebt == 0 ? 0 : totalFreeDebt * 10000 / (totalPaidDebt + totalFreeDebt);
+        uint _adjustedTotalFreeDebt = totalFreeDebt + freePsmAssets;
+        return _adjustedTotalFreeDebt == 0 ? 0 : _adjustedTotalFreeDebt * 10000 / (totalPaidDebt + _adjustedTotalFreeDebt);
     }
 
     function getDebtOf(address account) public view returns (uint) {
@@ -569,16 +666,81 @@ contract Lender {
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
 
+    function getSellAmountOut(uint coinIn) public view returns (uint assetOut) {
+        uint8 coinDecimals = 18;
+        uint8 assetDecimals = psmAsset.decimals();
+
+        if (coinDecimals > assetDecimals) {
+            // e.g., 18 decimals -> 6 decimals: divide by 10^(18-6) = 10^12
+            assetOut = coinIn / (10 ** (coinDecimals - assetDecimals));
+        } else if (assetDecimals > coinDecimals) {
+            // e.g., 6 decimals -> 18 decimals: multiply by 10^(18-6) = 10^12
+            assetOut = coinIn * (10 ** (assetDecimals - coinDecimals));
+        } else {
+            // Same decimals: 1:1 ratio
+            assetOut = coinIn;
+        }
+    }
+
+    function getBuyFeeBps() public view returns (uint) {
+        uint startTime = deployTimestamp;
+        uint deadline = immutabilityDeadline;
+        uint current = block.timestamp;
+
+        // Calculate the halfway point of the deadline period
+        uint halfTime = startTime + ((deadline - startTime) / 2);
+
+        if (current >= deadline || current < halfTime) {
+            return 0;
+        }
+
+        // fee ramps from 0% to 1% (100 bps) over the second half of the deadline period
+        // rampDuration = deadline - halfTime = (deadline - startTime) / 2
+        // timeIntoRamp = current - halfTime
+        // feeBps = timeIntoRamp * 100 / rampDuration
+        uint rampDuration = deadline - halfTime;
+        if (rampDuration == 0) return 100; // avoids division by zero
+
+        uint timeIntoRamp = current - halfTime;
+        uint buyFeeBps = timeIntoRamp * 100 / rampDuration;
+
+        // Cap at 100 bps (1%)
+        return buyFeeBps > 100 ? 100 : buyFeeBps;
+    }
+
+    function getBuyAmountOut(uint assetIn) public view returns (uint coinOut, uint coinFee) {
+        uint8 coinDecimals = 18;
+        uint8 assetDecimals = psmAsset.decimals();
+
+        if (assetDecimals > coinDecimals) {
+            // e.g., 6 decimals -> 18 decimals: divide by 10^(6-18) = 10^12
+            coinOut = assetIn / (10 ** (assetDecimals - coinDecimals));
+        } else if (coinDecimals > assetDecimals) {
+            // e.g., 18 decimals -> 6 decimals: multiply by 10^(18-6) = 10^12
+            coinOut = assetIn * (10 ** (coinDecimals - assetDecimals));
+        } else {
+            // Same decimals: 1:1 ratio
+            coinOut = assetIn;
+        }
+
+        // Apply buy fee
+        uint buyFeeBps = getBuyFeeBps();
+        if(buyFeeBps > 0) {
+            coinFee = coinOut * buyFeeBps / 10000;
+            coinOut -= coinFee;
+        }
+    }
+
     // Setters
 
-    function setHalfLife(uint64 halfLife) external onlyOperator beforeDeadline {
+    function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
         require(halfLife >= 12 hours && halfLife <= 30 days, "Invalid half life");
         expRate = uint64(uint(wadLn(2*1e18)) / halfLife);
         emit HalfLifeUpdated(halfLife);
     }
 
-    function setTargetFreeDebtRatio(uint16 startBps, uint16 endBps) external onlyOperator beforeDeadline {
+    function setTargetFreeDebtRatio(uint16 startBps, uint16 endBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
         require(startBps >= 500 && startBps <= endBps, "Invalid start bps");
         require(endBps >= startBps && endBps <= 9500, "Invalid end bps");
@@ -587,7 +749,7 @@ contract Lender {
         emit TargetFreeDebtRatioUpdated(startBps, endBps);
     }
 
-    function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperator beforeDeadline {
+    function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
         require(_redeemFeeBps <= 300, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
@@ -612,12 +774,18 @@ contract Lender {
         emit OperatorAccepted(pendingOperator);
     }
 
+    function setManager(address _manager) external onlyOperatorOrManager {
+        manager = _manager;
+        emit ManagerUpdated(_manager);
+    }
+
     function enableImmutabilityNow() external onlyOperator beforeDeadline {
         immutabilityDeadline = block.timestamp;
     }
 
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
+        accruePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
         accruedLocalReserves = 0;
     }
@@ -638,10 +806,13 @@ contract Lender {
     event DelegationUpdated(address indexed delegator, address indexed delegatee, bool isDelegatee);
     event PendingOperatorUpdated(address indexed pendingOperator);
     event OperatorAccepted(address indexed operator);
+    event ManagerUpdated(address indexed manager);
     event LocalReserveFeeUpdated(uint256 feeBps);
     event RedemptionStatusUpdated(address indexed account, bool isRedeemable);
     event Liquidated(address indexed borrower, address indexed liquidator, uint repayAmount, uint collateralOut);
     event WrittenOff(address indexed borrower, address indexed to, uint debt, uint collateral);
     event NewEpoch(uint epoch);
     event Redeemed(address indexed account, uint amountIn, uint amountOut);
+    event Sold(address indexed account, uint coinIn, uint assetOut);
+    event Bought(address indexed account, uint assetIn, uint coinOut);
 }

@@ -3,6 +3,7 @@ pragma solidity 0.8.13;
 
 import {Test, console, console2} from "forge-std/Test.sol";
 import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
+import {ERC4626} from "lib/solmate/src/tokens/ERC4626.sol";
 import {Lens} from "src/Lens.sol";
 
 contract FeedMock {
@@ -108,18 +109,27 @@ contract LenderForkTest is Test {
         collateral = ERC20(address(deployedLender.collateral()));
        
         // Deploy a new Lender contract with the same immutable variables as the existing contract
-        lender = new Lender(
-            deployedLender.collateral(),
-            deployedLender.feed(),
-            coin,
-            deployedLender.vault(),
-            deployedLender.interestModel(),
-            deployedLender.factory(),
-            deployedLender.operator(), // use existing operator
-            deployedLender.collateralFactor(),
-            deployedLender.minDebt(),
-            365 days // dummy immutability deadline (this won't matter since we're replacing bytecode)
-        );
+        // Note: The existing contract doesn't have a manager, so we use address(0)
+        Lender.LenderParams memory forkLenderParams = Lender.LenderParams({
+            collateral: deployedLender.collateral(),
+            psmAsset: ERC20(address(0)), // optional PSM asset
+            psmVault: ERC4626(address(0)), // optional PSM vault
+            feed: deployedLender.feed(),
+            coin: coin,
+            vault: deployedLender.vault(),
+            interestModel: deployedLender.interestModel(),
+            factory: deployedLender.factory(),
+            operator: deployedLender.operator(), // use existing operator
+            manager: address(0), // no manager in old contract
+            collateralFactor: deployedLender.collateralFactor(),
+            minDebt: deployedLender.minDebt(),
+            timeUntilImmutability: 365 days, // dummy immutability deadline (this won't matter since we're replacing bytecode)
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30
+        });
+        lender = new Lender(forkLenderParams);
     }
 
     function test_fix_repeated_redemptions_fork_takes_non_redeemable_collateral(uint256 collateralAmount1, uint256 nonRedeemableCollateralAmount) public {
@@ -169,10 +179,10 @@ contract LenderForkTest is Test {
             vm.startPrank(borrower1);
              console2.log("Iteration: %s", lender.epoch());
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
-            (uint price,,) = lender.getCollateralPrice();
-            uint borrowingPower = price * lens.getCollateralOf(lender, borrower1) * (lender.collateralFactor()-100) / 1e18 / 10000 - lender.getDebtOf(borrower1);
+            (uint currentPrice,,) = lender.getCollateralPrice();
+            uint borrowingPower = currentPrice * lens.getCollateralOf(lender, borrower1) * (lender.collateralFactor()-100) / 1e18 / 10000 - lender.getDebtOf(borrower1);
             lender.adjust(borrower1, 0, int256(borrowingPower));
-            uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
+            uint maxRedeem = collateral.balanceOf(address(lender)) * currentPrice * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
             uint balance = coin.balanceOf(borrower1);
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
             lender.redeem(redeemAmount, 0);

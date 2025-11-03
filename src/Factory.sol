@@ -119,35 +119,52 @@ contract Factory {
         Lender(_deployment).pullGlobalReserves(msg.sender);
     }
 
-    function deploy(
-        string memory _name,
-        string memory _symbol,
-        address _collateral,
-        address _feed,
-        uint256 _collateralFactor,
-        uint256 _minDebt,
-        uint256 _timeUntilImmutability,
-        address _operator
-    ) external returns (address lender, address coin, address vault) {
+    struct DeployParams {
+        string name;
+        string symbol;
+        address collateral;
+        address psmAsset;
+        address psmVault;
+        address feed;
+        uint256 collateralFactor;
+        uint256 minDebt;
+        uint256 timeUntilImmutability;
+        address operator;
+        address manager;
+        uint64 halfLife;
+        uint16 targetFreeDebtRatioStartBps;
+        uint16 targetFreeDebtRatioEndBps;
+        uint16 redeemFeeBps;
+    }
+
+    function deploy(DeployParams memory params) external returns (address lender, address coin, address vault) {
         uint id = deployments.length;
         lender = LenderDeployer.getAddress(msg.sender, id);
         vault = VaultDeployer.getAddress(msg.sender, id);
         coin = CoinDeployer.getAddress(msg.sender, id);
         // these vars avoid stack too deep
-        bytes memory lenderData = abi.encode(
-            _collateral,
-            _feed,
-            coin,
-            vault,
-            interestModel,
-            address(this),
-            _operator,
-            _collateralFactor,
-            _minDebt,
-            _timeUntilImmutability
-        );
-        bytes memory vaultData = abi.encode(_name, _symbol, lender);    
-        bytes memory coinData = abi.encode(lender, _name, _symbol);
+        Lender.LenderParams memory lenderParams = Lender.LenderParams({
+            collateral: ERC20(params.collateral),
+            psmAsset: ERC20(params.psmAsset),
+            psmVault: ERC4626(params.psmVault),
+            feed: IChainlinkFeed(params.feed),
+            coin: Coin(coin),
+            vault: Vault(vault),
+            interestModel: InterestModel(interestModel),
+            factory: IFactory(address(this)),
+            operator: params.operator,
+            manager: params.manager,
+            collateralFactor: params.collateralFactor,
+            minDebt: params.minDebt,
+            timeUntilImmutability: params.timeUntilImmutability,
+            halfLife: params.halfLife,
+            targetFreeDebtRatioStartBps: params.targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps: params.targetFreeDebtRatioEndBps,
+            redeemFeeBps: params.redeemFeeBps
+        });
+        bytes memory lenderData = abi.encode(lenderParams);
+        bytes memory vaultData = abi.encode(params.name, params.symbol, lender);
+        bytes memory coinData = abi.encode(lender, params.name, params.symbol);
         LenderDeployer.deployLender(msg.sender, id, lenderData);
         CoinDeployer.deployCoin(msg.sender, id, coinData);
         VaultDeployer.deployVault(msg.sender, id, vaultData);
