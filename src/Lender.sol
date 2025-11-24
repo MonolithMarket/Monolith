@@ -742,7 +742,7 @@ contract Lender {
     function getFeedPrice() external view returns (uint price, uint updatedAt) {
         (,int256 feedPrice,,uint256 feedUpdatedAt,) = feed.latestRoundData();
         uint8 feedDecimals = feed.decimals();
-        uint8 tokenDecimals = collateral.decimals();
+        uint8 tokenDecimals = 18; // we normalize to 18 decimals internally
         if(feedDecimals + tokenDecimals <= 36) {
             uint8 decimals = 36 - tokenDecimals - feedDecimals;
             price = feedPrice > 0 ? uint(feedPrice) * (10**decimals) : 0; // convert negative price to uint 0 to signal invalid price
