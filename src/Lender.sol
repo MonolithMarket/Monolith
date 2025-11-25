@@ -504,10 +504,11 @@ contract Lender {
         coin.burn(coinIn);
         // give assets to caller
         if(psmVault != ERC4626(address(0))) {
-            uint256 sharesOut = psmVault.previewWithdraw(assetOut);
-            assetOut = psmVault.redeem(sharesOut, msg.sender, address(this));
+            // Convert to shares out without taking into account fees, which will be paid by the seller by receiving less than assetOut
+            uint256 sharesOut = psmVault.convertToShares(assetOut);
+            uint256 actualAssetOutToSeller = psmVault.redeem(sharesOut, msg.sender, address(this));
             freePsmAssets -= assetOut;
-            require(assetOut >= minAssetOut, "redeem failed");
+            require(actualAssetOutToSeller >= minAssetOut, "redeem failed");
         } else {
             freePsmAssets -= assetOut;
             psmAsset.safeTransfer(msg.sender, assetOut);
