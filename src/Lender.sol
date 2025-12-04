@@ -504,10 +504,11 @@ contract Lender {
         coin.burn(coinIn);
         // give assets to caller
         if(psmVault != ERC4626(address(0))) {
-            uint256 sharesOut = psmVault.previewDeposit(assetOut);
-            assetOut = psmVault.redeem(sharesOut, msg.sender, address(this));
+            // Convert to shares out without taking into account fees, which will be paid by the seller by receiving less than assetOut
+            uint256 sharesOut = psmVault.convertToShares(assetOut);
+            uint256 actualAssetOutToSeller = psmVault.redeem(sharesOut, msg.sender, address(this));
             freePsmAssets -= assetOut;
-            require(assetOut >= minAssetOut, "redeem failed");
+            require(actualAssetOutToSeller >= minAssetOut, "redeem failed");
         } else {
             freePsmAssets -= assetOut;
             psmAsset.safeTransfer(msg.sender, assetOut);
@@ -521,7 +522,6 @@ contract Lender {
         uint coinFee;
         (coinOut, coinFee) = getBuyAmountOut(assetIn);
         require(coinOut >= minCoinOut, "insufficient amount out");
-        freePsmAssets += assetIn;
 
         if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
 
@@ -531,6 +531,9 @@ contract Lender {
             require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
             uint256 shares = psmVault.deposit(assetIn, address(this));
             require(shares > 0, "PSM deposit failed");
+            freePsmAssets += psmVault.previewRedeem(shares);
+        } else {
+            freePsmAssets += assetIn;
         }
         // give coins to caller
         coin.mint(msg.sender, coinOut);
@@ -742,7 +745,7 @@ contract Lender {
     function getFeedPrice() external view returns (uint price, uint updatedAt) {
         (,int256 feedPrice,,uint256 feedUpdatedAt,) = feed.latestRoundData();
         uint8 feedDecimals = feed.decimals();
-        uint8 tokenDecimals = collateral.decimals();
+        uint8 tokenDecimals = 18; // we normalize to 18 decimals internally
         if(feedDecimals + tokenDecimals <= 36) {
             uint8 decimals = 36 - tokenDecimals - feedDecimals;
             price = feedPrice > 0 ? uint(feedPrice) * (10**decimals) : 0; // convert negative price to uint 0 to signal invalid price
@@ -927,7 +930,7 @@ contract Lender {
 
     function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
-        require(_redeemFeeBps <= 300, "Invalid redeem fee bps");
+        require(_redeemFeeBps <= 1000, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
     }

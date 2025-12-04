@@ -2713,7 +2713,7 @@ contract LenderTest is Test {
     function test_setRedeemFeeBps_revertInvalidValue() public {
         vm.prank(operatorAddr);
         vm.expectRevert("Invalid redeem fee bps");
-        lender.setRedeemFeeBps(301); // Above max 300 bps
+        lender.setRedeemFeeBps(1001); // Above max 1000 bps
     }
 
     function test_setLocalReserveFeeBps() public {
