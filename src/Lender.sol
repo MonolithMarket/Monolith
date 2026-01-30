@@ -124,7 +124,7 @@ contract Lender {
     constructor(LenderParams memory params) {
         require(params.collateralFactor <= 8500, "Invalid collateral factor");
         require(params.timeUntilImmutability < 1460 days, "Max immutability deadline is in 4 years");
-        require(params.halfLife >= 24 hours && params.halfLife <= 30 days, "Invalid half life");
+        require(params.halfLife >= 12 hours && params.halfLife <= 30 days, "Invalid half life");
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
         require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
