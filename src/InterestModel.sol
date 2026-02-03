@@ -33,6 +33,7 @@ contract InterestModel {
         uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
         
         if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
+            if (growthDecay == 0) growthDecay = 1;
             currBorrowRate = _lastRate * 1e18 / growthDecay;
             interest = _totalPaidDebt * (currBorrowRate - _lastRate) / _expRate / 365 days;
         } else if (_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {

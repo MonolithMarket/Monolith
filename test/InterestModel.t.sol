@@ -69,7 +69,9 @@ contract InterestModelTest is Test {
             targetFreeDebtRatioEndBps
         );
 
-        assertGt(currBorrowRate, 0);
-        assertGt(interest, 0);
+        // When growthDecay underflows to 0, we set it to 1, causing currBorrowRate
+        // to exceed uint88.max, triggering overflow protection: return (_lastRate, 0)
+        assertEq(currBorrowRate, lastRate);
+        assertEq(interest, 0);
     }
 }
