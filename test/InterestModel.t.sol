@@ -48,4 +48,28 @@ contract InterestModelTest is Test {
         assertApproxEqRel(currBorrowRate, expectedBorrowRate, 1e11, "borrow rate mismatch");
         assertApproxEqRel(interest, expectedInterest, 1e15, "interest mismatch");
     }
+
+    function test_calculateInterest_wadExpUnderflow() public view {
+        uint totalPaidDebt = 1e18;
+        uint lastRate = 5e16;
+        uint timeElapsed = 60 days;
+        uint halfLife = 12 hours;
+        uint expRate = uint(wadLn(2e18)) / halfLife;
+        uint lastFreeDebtRatioBps = 1000;
+        uint targetFreeDebtRatioStartBps = 2500;
+        uint targetFreeDebtRatioEndBps = 7500;
+
+        (uint currBorrowRate, uint interest) = interestModel.calculateInterest(
+            totalPaidDebt,
+            lastRate,
+            timeElapsed,
+            expRate,
+            lastFreeDebtRatioBps,
+            targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps
+        );
+
+        assertGt(currBorrowRate, 0);
+        assertGt(interest, 0);
+    }
 }
