@@ -42,7 +42,7 @@ contract InterestModelTest is Test {
             if(expectedBorrowRate < MIN_RATE) {
                 expectedBorrowRate = MIN_RATE;
             }
-            expectedInterest += (totalPaidDebt + expectedInterest) * expectedBorrowRate / 1e18 / 365 days;
+            expectedInterest += totalPaidDebt * expectedBorrowRate / 1e18 / 365 days;
         }
 
         assertApproxEqRel(currBorrowRate, expectedBorrowRate, 0.05e18, "borrow rate mismatch");
