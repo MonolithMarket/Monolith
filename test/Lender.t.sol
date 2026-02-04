@@ -3822,5 +3822,29 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         assertApproxEqAbs(borrower1DebtAfter, borrowAmount - redeemAmount / 2, 1, "Borrower1 debt should decrease by ~half of redeemed amount");
         assertApproxEqAbs(borrower2DebtAfter, borrowAmount - redeemAmount / 2, 1, "Borrower2 debt should decrease by ~half of redeemed amount");
     }
+
+    function testDenialOfService() public {  
+        address user = address(1);  
+         
+        ERC20 collateral = lender.collateral();
+        Coin coin = lender.coin();
+  
+        vm.startPrank(user);  
+        deal(address(collateral), user, 1e40);  
+        coin.mint(user, 1e40);  
+        collateral.approve(address(lender), type(uint256).max);  
+        coin.approve(address(lender), type(uint256).max);  
+  
+        lender.setRedemptionStatus(user, true);  
+  
+        for (uint256 i; i < 9; i++) {  
+            lender.adjust(user, 1e23, 1e22);  
+            uint256 totalFreeDebt = lender.totalFreeDebt();  
+            lender.redeem(totalFreeDebt - 1, 0);  
+        }  
+ 
+        //Should not revert here but does in issue #726
+        lender.adjust(user, 1e23, 1e21); // minDebt;  
+    }  
 }
 
