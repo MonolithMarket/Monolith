@@ -90,6 +90,7 @@ contract Lender {
     mapping(address => uint) public paidDebtShares;
     mapping(address => bool) public isRedeemable;
     mapping(address => mapping(address => bool)) public delegations;
+    uint[] public epochTruncationRatios;
 
     mapping(address => uint) public borrowerLastRedeemedIndex;
     mapping(address => uint) public borrowerEpoch;
@@ -484,14 +485,29 @@ contract Lender {
         collateral.safeTransfer(msg.sender, amountOut);
 
         // Intentional division by zero and revert if totalFreeDebt is 0
-        if( totalFreeDebtShares / totalFreeDebt > 1e9) {
+        uint sharesDebtRatio = totalFreeDebtShares / totalFreeDebt;
+        if( sharesDebtRatio > 1e9) {
+            uint epochTruncationRatio = 10 ** (log10(sharesDebtRatio) - 1);
+            epochTruncationRatios.push(epochTruncationRatio);
             epoch++;
-            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1e18,1e36); 
+            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1, epochTruncationRatio); 
             emit NewEpoch(epoch);
         }
 
         emit Redeemed(msg.sender, amountIn, amountOut);
         return amountOut;
+    }
+
+    function log10(uint256 x) internal pure returns (uint256) {
+        uint256 result = 0;
+        if (x >= 1e64) { x /= 1e64; result += 64; }
+        if (x >= 1e32) { x /= 1e32; result += 32; }
+        if (x >= 1e16) { x /= 1e16; result += 16; }
+        if (x >= 1e8)  { x /= 1e8;  result += 8; }
+        if (x >= 1e4)  { x /= 1e4;  result += 4; }
+        if (x >= 1e2)  { x /= 1e2;  result += 2; }
+        if (x >= 1e1)  { result += 1; }
+        return result;
     }
 
     function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
@@ -571,16 +587,18 @@ contract Lender {
             uint _borrowerEpoch = borrowerEpoch[borrower];
             uint bal = _cachedCollateralBalances[borrower];
             uint lastIndex = borrowerLastRedeemedIndex[borrower];
-            // Loop through missed epochs (max 5 iterations considering max uint256 is 2^256 - 1 would go to zero in 5 iterations)
-            for (uint i = 0; i < 5 && _borrowerEpoch < epoch && borrowerDebtShares > 0; ++i) {
+            // Loop through missed epochs (max 10 iterations considering max uint256 is 2^256 - 1 would go to zero in 10 iterations if the min truncation of 1e8 takes place)
+            for (uint i = 0; i < 10 && _borrowerEpoch < epoch && borrowerDebtShares > 0; ++i) {
                 // Apply redemption for the borrower's current epoch
                 uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
                 uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
                 bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
 
-                // Move to next epoch, reduce shares
+                // Move to next epoch, reduce shares by last epoch truncation ratio
+                uint epochTruncationRatio = epochTruncationRatios[_borrowerEpoch];
                 _borrowerEpoch += 1;
-                borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
+                borrowerDebtShares = borrowerDebtShares.mulDivUp(1, epochTruncationRatio); 
+                if(borrowerDebtShares == 1) borrowerDebtShares = 0;// If only 1 share round down to 0
                 lastIndex = 0; // For new epoch, last redeemed index is 0
             }
             // Apply any remaining redemption for the current epoch

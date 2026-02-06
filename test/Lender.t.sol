@@ -2288,7 +2288,6 @@ contract LenderTest is Test {
 
         // Setup: create multiple borrowers with redeemable debt
         uint collateralAmount1 = 25e24;
-        uint collateralAmount2 = 5e23;
         uint borrowAmount1 = 1000e18;
         uint borrowAmount2 = 1000e18;
 
@@ -2303,12 +2302,12 @@ contract LenderTest is Test {
         
         // Setup: mint collateral to borrowers and coins to redeemer
         collateral.mint(borrower1, collateralAmount1);
-        collateral.mint(borrower2, collateralAmount2);
+        collateral.mint(borrower2, 5e23);
 
         // Setup: borrower2 creates a redeemable position
         vm.startPrank(borrower2);
-        collateral.approve(address(lender), collateralAmount2);
-        lender.adjust(borrower2, int256(collateralAmount2), int256(borrowAmount2), true); // opt into redemptions
+        collateral.approve(address(lender), 5e23);
+        lender.adjust(borrower2, int256(5e23), int256(borrowAmount2), true); // opt into redemptions
         vm.stopPrank();
 
         // Setup: borrower1 creates a redeemable position
@@ -2327,7 +2326,9 @@ contract LenderTest is Test {
             uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
             uint balance = coin.balanceOf(borrower1);
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
+            uint totalFreeDebtBefore = lender.totalFreeDebt();
             lender.redeem(redeemAmount, 0);
+            assertEq(totalFreeDebtBefore - redeemAmount, lender.totalFreeDebt(), "Total free debt did not redeuce correctly");
             vm.stopPrank();
             emit log_string("epoch");
             emit log_uint(lender.epoch());
@@ -3841,7 +3842,9 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
             lender.adjust(user, 1e23, 1e22);  
             uint256 totalFreeDebt = lender.totalFreeDebt();  
             lender.redeem(totalFreeDebt - 1, 0);  
+            assertLt(lender.totalFreeDebtShares() / lender.totalFreeDebt(), 1e9);
         }  
+        assertLt(lender.totalFreeDebtShares() / lender.totalFreeDebt(), 1e9);
  
         //Should not revert here but does in issue #726
         lender.adjust(user, 1e23, 1e21); // minDebt;  
