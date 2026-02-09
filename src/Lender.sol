@@ -255,6 +255,8 @@ contract Lender {
             // Transfer actual token amount
             collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
         } else if (collateralDelta < 0) {
+            //Prevent users from withdrawing collateral when protocol is insolvent, but collateral haven't been writte off yet
+            require(isSolvent(), "Protocol insolvent");
             // Convert from internal 18 decimals to token decimals (rounds down)
             uint256 internalAmount = uint(-collateralDelta);
             uint256 collateralAmount = internalToCollateral(internalAmount);
@@ -281,6 +283,7 @@ contract Lender {
         int actualDebtDelta = debtDelta;
         if (debtDelta > 0) {
             // Borrow
+            require(isSolvent(), "Protocol insolvent");
             uint amount = uint256(debtDelta);
             increaseDebt(account, amount);
             coin.mint(msg.sender, amount);
@@ -462,6 +465,7 @@ contract Lender {
     /// @dev Redemptions requires sufficient redeemable collateral to seize and free debt to repay
     function redeem(uint amountIn, uint minAmountOut) external returns (uint amountOut) {
         accrueInterest();
+        require(isSolvent(), "Protocol insolvent");
         // calculate amountOut in internal 18 decimals
         uint internalAmountOut = getRedeemAmountOut(amountIn);
         require(internalAmountOut > 0, "amount out is zero");
@@ -519,6 +523,7 @@ contract Lender {
     function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         accrueInterest();
+        require(isSolvent(), "Protocol insolvent");
         uint coinFee;
         (coinOut, coinFee) = getBuyAmountOut(assetIn);
         require(coinOut >= minCoinOut, "insufficient amount out");
@@ -910,6 +915,14 @@ contract Lender {
         }
     }
 
+    function isSolvent() public view returns(bool){
+        (uint price,,) = getCollateralPrice();
+        uint totalCollateralInternal = collateralToInternal(collateral.balanceOf(address(this)));
+        uint collateralValue = totalCollateralInternal * price / 1e18;
+        uint totalDebt = totalPaidDebt + totalFreeDebt;
+        return collateralValue >= totalDebt;
+    }
+
     // Setters
 
     function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline {
@@ -972,6 +985,7 @@ contract Lender {
     function pullLocalReserves() external onlyOperator {
         accrueInterest();
         accruePsmProfit();
+        require(isSolvent(), "Protocol insolvent");
         coin.mint(msg.sender, accruedLocalReserves);
         emit AccruedLocalReserves(accruedLocalReserves);
         accruedLocalReserves = 0;
@@ -980,6 +994,7 @@ contract Lender {
     function pullGlobalReserves(address _to) external {
         require(msg.sender == address(factory), "Unauthorized");
         accrueInterest();
+        require(isSolvent(), "Protocol insolvent");
         coin.mint(_to, accruedGlobalReserves);
         emit AccruedGlobalReserves(accruedGlobalReserves);
         accruedGlobalReserves = 0;
