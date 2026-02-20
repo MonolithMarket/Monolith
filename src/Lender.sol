@@ -510,10 +510,10 @@ contract Lender {
         amountOut = internalToCollateral(totalInternalAmountOut);
         require(amountOut >= minAmountOut, "insufficient amount out");
 
-        coin.transferFrom(msg.sender, address(this), totalRepay);
-        coin.burn(totalRepay);
+        coin.transferFrom(msg.sender, address(this), totalRepay - totalVaultRewardCoin);
+        coin.burn(totalRepay - totalVaultRewardCoin);
+        if (totalVaultRewardCoin > 0) coin.transferFrom(msg.sender, address(vault), totalVaultRewardCoin);
         collateral.safeTransfer(msg.sender, amountOut);
-        if (totalVaultRewardCoin > 0) coin.mint(address(vault), totalVaultRewardCoin);
 
         emit Redeemed(msg.sender, totalRepay, amountOut);
     }
@@ -622,7 +622,7 @@ contract Lender {
         // Try full redemption first (to 0)
         if (amountIn >= debt) {
             q = _getRedeemQuoteAtAmount(debt, q.collateralBalance, price);
-            if (q.repayAmount > 0) return q;
+            return q;
         }
 
         // Otherwise only allow redemption down to minDebt
@@ -630,7 +630,6 @@ contract Lender {
             uint repayToMinDebt = debt - minDebt;
             if (repayToMinDebt > 0 && amountIn >= repayToMinDebt) {
                 q = _getRedeemQuoteAtAmount(repayToMinDebt, q.collateralBalance, price);
-                if (q.repayAmount > 0) return q;
             }
         }
     }
