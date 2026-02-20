@@ -59,9 +59,9 @@ contract Lender {
     uint16 public redeemFeeSlopeBps; // additional fee at 100% 24h utilization in bps
     uint16 public dynamicFeeToVaultBps; // share of dynamic fee (in bps) paid to vault stakers
     uint40 public lastRedeemTimestamp;
-    uint40 public lastTwamUpdate;
+    uint40 public lastTwmaUpdate;
     uint public redeemedInWindow;
-    uint public twamFreeDebt;
+    uint public twmaFreeDebt;
     
     // Constants and immutables
     Coin public immutable coin;
@@ -83,7 +83,7 @@ contract Lender {
 
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant REDEEM_FEE_WINDOW = 24 hours;
-    uint public constant FREE_DEBT_TWAM_WINDOW = 600;
+    uint public constant FREE_DEBT_TWMA_WINDOW = 600;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
     uint public constant MAX_DECIMALS = 30; // Maximum allowed token decimals
     
@@ -177,7 +177,7 @@ contract Lender {
         redeemFeeBps = params.redeemFeeBps;
         maxRedeemFeeBps = params.redeemFeeBps;
         lastRedeemTimestamp = uint40(block.timestamp);
-        lastTwamUpdate = uint40(block.timestamp);
+        lastTwmaUpdate = uint40(block.timestamp);
         maxBorrowDeltaBps = params.maxBorrowDeltaBps;
         stalenessThreshold = params.stalenessThreshold;
         minTotalSupply = params.minTotalSupply;
@@ -481,7 +481,7 @@ contract Lender {
         require(allowLiquidations, "liquidations disabled");
 
         _syncRedeemWindow();
-        _syncTwamFreeDebt();
+        _syncTwmaFreeDebt();
         uint remaining = amountIn;
         uint totalRepay;
         uint totalInternalAmountOut;
@@ -599,19 +599,19 @@ contract Lender {
         lastRedeemTimestamp = uint40(block.timestamp);
     }
 
-    function getTwamFreeDebt() public view returns (uint) {
+    function getTwmaFreeDebt() public view returns (uint) {
         uint currTotalFreeDebt = totalFreeDebt;
-        uint currTwamFreeDebt = twamFreeDebt;
-        if (currTwamFreeDebt == 0) return currTotalFreeDebt;
-        uint elapsed = block.timestamp - lastTwamUpdate;
-        if (elapsed == 0) return currTwamFreeDebt;
-        if (elapsed >= FREE_DEBT_TWAM_WINDOW) return currTotalFreeDebt;
-        return (currTwamFreeDebt * (FREE_DEBT_TWAM_WINDOW - elapsed) + currTotalFreeDebt * elapsed) / FREE_DEBT_TWAM_WINDOW;
+        uint currTwmaFreeDebt = twmaFreeDebt;
+        if (currTwmaFreeDebt == 0) return currTotalFreeDebt;
+        uint elapsed = block.timestamp - lastTwmaUpdate;
+        if (elapsed == 0) return currTwmaFreeDebt;
+        if (elapsed >= FREE_DEBT_TWMA_WINDOW) return currTotalFreeDebt;
+        return (currTwmaFreeDebt * (FREE_DEBT_TWMA_WINDOW - elapsed) + currTotalFreeDebt * elapsed) / FREE_DEBT_TWMA_WINDOW;
     }
 
-    function _syncTwamFreeDebt() internal {
-        twamFreeDebt = getTwamFreeDebt();
-        lastTwamUpdate = uint40(block.timestamp);
+    function _syncTwmaFreeDebt() internal {
+        twmaFreeDebt = getTwmaFreeDebt();
+        lastTwmaUpdate = uint40(block.timestamp);
     }
 
     function _getRedeemQuote(address borrower, uint amountIn, uint price) internal view returns (RedeemQuote memory q) {
@@ -658,7 +658,7 @@ contract Lender {
     }
 
     function increaseDebt(address account, uint256 amount) internal {
-        _syncTwamFreeDebt();
+        _syncTwmaFreeDebt();
         if (isRedeemable[account]) {
             // Handle free debt
             uint shares = totalFreeDebt == 0 ? 
@@ -695,7 +695,7 @@ contract Lender {
     }
 
     function decreaseDebt(address account, uint256 amount) internal {
-        _syncTwamFreeDebt();
+        _syncTwmaFreeDebt();
         if (isRedeemable[account]) {
             // Handle free debt
             uint256 shares;
@@ -825,7 +825,7 @@ contract Lender {
     /// @notice Returns current dynamic redeem fee in bps for a prospective redemption amount
     function getRedeemFeeBps(uint amountIn) public view returns (uint) {
         uint _maxRedeemFeeBps = maxRedeemFeeBps;
-        uint denom = getTwamFreeDebt();
+        uint denom = getTwmaFreeDebt();
         if (denom == 0) return _maxRedeemFeeBps;
         uint utilizationBps = (getRedeemedInWindow() + amountIn) * 10000 / denom;
         if (utilizationBps > 10000) utilizationBps = 10000;
