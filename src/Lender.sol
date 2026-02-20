@@ -33,7 +33,7 @@ contract Lender {
     // single 256-bit slot
     uint16 public targetFreeDebtRatioStartBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
     uint16 public targetFreeDebtRatioEndBps; // max uint16 is 65535 bps which is outside of the range [0, 10000]
-    uint16 public redeemFeeBps; // max uint16 is 65535 bps fee which is outside of the range [0, 10000]
+    uint16 public redeemFeeBps; // base redemption fee in bps
     uint64 public expRate; // max result is 693147180559945309 which is within uint64 range
     uint40 public lastAccrue; // max uint40 is year 36812
     uint88 public lastBorrowRateMantissa = uint88(2e16); // max uint88 is equivalent to 309485000% APR
@@ -53,9 +53,15 @@ contract Lender {
     uint public totalFreeDebtShares;
     uint public totalPaidDebt;
     uint public totalPaidDebtShares;
-    uint public epoch;
     uint public freePsmAssets;
     uint16 public maxBorrowDeltaBps; // max acceptable rounding error in bps when borrowing (e.g., 200 = 2%)
+    uint16 public maxRedeemFeeBps; // cap on dynamic redemption fee in bps
+    uint16 public redeemFeeSlopeBps; // additional fee at 100% 24h utilization in bps
+    uint16 public dynamicFeeToVaultBps; // share of dynamic fee (in bps) paid to vault stakers
+    uint40 public lastRedeemTimestamp;
+    uint40 public lastTwapUpdate;
+    uint public redeemedInWindow;
+    uint public twapFreeDebt;
     
     // Constants and immutables
     Coin public immutable coin;
@@ -76,6 +82,8 @@ contract Lender {
     uint public immutable minTotalSupply;
 
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
+    uint public constant REDEEM_FEE_WINDOW = 24 hours;
+    uint public constant FREE_DEBT_TWAP_WINDOW = 600;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
     uint public constant MAX_DECIMALS = 30; // Maximum allowed token decimals
     
@@ -91,9 +99,6 @@ contract Lender {
     mapping(address => bool) public isRedeemable;
     mapping(address => mapping(address => bool)) public delegations;
 
-    mapping(address => uint) public borrowerLastRedeemedIndex;
-    mapping(address => uint) public borrowerEpoch;
-    mapping(uint => uint) public epochRedeemedCollateral;
     uint256 public nonRedeemableCollateral;
 
     address public manager;
@@ -119,6 +124,15 @@ contract Lender {
         uint32 stalenessThreshold;
         uint16 maxBorrowDeltaBps;
         uint128 minTotalSupply;
+    }
+
+    struct RedeemQuote {
+        uint repayAmount;
+        uint internalAmountOut;
+        uint borrowerInternalOut;
+        uint collateralBalance;
+        uint16 redemptionFeeBps;
+        uint vaultRewardCoin;
     }
 
     constructor(LenderParams memory params) {
@@ -161,6 +175,9 @@ contract Lender {
         targetFreeDebtRatioStartBps = params.targetFreeDebtRatioStartBps;
         targetFreeDebtRatioEndBps = params.targetFreeDebtRatioEndBps;
         redeemFeeBps = params.redeemFeeBps;
+        maxRedeemFeeBps = params.redeemFeeBps;
+        lastRedeemTimestamp = uint40(block.timestamp);
+        lastTwapUpdate = uint40(block.timestamp);
         maxBorrowDeltaBps = params.maxBorrowDeltaBps;
         stalenessThreshold = params.stalenessThreshold;
         minTotalSupply = params.minTotalSupply;
@@ -240,7 +257,6 @@ contract Lender {
 
     function adjust(address account, int collateralDelta, int debtDelta) public {
         accrueInterest();
-        updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Convert incoming collateral to internal 18 decimals
@@ -337,12 +353,9 @@ contract Lender {
 
     function setRedemptionStatus(address account, bool chooseRedeemable) public {
         accrueInterest();
-        updateBorrower(account);
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
         if(chooseRedeemable){
-            borrowerEpoch[account] = epoch;
-            borrowerLastRedeemedIndex[account] = epochRedeemedCollateral[epoch];
             nonRedeemableCollateral -= _cachedCollateralBalances[account];
         } else {
             nonRedeemableCollateral += _cachedCollateralBalances[account];
@@ -367,7 +380,6 @@ contract Lender {
     /// @return The amount of collateral received (in token decimals)
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
-        updateBorrower(borrower);
         require(repayAmount > 0, "Repay amount must be greater than 0");
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
@@ -419,7 +431,6 @@ contract Lender {
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
     function writeOff(address borrower, address to) external returns (bool writtenOff) {
         accrueInterest();
-        updateBorrower(borrower);
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
@@ -455,43 +466,56 @@ contract Lender {
         }
     }
 
-    /// @notice Redeems Coin for collateral at current market price minus a fee
-    /// @param amountIn The amount of Coin to redeem
+    /// @notice Redeems Coin against an ordered list of redeemable borrowers
+    /// @param borrowers Borrowers to redeem from, in fill priority order
+    /// @param amountIn The requested amount of Coin to redeem
     /// @param minAmountOut The minimum amount of collateral to receive (in token decimals)
+    /// @param maxFeeBps Maximum acceptable redemption fee in bps
     /// @return amountOut The amount of collateral received (in token decimals)
-    /// @dev Redemptions requires sufficient redeemable collateral to seize and free debt to repay
-    function redeem(uint amountIn, uint minAmountOut) external returns (uint amountOut) {
+    function redeem(address[] calldata borrowers, uint amountIn, uint minAmountOut, uint maxFeeBps) external returns (uint amountOut) {
         accrueInterest();
-        // calculate amountOut in internal 18 decimals
-        uint internalAmountOut = getRedeemAmountOut(amountIn);
-        require(internalAmountOut > 0, "amount out is zero");
-        // Convert to token decimals (rounds down)
-        amountOut = internalToCollateral(internalAmountOut);
-        require(amountOut >= minAmountOut, "insufficient amount out");
-        
-        // Check redeemable collateral in internal representation
-        uint256 totalInternalCollateral = collateralToInternal(collateral.balanceOf(address(this)));
-        require(totalInternalCollateral - internalAmountOut >= nonRedeemableCollateral, "Insufficient redeemable collateral");
-        
-        // repay on behalf of free debtors
-        totalFreeDebt -= amountIn;
-        coin.transferFrom(msg.sender, address(this), amountIn);
-        coin.burn(amountIn);
+        require(amountIn > 0, "Amount in is zero");
+        require(borrowers.length > 0, "No borrowers");
 
-        // distribute collateral redemption per free debt share (in internal representation)
-        epochRedeemedCollateral[epoch] += internalAmountOut.mulDivUp(1e36, totalFreeDebtShares);
+        (uint price,, bool allowLiquidations) = getCollateralPrice();
+        require(allowLiquidations, "liquidations disabled");
 
-        collateral.safeTransfer(msg.sender, amountOut);
+        _syncRedeemWindow();
+        _syncTwapFreeDebt();
+        uint remaining = amountIn;
+        uint totalRepay;
+        uint totalInternalAmountOut;
+        uint totalVaultRewardCoin;
 
-        // Intentional division by zero and revert if totalFreeDebt is 0
-        if( totalFreeDebtShares / totalFreeDebt > 1e9) {
-            epoch++;
-            totalFreeDebtShares = totalFreeDebtShares.mulDivUp(1e18,1e36); 
-            emit NewEpoch(epoch);
+        for (uint i = 0; i < borrowers.length && remaining > 0; ++i) {
+            address borrower = borrowers[i];
+            if(!isRedeemable[borrower]) continue;
+
+            RedeemQuote memory q = _getRedeemQuote(borrower, remaining, price);
+            if (q.repayAmount == 0) continue;
+            require(q.redemptionFeeBps <= maxFeeBps, "Fee too high");
+
+            decreaseDebt(borrower, q.repayAmount);
+            _cachedCollateralBalances[borrower] = q.collateralBalance - q.borrowerInternalOut;
+            redeemedInWindow += q.repayAmount;
+            remaining -= q.repayAmount;
+            totalRepay += q.repayAmount;
+            totalInternalAmountOut += q.internalAmountOut;
+            totalVaultRewardCoin += q.vaultRewardCoin;
+
+            emit BorrowerRedeemed(msg.sender, borrower, q.repayAmount, q.internalAmountOut, q.redemptionFeeBps);
         }
 
-        emit Redeemed(msg.sender, amountIn, amountOut);
-        return amountOut;
+        require(totalRepay > 0, "amount out is zero");
+        amountOut = internalToCollateral(totalInternalAmountOut);
+        require(amountOut >= minAmountOut, "insufficient amount out");
+
+        coin.transferFrom(msg.sender, address(this), totalRepay);
+        coin.burn(totalRepay);
+        collateral.safeTransfer(msg.sender, amountOut);
+        if (totalVaultRewardCoin > 0) coin.mint(address(vault), totalVaultRewardCoin);
+
+        emit Redeemed(msg.sender, totalRepay, amountOut);
     }
 
     function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
@@ -564,43 +588,78 @@ contract Lender {
         }
     }
 
-    function updateBorrower(address borrower) internal {
-        uint borrowerDebtShares = freeDebtShares[borrower];
-        
-        if (borrowerDebtShares > 0) {
-            uint _borrowerEpoch = borrowerEpoch[borrower];
-            uint bal = _cachedCollateralBalances[borrower];
-            uint lastIndex = borrowerLastRedeemedIndex[borrower];
-            // Loop through missed epochs (max 5 iterations considering max uint256 is 2^256 - 1 would go to zero in 5 iterations)
-            for (uint i = 0; i < 5 && _borrowerEpoch < epoch && borrowerDebtShares > 0; ++i) {
-                // Apply redemption for the borrower's current epoch
-                uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
-                uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
-                bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+    function _syncRedeemWindow() internal {
+        uint elapsed = block.timestamp - lastRedeemTimestamp;
+        if (elapsed == 0) return;
+        if (elapsed >= REDEEM_FEE_WINDOW) {
+            redeemedInWindow = 0;
+        } else {
+            redeemedInWindow = redeemedInWindow * (REDEEM_FEE_WINDOW - elapsed) / REDEEM_FEE_WINDOW;
+        }
+        lastRedeemTimestamp = uint40(block.timestamp);
+    }
 
-                // Move to next epoch, reduce shares
-                _borrowerEpoch += 1;
-                borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
-                lastIndex = 0; // For new epoch, last redeemed index is 0
-            }
-            // Apply any remaining redemption for the current epoch
-            if (borrowerDebtShares > 0) {
-                uint indexDelta = epochRedeemedCollateral[_borrowerEpoch] - lastIndex;
-                uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
-                bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
-            }
-            // Update state
-            freeDebtShares[borrower] = borrowerDebtShares;
-            _cachedCollateralBalances[borrower] = bal;
+    function getTwapFreeDebt() public view returns (uint) {
+        uint currTotalFreeDebt = totalFreeDebt;
+        uint currTwapFreeDebt = twapFreeDebt;
+        if (currTwapFreeDebt == 0) return currTotalFreeDebt;
+        uint elapsed = block.timestamp - lastTwapUpdate;
+        if (elapsed == 0) return currTwapFreeDebt;
+        if (elapsed >= FREE_DEBT_TWAP_WINDOW) return currTotalFreeDebt;
+        return (currTwapFreeDebt * (FREE_DEBT_TWAP_WINDOW - elapsed) + currTotalFreeDebt * elapsed) / FREE_DEBT_TWAP_WINDOW;
+    }
+
+    function _syncTwapFreeDebt() internal {
+        twapFreeDebt = getTwapFreeDebt();
+        lastTwapUpdate = uint40(block.timestamp);
+    }
+
+    function _getRedeemQuote(address borrower, uint amountIn, uint price) internal view returns (RedeemQuote memory q) {
+        uint debt = getDebtOf(borrower);
+        q.collateralBalance = _cachedCollateralBalances[borrower];
+        if (debt == 0) return q;
+
+        // Try full redemption first (to 0)
+        if (amountIn >= debt) {
+            q = _getRedeemQuoteAtAmount(debt, q.collateralBalance, price);
+            if (q.repayAmount > 0) return q;
         }
 
-        if(isRedeemable[borrower]){
-            borrowerEpoch[borrower] = epoch;
-            borrowerLastRedeemedIndex[borrower] = epochRedeemedCollateral[epoch];
-        } 
+        // Otherwise only allow redemption down to minDebt
+        if (debt > minDebt) {
+            uint repayToMinDebt = debt - minDebt;
+            if (repayToMinDebt > 0 && amountIn >= repayToMinDebt) {
+                q = _getRedeemQuoteAtAmount(repayToMinDebt, q.collateralBalance, price);
+                if (q.repayAmount > 0) return q;
+            }
+        }
+    }
+
+    function _getRedeemQuoteAtAmount(uint repayAmount, uint collateralBalance, uint price)
+        internal
+        view
+        returns (RedeemQuote memory q)
+    {
+        uint redemptionFee = getRedeemFeeBps(repayAmount);
+        require(redemptionFee < 10000, "Invalid fee");
+
+        uint dynamicFee = redemptionFee > redeemFeeBps ? redemptionFee - redeemFeeBps : 0;
+
+        q.internalAmountOut = repayAmount * 1e18 * (10000 - redemptionFee) / price / 10000;
+        q.vaultRewardCoin = repayAmount * dynamicFee * dynamicFeeToVaultBps / 10000 / 10000;
+        uint vaultRewardInternal = q.vaultRewardCoin * 1e18 / price;
+        q.borrowerInternalOut = q.internalAmountOut + vaultRewardInternal;
+
+        // Infeasible due to insufficient collateral
+        if (q.borrowerInternalOut > collateralBalance) return RedeemQuote(0, 0, 0, collateralBalance, 0, 0);
+
+        q.repayAmount = repayAmount;
+        q.collateralBalance = collateralBalance;
+        q.redemptionFeeBps = uint16(redemptionFee);
     }
 
     function increaseDebt(address account, uint256 amount) internal {
+        _syncTwapFreeDebt();
         if (isRedeemable[account]) {
             // Handle free debt
             uint shares = totalFreeDebt == 0 ? 
@@ -637,6 +696,7 @@ contract Lender {
     }
 
     function decreaseDebt(address account, uint256 amount) internal {
+        _syncTwapFreeDebt();
         if (isRedeemable[account]) {
             // Handle free debt
             uint256 shares;
@@ -756,6 +816,26 @@ contract Lender {
         updatedAt = feedUpdatedAt;
     }
 
+    /// @notice Returns the linearly-decayed redemption volume over the trailing 24h window
+    function getRedeemedInWindow() public view returns (uint) {
+        uint elapsed = block.timestamp - lastRedeemTimestamp;
+        if (elapsed >= REDEEM_FEE_WINDOW) return 0;
+        return uint(redeemedInWindow) * (REDEEM_FEE_WINDOW - elapsed) / REDEEM_FEE_WINDOW;
+    }
+
+    /// @notice Returns current dynamic redeem fee in bps for a prospective redemption amount
+    function getRedeemFeeBps(uint amountIn) public view returns (uint) {
+        uint _maxRedeemFeeBps = maxRedeemFeeBps;
+        uint denom = getTwapFreeDebt();
+        if (denom == 0) return _maxRedeemFeeBps;
+        uint utilizationBps = (getRedeemedInWindow() + amountIn) * 10000 / denom;
+        if (utilizationBps > 10000) utilizationBps = 10000;
+
+        uint dynamicFee = utilizationBps * redeemFeeSlopeBps / 10000;
+        uint redemptionFeeBps = redeemFeeBps + dynamicFee;
+        return redemptionFeeBps > _maxRedeemFeeBps ? _maxRedeemFeeBps : redemptionFeeBps;
+    }
+
     /// @notice Calculates the amount of collateral received for redeeming Coin
     /// @param amountIn The amount of Coin to redeem
     /// @return amountOut The amount of collateral to receive (in internal 18 decimals)
@@ -763,9 +843,11 @@ contract Lender {
         if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         if(!allowLiquidations) return 0;
+        uint redemptionFeeBps = getRedeemFeeBps(amountIn);
+        if (redemptionFeeBps >= 10000) return 0;
         // multiply amountIn by price then apply redeem fee to amountIn
         // Result is in internal 18 decimals
-        amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+        amountOut = amountIn * 1e18 * (10000 - redemptionFeeBps) / price / 10000;
     }
 
     function getSellAmountOut(uint coinIn) public view returns (uint assetOut) {
@@ -930,9 +1012,30 @@ contract Lender {
 
     function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
-        require(_redeemFeeBps <= 1000, "Invalid redeem fee bps");
+        require(_redeemFeeBps <= maxRedeemFeeBps, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
+    }
+
+    function setMaxRedeemFeeBps(uint16 _maxRedeemFeeBps) external onlyOperatorOrManager beforeDeadline {
+        accrueInterest();
+        require(_maxRedeemFeeBps >= redeemFeeBps && _maxRedeemFeeBps <= 10000, "Invalid max redeem fee bps");
+        maxRedeemFeeBps = _maxRedeemFeeBps;
+        emit MaxRedeemFeeBpsUpdated(_maxRedeemFeeBps);
+    }
+
+    function setRedeemFeeSlopeBps(uint16 _redeemFeeSlopeBps) external onlyOperatorOrManager beforeDeadline {
+        accrueInterest();
+        require(_redeemFeeSlopeBps <= 10000, "Invalid redeem fee slope bps");
+        redeemFeeSlopeBps = _redeemFeeSlopeBps;
+        emit RedeemFeeSlopeBpsUpdated(_redeemFeeSlopeBps);
+    }
+
+    function setDynamicFeeToVaultBps(uint16 _dynamicFeeToVaultBps) external onlyOperatorOrManager beforeDeadline {
+        accrueInterest();
+        require(_dynamicFeeToVaultBps <= 10000, "Invalid dynamic fee share bps");
+        dynamicFeeToVaultBps = _dynamicFeeToVaultBps;
+        emit DynamicFeeToVaultBpsUpdated(_dynamicFeeToVaultBps);
     }
 
     function setMaxBorrowDeltaBps(uint16 _maxBorrowDeltaBps) external onlyOperatorOrManager beforeDeadline {
@@ -991,6 +1094,9 @@ contract Lender {
     event HalfLifeUpdated(uint64 halfLife);
     event TargetFreeDebtRatioUpdated(uint16 startBps, uint16 endBps);
     event RedeemFeeBpsUpdated(uint16 redeemFeeBps);
+    event MaxRedeemFeeBpsUpdated(uint16 maxRedeemFeeBps);
+    event RedeemFeeSlopeBpsUpdated(uint16 redeemFeeSlopeBps);
+    event DynamicFeeToVaultBpsUpdated(uint16 dynamicFeeToVaultBps);
     event MaxBorrowDeltaBpsUpdated(uint16 maxBorrowDeltaBps);
     event DelegationUpdated(address indexed delegator, address indexed delegatee, bool isDelegatee);
     event PendingOperatorUpdated(address indexed pendingOperator);
@@ -1000,8 +1106,8 @@ contract Lender {
     event RedemptionStatusUpdated(address indexed account, bool isRedeemable);
     event Liquidated(address indexed borrower, address indexed liquidator, uint repayAmount, uint collateralOut);
     event WrittenOff(address indexed borrower, address indexed to, uint debt, uint collateral);
-    event NewEpoch(uint epoch);
-    event Redeemed(address indexed account, uint amountIn, uint amountOut);
+    event BorrowerRedeemed(address indexed redeemer, address indexed borrower, uint amountIn, uint internalAmountOut, uint16 feeBps);
+    event Redeemed(address indexed redeemer, uint amountIn, uint amountOut);
     event Sold(address indexed account, uint coinIn, uint assetOut);
     event Bought(address indexed account, uint assetIn, uint coinOut);
     event ImmutabilityEnabled(uint256 timestamp);

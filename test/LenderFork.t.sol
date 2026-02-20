@@ -184,9 +184,11 @@ contract LenderForkTest is Test {
         vm.stopPrank();
         assertEq(collateral.balanceOf(address(lender)), collateralAmount2 + collateralAmount1 + nonRedeemableCollateralAmount, "Collateral balance in lender should be correct");
         
+        address[] memory borrowers = new address[](2);
+        borrowers[0] = borrower2;
+        borrowers[1] = borrower1;
         for(uint i; i < 50; i++){
             vm.startPrank(borrower1);
-             console2.log("Iteration: %s", lender.epoch());
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
             (uint currentPrice,,) = lender.getCollateralPrice();
             uint borrowingPower = currentPrice * lens.getCollateralOf(lender, borrower1) * (lender.collateralFactor()-100) / 1e18 / 10000 - lender.getDebtOf(borrower1);
@@ -194,7 +196,7 @@ contract LenderForkTest is Test {
             uint maxRedeem = collateral.balanceOf(address(lender)) * currentPrice * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
             uint balance = coin.balanceOf(borrower1);
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
-            lender.redeem(redeemAmount, 0);
+            lender.redeem(borrowers, redeemAmount, 0, type(uint).max);
             vm.stopPrank();
         }
        
@@ -289,6 +291,9 @@ contract LenderForkTest is Test {
         vm.stopPrank();
         assertEq(collateral.balanceOf(address(lender)), collateralAmount2 + collateralAmount1 + nonRedeemableCollateralAmount, "Collateral balance in lender should be correct");
         
+        address[] memory borrowers = new address[](2);
+        borrowers[0] = borrower2;
+        borrowers[1] = borrower1;
         for(uint i; i < 50; i++){
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
@@ -297,7 +302,7 @@ contract LenderForkTest is Test {
             uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
             uint balance = coin.balanceOf(borrower1);
             uint redeemAmount = balance > maxRedeem ? maxRedeem : balance;
-            lender.redeem(redeemAmount, 0);
+            lender.redeem(borrowers, redeemAmount, 0, type(uint).max);
             vm.stopPrank();
             console2.log("Iteration: %s", i);
         }
