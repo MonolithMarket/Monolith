@@ -84,7 +84,7 @@ contract Lender {
     uint256 private constant WRITEOFF_GAS_REQUIREMENT = 120_000;
 
     // Mappings
-    mapping(address => uint) public _cachedCollateralBalances; // should not be read externally in most cases
+    mapping(address => uint) public collateralBalances; // should not be read externally in most cases
     mapping(address => uint) public freeDebtShares;
     mapping(address => uint) public paidDebtShares;
     mapping(address => bool) public isRedeemable;
@@ -241,7 +241,7 @@ contract Lender {
             uint256 internalAmount = collateralToInternal(collateralAmount);
 
             // Store in internal 18 decimals
-            _cachedCollateralBalances[account] += internalAmount;
+            collateralBalances[account] += internalAmount;
             collateralAmount = collateralDecimals > 18 ? internalToCollateral(internalAmount) : collateralAmount;
             // Transfer actual token amount
             collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
@@ -251,7 +251,7 @@ contract Lender {
             uint256 collateralAmount = internalToCollateral(internalAmount);
 
             // Withdraw collateral (stored in internal representation)
-            _cachedCollateralBalances[account] -= internalAmount;
+            collateralBalances[account] -= internalAmount;
             // Transfer actual token amount (rounded down)
             collateral.safeTransfer(msg.sender, collateralAmount);
         }
@@ -297,7 +297,7 @@ contract Lender {
         // Check solvency
         (uint price, bool reduceOnly, ) = getCollateralPrice();
         require(!reduceOnly, "Reduce only");
-        uint borrowingPower = price * _cachedCollateralBalances[account] * collateralFactor / 1e18 / 10000;
+        uint borrowingPower = price * collateralBalances[account] * collateralFactor / 1e18 / 10000;
         require(debtBalance <= borrowingPower, "Solvency check failed");
     }
 
@@ -306,7 +306,8 @@ contract Lender {
         adjust(account, collateralDelta, debtDelta);
     }
 
-    /// @notice Allows an account to delegate control of their position to another address (adjustPosition, optInRedemptions, optOutRedemptions functions)
+    /// @notice Allows an account to delegate control of position management to another address
+    /// @dev Delegatees can call adjust(), setRedemptionStatus(), and the overloaded adjust() with redemption status.
     /// @param delegatee The address to delegate to
     /// @param isDelegatee True to enable delegation, false to revoke
     function delegate(address delegatee, bool isDelegatee) external {
@@ -342,7 +343,7 @@ contract Lender {
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
         uint debt = getDebtOf(borrower);
-        uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
+        uint collateralBalance = collateralBalances[borrower]; // in internal 18 decimals
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
         require(liquidatableDebt > 0, "insufficient liquidatable debt");
@@ -365,7 +366,7 @@ contract Lender {
 
         if(internalCollateralReward > 0) {
             collateral.safeTransfer(msg.sender, collateralReward);
-            _cachedCollateralBalances[borrower] = collateralBalance - internalCollateralReward;
+            collateralBalances[borrower] = collateralBalance - internalCollateralReward;
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
@@ -391,7 +392,7 @@ contract Lender {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
-            uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
+            uint collateralBalance = collateralBalances[borrower]; // in internal 18 decimals
             (uint price,, bool allowLiquidations) = getCollateralPrice();
             require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
@@ -409,7 +410,7 @@ contract Lender {
                     totalPaidDebt += paidDebtIncrease;
                 }
 
-                _cachedCollateralBalances[borrower] = 0;
+                collateralBalances[borrower] = 0;
                 
                 // Convert to token decimals for transfer (rounds down)
                 uint collateralAmount = internalToCollateral(collateralBalance);
@@ -433,7 +434,7 @@ contract Lender {
         require(isRedeemable[borrower], "Borrower is not redeemable");
         require(amountIn > 0, "amount in is zero");
 
-        uint internalCollateral = _cachedCollateralBalances[borrower];
+        uint internalCollateral = collateralBalances[borrower];
         require(internalCollateral > 0, "Borrower has no collateral");
 
         (uint price,, bool allowLiquidations) = getCollateralPrice();
@@ -461,7 +462,7 @@ contract Lender {
         require(amountOut >= minAmountOut, "insufficient amount out");
 
         // Seize collateral directly from borrower.
-        _cachedCollateralBalances[borrower] = internalCollateral - internalAmountOut;
+        collateralBalances[borrower] = internalCollateral - internalAmountOut;
 
         coin.transferFrom(msg.sender, address(this), amountIn);
         coin.burn(amountIn);
@@ -695,18 +696,6 @@ contract Lender {
             price = feedPrice > 0 ? uint(feedPrice) / (10**decimals) : 0; // convert negative price to uint 0 to signal invalid price
         }
         updatedAt = feedUpdatedAt;
-    }
-
-    /// @notice Calculates the amount of collateral received for redeeming Coin
-    /// @param amountIn The amount of Coin to redeem
-    /// @return amountOut The amount of collateral to receive (in internal 18 decimals)
-    function getRedeemAmountOut(uint amountIn) public view returns (uint amountOut) {
-        if(amountIn > totalFreeDebt) return 0; // can't redeem more than free debt
-        (uint price,, bool allowLiquidations) = getCollateralPrice();
-        if(!allowLiquidations) return 0;
-        // multiply amountIn by price then apply redeem fee to amountIn
-        // Result is in internal 18 decimals
-        amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
     }
 
     function getSellAmountOut(uint coinIn) public view returns (uint assetOut) {
