@@ -234,7 +234,6 @@ contract Lender {
 
     function adjust(address account, int collateralDelta, int debtDelta) public {
         accrueInterest();
-        updateBorrower(account);
         // Handle collateral changes
         if (collateralDelta > 0) {
             // Convert incoming collateral to internal 18 decimals
@@ -317,7 +316,6 @@ contract Lender {
 
     function setRedemptionStatus(address account, bool chooseRedeemable) public {
         accrueInterest();
-        updateBorrower(account);
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
         uint prevDebt = getDebtOf(account);
@@ -340,7 +338,6 @@ contract Lender {
     /// @return The amount of collateral received (in token decimals)
     function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
         accrueInterest();
-        updateBorrower(borrower);
         require(repayAmount > 0, "Repay amount must be greater than 0");
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
@@ -391,7 +388,6 @@ contract Lender {
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
     function writeOff(address borrower, address to) external returns (bool writtenOff) {
         accrueInterest();
-        updateBorrower(borrower);
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
@@ -434,34 +430,27 @@ contract Lender {
     /// @dev Redemptions are borrower-specific and always target a single redeemable borrower
     function redeem(address borrower, uint amountIn, uint minAmountOut) external returns (uint amountOut) {
         accrueInterest();
-        updateBorrower(borrower);
         require(isRedeemable[borrower], "Borrower is not redeemable");
         require(amountIn > 0, "amount in is zero");
 
         uint internalCollateral = _cachedCollateralBalances[borrower];
         require(internalCollateral > 0, "Borrower has no collateral");
 
-        uint price;
-        {
-            bool allowLiquidations;
-            (price,, allowLiquidations) = getCollateralPrice();
-            require(allowLiquidations, "Redemptions disabled");
-        }
+        (uint price,, bool allowLiquidations) = getCollateralPrice();
+        require(allowLiquidations, "Redemptions disabled");
 
-        {
-            uint borrowerDebt = getDebtOf(borrower);
-            require(borrowerDebt > 0, "Borrower has no debt");
-            if (amountIn > borrowerDebt) amountIn = borrowerDebt;
+        uint borrowerDebt = getDebtOf(borrower);
+        require(borrowerDebt > 0, "Borrower has no debt");
+        if (amountIn > borrowerDebt) amountIn = borrowerDebt;
 
-            uint maxDebtByCollateral = internalCollateral * price * 10000 / 1e18 / (10000 - redeemFeeBps);
-            require(maxDebtByCollateral > 0, "Insufficient collateral");
-            if (amountIn > maxDebtByCollateral) amountIn = maxDebtByCollateral;
+        uint maxRedeemByCollateral = internalCollateral * price * 10000 / 1e18 / (10000 - redeemFeeBps);
+        require(maxRedeemByCollateral > 0, "Insufficient collateral");
+        if (amountIn > maxRedeemByCollateral) amountIn = maxRedeemByCollateral;
 
-            // Repay borrower debt and derive the exact debt amount reduced by shares arithmetic.
-            decreaseDebt(borrower, amountIn);
-            amountIn = borrowerDebt - getDebtOf(borrower);
-            require(amountIn > 0, "amount in too small");
-        }
+        // Repay borrower debt and derive the exact debt amount reduced by shares arithmetic.
+        decreaseDebt(borrower, amountIn);
+        amountIn = borrowerDebt - getDebtOf(borrower);
+        require(amountIn > 0, "amount in too small");
 
         uint internalAmountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
         require(internalAmountOut > 0, "amount out is zero");
@@ -550,10 +539,6 @@ contract Lender {
             accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = bal;
         }
-    }
-
-    function updateBorrower(address) internal pure {
-        // No-op after removing epoch-based pro-rata redemption accounting.
     }
 
     function increaseDebt(address account, uint256 amount) internal {
