@@ -128,7 +128,7 @@ contract Lender {
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
         require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
-        require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 5%
+        require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 2%
         minDebtFloor = IFactory(params.factory).minDebtFloor();
         require(params.minDebt >= minDebtFloor, "Invalid min debt");
        
@@ -936,7 +936,7 @@ contract Lender {
     }
 
     function setMaxBorrowDeltaBps(uint16 _maxBorrowDeltaBps) external onlyOperatorOrManager beforeDeadline {
-        require(_maxBorrowDeltaBps <= 200 && _maxBorrowDeltaBps >= 50, "Invalid borrow delta bps"); // Max 5%
+        require(_maxBorrowDeltaBps <= 200 && _maxBorrowDeltaBps >= 50, "Invalid borrow delta bps"); // Max 2%
         maxBorrowDeltaBps = _maxBorrowDeltaBps;
         emit MaxBorrowDeltaBpsUpdated(_maxBorrowDeltaBps);
     }
