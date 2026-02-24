@@ -137,6 +137,7 @@ contract Vault is ERC4626 {
     /// @param shares Amount of shares to mint
     /// @return assets Amount of assets that will be deposited (accounting for MIN_SHARES on first deposit)
     function previewMint(uint256 shares) public view override returns (uint256 assets) {
+        if (shares == 0) return 0;
         // If this is the first deposit, we need to mint MIN_SHARES extra
         if (totalSupply == 0) shares += MIN_SHARES;
         
