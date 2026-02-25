@@ -160,7 +160,7 @@ contract Lender {
         minTotalSupply = params.minTotalSupply;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
-            psmAsset.approve(address(psmVault), type(uint).max);
+            psmAsset.safeApprove(address(psmVault), type(uint).max);
         uint256 _psmAssetDecimals;
         if (psmAsset != ERC20(address(0))) {
             _psmAssetDecimals = psmAsset.decimals();
@@ -504,7 +504,9 @@ contract Lender {
 
     function reapprovePsmVault() external beforeDeadline {
         if(psmVault != ERC4626(address(0)))
-            psmAsset.approve(address(psmVault), type(uint).max);
+            //Zero approve to support USDT. Thank you Tabboz
+            psmAsset.safeApprove(address(psmVault), 0);
+            psmAsset.safeApprove(address(psmVault), type(uint).max);
     }
 
     // Internal functions
