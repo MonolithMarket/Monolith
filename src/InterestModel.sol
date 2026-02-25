@@ -47,8 +47,8 @@ contract InterestModel {
                 } else {
                     uint timeToMin = uint(-wadLn(int(MIN_RATE * 1e18 / _lastRate))) / _expRate;
                     // Decaying integral up to min rate, then add flat rate portion
-                    interest = _totalPaidDebt * ((_lastRate - MIN_RATE) / _expRate + 
-                              MIN_RATE * (_timeElapsed - timeToMin)) / 365 days / 1e18;
+                    interest = _totalPaidDebt * (_lastRate - MIN_RATE) / _expRate / 365 days +
+                              _totalPaidDebt * MIN_RATE * (_timeElapsed - timeToMin) / 365 days / 1e18;
                 }
             } else {
                 interest = _totalPaidDebt * (_lastRate - currBorrowRate) / _expRate / 365 days;
