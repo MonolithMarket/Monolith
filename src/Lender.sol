@@ -608,9 +608,17 @@ contract Lender {
     function increaseDebt(address account, uint256 amount) internal {
         if (isRedeemable[account]) {
             // Handle free debt
-            uint shares = totalFreeDebt == 0 ? 
-                    amount : 
-                    amount.mulDivUp(totalFreeDebtShares, totalFreeDebt);
+            uint shares;
+            if(totalFreeDebt == 0){
+                if(totalFreeDebtShares == 0){
+                    shares = amount;
+                } else {
+                    //If freeDebtShares are non zero, we have to give the new borrower disproportionately many shares to avoid spreading new debt among existing debt share holders
+                    shares = amount.mulDivUp(totalFreeDebtShares, 1);
+                }
+            } else {
+                shares = amount.mulDivUp(totalFreeDebtShares, totalFreeDebt);
+            }
             
             // Update state first
             totalFreeDebt += amount;
