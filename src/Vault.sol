@@ -55,8 +55,6 @@ contract Vault is ERC4626 {
 
         _mint(receiver, shares);
         
-        emit Deposit(msg.sender, receiver, assets, shares);
-
         if(isFirstDeposit) {
                 // if this underflows, the first deposit is less than MIN_SHARES which is not allowed
                 balanceOf[receiver] -= MIN_SHARES;
@@ -64,7 +62,8 @@ contract Vault is ERC4626 {
                 shares -= MIN_SHARES;
                 emit Transfer(receiver, address(0), MIN_SHARES);
         }
-        
+
+        emit Deposit(msg.sender, receiver, assets, shares);
     }
 
     /// @notice Mints shares of the vault
