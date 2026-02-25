@@ -188,7 +188,7 @@ contract LenderForkTest is Test {
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
             (uint currentPrice,,) = lender.getCollateralPrice();
-            uint borrowingPower = currentPrice * lender.internalToCollateral(lender.collateralBalances(borrower1)) * (lender.collateralFactor()-100) / 1e18 / 10000 - lender.getDebtOf(borrower1);
+            uint borrowingPower = currentPrice * lender.collateralBalances(borrower1) * (lender.collateralFactor()-100) / 1e18 / 10000 - lender.getDebtOf(borrower1);
             lender.adjust(borrower1, 0, int256(borrowingPower));
             uint maxRedeem = collateral.balanceOf(address(lender)) * currentPrice * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
             uint balance = coin.balanceOf(borrower1);
@@ -198,23 +198,23 @@ contract LenderForkTest is Test {
         }
        
         // Attemps to repay debt and withdraw collateral for both redeeamble borrowers
-        uint256 collateralBalance2 = lender.internalToCollateral(lender.collateralBalances(borrower2));
+        uint256 collateralBalance2 = lender.collateralBalances(borrower2);
         assertEq(collateral.balanceOf(borrower2),0, "Borrower2's collateral should be zero before update");
         vm.startPrank(borrower2);
         coin.approve(address(lender), type(uint).max);
         lender.adjust(borrower2, -int(collateralBalance2), -int(lender.getDebtOf(borrower2))); 
-        assertEq(lender.internalToCollateral(lender.collateralBalances(borrower2)), 0, "Borrower2's collateral should be zero after update");
+        assertEq(lender.collateralBalances(borrower2), 0, "Borrower2's collateral should be zero after update");
         assertEq(lender.collateralBalances(borrower2), 0, "Borrower2's cached collateral should be zero after update");
         vm.stopPrank();
         
         
-        assertGt(lender.internalToCollateral(lender.collateralBalances(borrower1)), 0, "Borrower1's collateral should be greater than zero");
+        assertGt(lender.collateralBalances(borrower1), 0, "Borrower1's collateral should be greater than zero");
         // Borrower1 should still have some collateral and debt
         uint256 debt1 = lender.getDebtOf(borrower1);
         vm.startPrank(borrower1);
         assertEq(coin.balanceOf(borrower1), 0, "Borrower1's coin balance should be zero before redeem");
         deal(address(coin), borrower1, lender.getDebtOf(borrower1)); // give borrower1 enough coins to redeem
-        lender.adjust(borrower1, -int(lender.internalToCollateral(lender.collateralBalances(borrower1))), -int(lender.getDebtOf(borrower1))); 
+        lender.adjust(borrower1, -int(lender.collateralBalances(borrower1)), -int(lender.getDebtOf(borrower1))); 
         vm.stopPrank();
 
         // This check is important
@@ -222,7 +222,7 @@ contract LenderForkTest is Test {
         assertLt(collateral.balanceOf(borrower1) - collateralAmount1, (debt1 * 1 ether / price),"PROFIT");
         
         assertEq(lender.getDebtOf(borrower1), 0, "Borrower1's debt should be zero after update");
-        assertEq(lender.internalToCollateral(lender.collateralBalances(borrower1)), 0, "Borrower1's collateral should be zero after update");
+        assertEq(lender.collateralBalances(borrower1), 0, "Borrower1's collateral should be zero after update");
         
         // Approx to 0.00000002% in excess due to rounding errors
         assertGt(collateral.balanceOf(address(lender)), nonRedeemableCollateralAmount, "Lender's collateral balance should be greater than non-redeemable collateral amount after redemption");
@@ -234,7 +234,7 @@ contract LenderForkTest is Test {
         uint256 nonRedeemableDebt = lender.getDebtOf(nonRedeemableBorrower3);
         lender.coin().approve(address(lender), type(uint).max);
         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
-        assertEq(lender.internalToCollateral(lender.collateralBalances(nonRedeemableBorrower3)), 0, "Non-redeemable Borrower3's collateral should be zero after withdrawal");
+        assertEq(lender.collateralBalances(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's collateral should be zero after withdrawal");
         assertEq(lender.collateralBalances(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's cached collateral should be zero after update");
         assertEq(lender.getDebtOf(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's debt should be zero after update");
         assertEq(collateral.balanceOf(nonRedeemableBorrower3), nonRedeemableCollateralAmount, "Non-redeemable Borrower3's collateral should be equal to initial amount after update");
@@ -291,7 +291,7 @@ contract LenderForkTest is Test {
         for(uint i; i < 50; i++){
             vm.startPrank(borrower1);
             lender.adjust(borrower1, int256(collateral.balanceOf(borrower1)), 0);
-            uint borrowingPower = price * lender.internalToCollateral(lender.collateralBalances(borrower1)) * (lender.collateralFactor()-1) / 1e18 / 10000 - lender.getDebtOf(borrower1);
+            uint borrowingPower = price * lender.collateralBalances(borrower1) * (lender.collateralFactor()-1) / 1e18 / 10000 - lender.getDebtOf(borrower1);
             lender.adjust(borrower1, 0, int256(borrowingPower));
             uint maxRedeem = collateral.balanceOf(address(lender)) * price * 10000 / 1e18 / (10000 - lender.redeemFeeBps());
             uint balance = coin.balanceOf(borrower1);
@@ -301,7 +301,7 @@ contract LenderForkTest is Test {
             console2.log("Iteration: %s", i);
         }
         // Attemps to repay debt and withdraw collateral for both redeeamble borrowers
-        uint256 collateralBalance2 = lender.internalToCollateral(lender.collateralBalances(borrower2));
+        uint256 collateralBalance2 = lender.collateralBalances(borrower2);
         console2.log("collateralBalance2: %s", collateralBalance2);
         uint256 debt2 = lender.getDebtOf(borrower2);
         assertGt(debt2, 0, "Borrower2's debt should be greater than zero before update");
@@ -309,7 +309,7 @@ contract LenderForkTest is Test {
         vm.startPrank(borrower2);
         coin.approve(address(lender), type(uint).max);
         lender.adjust(borrower2, -int(collateralBalance2), -int(lender.getDebtOf(borrower2))); 
-        assertEq(lender.internalToCollateral(lender.collateralBalances(borrower2)), 0, "Borrower2's collateral should be zero after update");
+        assertEq(lender.collateralBalances(borrower2), 0, "Borrower2's collateral should be zero after update");
         assertEq(lender.collateralBalances(borrower2), 0, "Borrower2's cached collateral should be zero after update");
         assertEq(lender.getDebtOf(borrower2), 0, "Borrower2's debt should be zero after update");
         assertLt(collateral.balanceOf(borrower2), collateralAmount2, "Borrower2's collateral should be less than initial amount after redemption");
@@ -317,13 +317,13 @@ contract LenderForkTest is Test {
         vm.stopPrank();
         
         
-        assertGt(lender.internalToCollateral(lender.collateralBalances(borrower1)), 0, "Borrower1's collateral should be greater than zero");
+        assertGt(lender.collateralBalances(borrower1), 0, "Borrower1's collateral should be greater than zero");
         uint256 debt1 = lender.getDebtOf(borrower1);
 
         vm.startPrank(borrower1);
         assertEq(coin.balanceOf(borrower1), 0, "Borrower1's coin balance should be zero before redeem");
         deal(address(coin), borrower1, lender.getDebtOf(borrower1)); // give borrower1 enough coins to redeem
-        lender.adjust(borrower1, -int(lender.internalToCollateral(lender.collateralBalances(borrower1))), -int(lender.getDebtOf(borrower1))); 
+        lender.adjust(borrower1, -int(lender.collateralBalances(borrower1)), -int(lender.getDebtOf(borrower1))); 
         vm.stopPrank();
         
 
@@ -332,7 +332,7 @@ contract LenderForkTest is Test {
         assertLt(collateral.balanceOf(borrower1) - collateralAmount1, (debt1 * 1 ether / price),"PROFIT");
         
         assertEq(lender.getDebtOf(borrower1), 0, "Borrower1's debt should be zero after update");
-        assertEq(lender.internalToCollateral(lender.collateralBalances(borrower1)), 0, "Borrower1's collateral should be zero after update");
+        assertEq(lender.collateralBalances(borrower1), 0, "Borrower1's collateral should be zero after update");
         
         // Approx to 0.00000002% in excess due to rounding errors
         assertGe(collateral.balanceOf(address(lender)), nonRedeemableCollateralAmount, "Lender's collateral balance should be greater than non-redeemable collateral amount after redemption");
@@ -344,7 +344,7 @@ contract LenderForkTest is Test {
         uint256 nonRedeemableDebt = lender.getDebtOf(nonRedeemableBorrower3);
         lender.coin().approve(address(lender), type(uint).max);
         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
-        assertEq(lender.internalToCollateral(lender.collateralBalances(nonRedeemableBorrower3)), 0, "Non-redeemable Borrower3's collateral should be zero after withdrawal");
+        assertEq(lender.collateralBalances(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's collateral should be zero after withdrawal");
         assertEq(lender.collateralBalances(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's cached collateral should be zero after update");
         assertEq(lender.getDebtOf(nonRedeemableBorrower3), 0, "Non-redeemable Borrower3's debt should be zero after update");
         assertEq(collateral.balanceOf(nonRedeemableBorrower3), nonRedeemableCollateralAmount, "Non-redeemable Borrower3's collateral should be equal to initial amount after update");
