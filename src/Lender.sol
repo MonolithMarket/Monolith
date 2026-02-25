@@ -669,17 +669,18 @@ contract Lender {
     }
 
     function getFeedPrice() external view returns (uint price, uint updatedAt) {
-        (,int256 feedPrice,,uint256 feedUpdatedAt,) = feed.latestRoundData();
+        (,int256 feedPrice,,uint feedUpdatedAt,) = feed.latestRoundData();
+        updatedAt = feedUpdatedAt;
+        if(feedPrice <= 0) return (0, updatedAt); //convert negative price to 0 to signal invalid price
         uint8 feedDecimals = feed.decimals();
         uint8 tokenDecimals = uint8(collateralDecimals); // collateral balances are kept in native token decimals
         if(feedDecimals + tokenDecimals <= 36) {
             uint8 decimals = 36 - tokenDecimals - feedDecimals;
-            price = feedPrice > 0 ? uint(feedPrice) * (10**decimals) : 0; // convert negative price to uint 0 to signal invalid price
+            price = uint(feedPrice) * (10**decimals);
         } else {
             uint8 decimals = feedDecimals + tokenDecimals - 36;
-            price = feedPrice > 0 ? uint(feedPrice) / (10**decimals) : 0; // convert negative price to uint 0 to signal invalid price
+            price = uint(feedPrice) / (10**decimals);
         }
-        updatedAt = feedUpdatedAt;
     }
 
     function getSellAmountOut(uint coinIn) public view returns (uint assetOut) {
