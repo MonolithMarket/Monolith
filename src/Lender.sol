@@ -542,6 +542,8 @@ contract Lender {
 
     function reapprovePsmVault() external beforeDeadline {
         if(psmVault != ERC4626(address(0)))
+            //Zero approve to support USDT. Thank you Tabboz
+            psmAsset.safeApprove(address(psmVault), 0);
             psmAsset.safeApprove(address(psmVault), type(uint).max);
     }
 
