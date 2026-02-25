@@ -125,6 +125,7 @@ contract Lender {
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 2%
         minDebtFloor = IFactory(params.factory).minDebtFloor();
         require(params.minDebt >= minDebtFloor, "Invalid min debt");
+        require(address(params.psmAsset) != address(params.coin), "PSM Asset must be different than Coin");
        
         if(params.psmVault != ERC4626(address(0))) {
             require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
