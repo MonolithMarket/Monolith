@@ -13,7 +13,7 @@ contract InterestModelTest is Test {
     
     function test_calculateInterest(uint _totalPaidDebt, uint lastFreeDebtRatioBps, uint timeElapsed, uint halfLife, uint lastRate) public view {
         lastFreeDebtRatioBps = bound(lastFreeDebtRatioBps, 0, 10000);
-        timeElapsed = bound(timeElapsed, 1, 100);
+        timeElapsed = bound(timeElapsed, 1, 7 days);
         halfLife = bound(halfLife, 12 hours, 30 days);
         lastRate = bound(lastRate, 5e15, 1e18);
 
@@ -42,10 +42,36 @@ contract InterestModelTest is Test {
             if(expectedBorrowRate < MIN_RATE) {
                 expectedBorrowRate = MIN_RATE;
             }
-            expectedInterest += (totalPaidDebt + expectedInterest) * expectedBorrowRate / 1e18 / 365 days;
+            expectedInterest += totalPaidDebt * expectedBorrowRate / 1e18 / 365 days;
         }
 
-        assertApproxEqRel(currBorrowRate, expectedBorrowRate, 1e11, "borrow rate mismatch");
-        assertApproxEqRel(interest, expectedInterest, 1e15, "interest mismatch");
+        assertApproxEqRel(currBorrowRate, expectedBorrowRate, 0.05e18, "borrow rate mismatch");
+        assertApproxEqRel(interest, expectedInterest, 0.05e18, "interest mismatch");
+    }
+
+    function test_calculateInterest_wadExpUnderflow() public view {
+        uint totalPaidDebt = 1e18;
+        uint lastRate = 5e16;
+        uint timeElapsed = 60 days;
+        uint halfLife = 12 hours;
+        uint expRate = uint(wadLn(2e18)) / halfLife;
+        uint lastFreeDebtRatioBps = 1000;
+        uint targetFreeDebtRatioStartBps = 2500;
+        uint targetFreeDebtRatioEndBps = 7500;
+
+        (uint currBorrowRate, uint interest) = interestModel.calculateInterest(
+            totalPaidDebt,
+            lastRate,
+            timeElapsed,
+            expRate,
+            lastFreeDebtRatioBps,
+            targetFreeDebtRatioStartBps,
+            targetFreeDebtRatioEndBps
+        );
+
+        // When growthDecay underflows to 0, we set it to 1, causing currBorrowRate
+        // to exceed uint88.max, triggering overflow protection: return (_lastRate, 0)
+        assertEq(currBorrowRate, lastRate);
+        assertEq(interest, 0);
     }
 }

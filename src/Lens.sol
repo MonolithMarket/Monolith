@@ -4,76 +4,53 @@ pragma solidity 0.8.24;
 import "./Lender.sol";
 
 contract Lens {
-
     using FixedPointMathLib for uint256;
     
+    /// @notice Previews borrower-specific redemption results using current state
+    /// @param _lender The Lender contract to query
+    /// @param borrower The borrower to redeem from
+    /// @param amountIn The requested Coin amount to redeem
+    /// @return coinIn The Coin amount that would actually be repaid
+    /// @return amountOut The collateral amount out (in collateral token decimals)
+    function previewRedeem(Lender _lender, address borrower, uint256 amountIn)
+        external
+        view
+        returns (uint256 coinIn, uint256 amountOut)
+    {
+        if (amountIn == 0 || !_lender.isRedeemable(borrower)) return (0, 0);
 
-    function getCollateralOf(Lender _lender, address borrower) public view returns (uint256) {
-        uint borrowerDebtShares = _lender.freeDebtShares(borrower);
-        uint bal = _lender._cachedCollateralBalances(borrower);
-        // If borrower has no free debt shares skip calculation and return cached balance
-        if (borrowerDebtShares == 0) return _lender.internalToCollateral(bal);
-        uint _borrowerEpoch = _lender.borrowerEpoch(borrower);
-        uint lastIndex = _lender.borrowerLastRedeemedIndex(borrower);
-        // Loop through all missed epochs
-        for (uint i = 0; i < 5 && _borrowerEpoch < _lender.epoch() && borrowerDebtShares > 0; ++i) {
-            // Apply redemption for the borrower's current epoch
-            uint indexDelta = _lender.epochRedeemedCollateral(_borrowerEpoch) - lastIndex;
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
-            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
+        uint256 collateralBalance = _lender.collateralBalances(borrower);
+        if (collateralBalance == 0) return (0, 0);
 
-            // Move to next epoch, reduce shares
-            _borrowerEpoch += 1;
-            borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36); // If shares is 1 round down to 0
-            lastIndex = 0; // For new epoch, last redeemed index is 0
-        }
-        // Apply any remaining redemption for the current epoch
-        if (borrowerDebtShares > 0) {
-            uint indexDelta = _lender.epochRedeemedCollateral(_borrowerEpoch) - lastIndex;
-            uint redeemedCollateral = indexDelta.mulDivUp(borrowerDebtShares, 1e36);
-            bal = bal < redeemedCollateral ? 0 : bal - redeemedCollateral;
-        }
-        return _lender.internalToCollateral(bal);
+        (uint256 price,, bool allowLiquidations) = _lender.getCollateralPrice();
+        if (!allowLiquidations) return (0, 0);
+
+        uint256 borrowerDebt = getDebtOf(_lender, borrower);
+        if (borrowerDebt == 0) return (0, 0);
+
+        coinIn = amountIn > borrowerDebt ? borrowerDebt : amountIn;
+        uint256 redeemFeeBps = _lender.redeemFeeBps();
+        uint256 maxRedeemByCollateral = collateralBalance * price * 10000 / 1e18 / (10000 - redeemFeeBps);
+        if (maxRedeemByCollateral == 0) return (0, 0);
+        if (coinIn > maxRedeemByCollateral) coinIn = maxRedeemByCollateral;
+
+        amountOut = coinIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+        if (amountOut == 0 || amountOut > collateralBalance) return (0, 0);
     }
 
-    /// @notice Returns the current debt of a borrower including accrued interest and accounting for redeemed debt
+    /// @notice Returns the current debt of a borrower including accrued interest
     /// @param _lender The Lender contract to query
     /// @param borrower The address of the borrower
-    /// @return The current debt amount including all accrued interest and after accounting for redemptions
+    /// @return The current debt amount including all accrued interest
     function getDebtOf(Lender _lender, address borrower) public view returns (uint256) {
         // Get the current total debt including accrued interest
         (uint256 totalPaidDebt, uint256 totalFreeDebt) = _getSyncedTotalDebt(_lender);
         
         // Calculate the borrower's share of debt based on whether they are redeemable
         if (_lender.isRedeemable(borrower)) {
-            // For redeemable (free) debt, we need to account for redemptions
             uint256 borrowerDebtShares = _lender.freeDebtShares(borrower);
             uint256 totalFreeDebtShares = _lender.totalFreeDebtShares();
-            
-            if (totalFreeDebtShares == 0) return 0;
-            
-            // Calculate base debt from shares
-            uint256 debt = borrowerDebtShares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
-            
-            // Account for debt reductions through redemptions
-            // Similar to collateral redemptions, debt is reduced when redemptions occur
-            uint256 _borrowerEpoch = _lender.borrowerEpoch(borrower);
-            uint256 currentEpoch = _lender.epoch();
-            
-            // If borrower is in current epoch, no redemption adjustments needed
-            // as redemptions reduce totalFreeDebt directly
-            if (_borrowerEpoch < currentEpoch) {
-                // Borrower missed epoch transitions, need to account for debt reductions
-                // Each epoch transition reduces shares, which effectively reduces debt
-                for (uint256 i = 0; i < 5 && _borrowerEpoch < currentEpoch && borrowerDebtShares > 0; ++i) {
-                    _borrowerEpoch += 1;
-                    borrowerDebtShares = borrowerDebtShares.divWadUp(1e36) == 1 ? 0 : borrowerDebtShares.divWadUp(1e36);
-                }
-                // Recalculate debt with reduced shares
-                debt = totalFreeDebtShares == 0 ? 0 : borrowerDebtShares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
-            }
-            
-            return debt;
+            return totalFreeDebtShares == 0 ? 0 : borrowerDebtShares.mulDivUp(totalFreeDebt, totalFreeDebtShares);
         } else {
             // For non-redeemable (paid) debt, simply calculate from shares with synced total
             uint256 paidDebtShares = _lender.paidDebtShares(borrower);
@@ -86,7 +63,7 @@ contract Lens {
     /// @notice Internal helper to calculate total debt including accrued interest
     /// @param _lender The Lender contract to query
     /// @return syncedTotalPaidDebt The total paid debt including accrued interest
-    /// @return syncedTotalFreeDebt The total free debt (redemptions already reduce this directly)
+    /// @return syncedTotalFreeDebt The total free debt
     function _getSyncedTotalDebt(Lender _lender) internal view returns (uint256 syncedTotalPaidDebt, uint256 syncedTotalFreeDebt) {
         uint256 totalPaidDebt = _lender.totalPaidDebt();
         syncedTotalFreeDebt = _lender.totalFreeDebt();

@@ -33,6 +33,7 @@ contract InterestModel {
         uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
         
         if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
+            if (growthDecay == 0) growthDecay = 1;
             currBorrowRate = _lastRate * 1e18 / growthDecay;
             interest = _totalPaidDebt * (currBorrowRate - _lastRate) / _expRate / 365 days;
         } else if (_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
@@ -46,8 +47,8 @@ contract InterestModel {
                 } else {
                     uint timeToMin = uint(-wadLn(int(MIN_RATE * 1e18 / _lastRate))) / _expRate;
                     // Decaying integral up to min rate, then add flat rate portion
-                    interest = _totalPaidDebt * ((_lastRate - MIN_RATE) / _expRate + 
-                              MIN_RATE * (_timeElapsed - timeToMin)) / 365 days / 1e18;
+                    interest = _totalPaidDebt * (_lastRate - MIN_RATE) / _expRate / 365 days +
+                              _totalPaidDebt * MIN_RATE * (_timeElapsed - timeToMin) / 365 days / 1e18;
                 }
             } else {
                 interest = _totalPaidDebt * (_lastRate - currBorrowRate) / _expRate / 365 days;
