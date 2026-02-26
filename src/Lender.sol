@@ -121,7 +121,7 @@ contract Lender {
         require(params.halfLife >= 12 hours && params.halfLife <= 30 days, "Invalid half life");
         require(params.targetFreeDebtRatioStartBps >= 500 && params.targetFreeDebtRatioStartBps <= params.targetFreeDebtRatioEndBps, "Invalid start bps");
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
-        require(params.redeemFeeBps <= 1000, "Invalid redeem fee bps");
+        require(params.redeemFeeBps <= 500, "Invalid redeem fee bps");
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 2%
         minDebtFloor = IFactory(params.factory).minDebtFloor();
         require(params.minDebt >= minDebtFloor, "Invalid min debt");
@@ -822,7 +822,7 @@ contract Lender {
 
     function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline {
         accrueInterest();
-        require(_redeemFeeBps <= 1000, "Invalid redeem fee bps");
+        require(_redeemFeeBps <= 500, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
     }
