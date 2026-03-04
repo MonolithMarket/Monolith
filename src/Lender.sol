@@ -354,8 +354,8 @@ contract Lender {
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
         if(collateralReward > 0) {
-            collateral.safeTransfer(msg.sender, collateralReward);
             collateralBalances[borrower] = collateralBalance - collateralReward;
+            collateral.safeTransfer(msg.sender, collateralReward);
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
