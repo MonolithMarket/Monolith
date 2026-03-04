@@ -849,6 +849,7 @@ contract Lender {
     function acceptOperator() external {
         require(msg.sender == pendingOperator, "Unauthorized");
         operator = pendingOperator;
+        pendingOperator = address(0);
         emit OperatorAccepted(pendingOperator);
     }
 
