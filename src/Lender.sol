@@ -494,7 +494,7 @@ contract Lender {
             require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
             uint256 shares = psmVault.deposit(assetIn, address(this));
             require(shares > 0, "PSM deposit failed");
-            freePsmAssets += psmVault.previewRedeem(shares);
+            freePsmAssets += previewRedeemOrConvertToAssets(shares);
         } else {
             freePsmAssets += assetIn;
         }
@@ -515,7 +515,7 @@ contract Lender {
 
     function accruePsmProfit() internal {
         if(address(psmVault) != address(0)){
-            uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
+            uint assets = previewRedeemOrConvertToAssets(psmVault.balanceOf(address(this)));
             if(assets <= freePsmAssets) return; // avoids underflow in case of loss
             uint profit = assets - freePsmAssets;
             accruedLocalReserves += uint120(normalizePsmAssets(profit));
@@ -527,6 +527,14 @@ contract Lender {
             uint profit = bal - freePsmAssets;
             accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = bal;
+        }
+    }
+
+    function previewRedeemOrConvertToAssets(uint shares) internal view returns (uint assets) {
+        try psmVault.previewRedeem(shares) returns (uint previewAssets) {
+            return previewAssets;
+        } catch {
+            return psmVault.convertToAssets(shares);
         }
     }
 
