@@ -354,8 +354,8 @@ contract Lender {
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
         if(collateralReward > 0) {
-            collateral.safeTransfer(msg.sender, collateralReward);
             collateralBalances[borrower] = collateralBalance - collateralReward;
+            collateral.safeTransfer(msg.sender, collateralReward);
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
         coin.burn(repayAmount);
@@ -494,7 +494,7 @@ contract Lender {
             require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
             uint256 shares = psmVault.deposit(assetIn, address(this));
             require(shares > 0, "PSM deposit failed");
-            freePsmAssets += psmVault.previewRedeem(shares);
+            freePsmAssets += previewRedeemOrConvertToAssets(shares);
         } else {
             freePsmAssets += assetIn;
         }
@@ -504,17 +504,18 @@ contract Lender {
     }
 
     function reapprovePsmVault() external beforeDeadline {
-        if(psmVault != ERC4626(address(0)))
+        if(psmVault != ERC4626(address(0))){
             //Zero approve to support USDT. Thank you Tabboz
             psmAsset.safeApprove(address(psmVault), 0);
             psmAsset.safeApprove(address(psmVault), type(uint).max);
+        }
     }
 
     // Internal functions
 
     function accruePsmProfit() internal {
         if(address(psmVault) != address(0)){
-            uint assets = psmVault.previewRedeem(psmVault.balanceOf(address(this)));
+            uint assets = previewRedeemOrConvertToAssets(psmVault.balanceOf(address(this)));
             if(assets <= freePsmAssets) return; // avoids underflow in case of loss
             uint profit = assets - freePsmAssets;
             accruedLocalReserves += uint120(normalizePsmAssets(profit));
@@ -526,6 +527,14 @@ contract Lender {
             uint profit = bal - freePsmAssets;
             accruedLocalReserves += uint120(normalizePsmAssets(profit));
             freePsmAssets = bal;
+        }
+    }
+
+    function previewRedeemOrConvertToAssets(uint shares) internal view returns (uint assets) {
+        try psmVault.previewRedeem(shares) returns (uint previewAssets) {
+            return previewAssets;
+        } catch {
+            return psmVault.convertToAssets(shares);
         }
     }
 
@@ -848,6 +857,7 @@ contract Lender {
     function acceptOperator() external {
         require(msg.sender == pendingOperator, "Unauthorized");
         operator = pendingOperator;
+        pendingOperator = address(0);
         emit OperatorAccepted(pendingOperator);
     }
 

@@ -118,6 +118,21 @@ contract Vault4626Mock is ERC4626 {
     }
 }
 
+contract RevertingPreviewRedeemVault4626Mock is Vault4626Mock {
+    bool public shouldRevertPreviewRedeem;
+
+    constructor(ERC20 asset) Vault4626Mock(asset) {}
+
+    function setShouldRevertPreviewRedeem(bool _shouldRevertPreviewRedeem) external {
+        shouldRevertPreviewRedeem = _shouldRevertPreviewRedeem;
+    }
+
+    function previewRedeem(uint256 shares) public view override returns (uint256 assets) {
+        if (shouldRevertPreviewRedeem) revert("previewRedeem revert");
+        return super.previewRedeem(shares);
+    }
+}
+
 contract LenderTest is Test {
 
     Lender lender;
@@ -2767,6 +2782,36 @@ contract LenderTest is Test {
         }));
     }
 
+    function createLenderWithRevertingPreviewRedeemPSM() internal returns (Lender, RevertingPreviewRedeemVault4626Mock) {
+        ERC20Mock psmAsset = new ERC20Mock("PSM Asset", "PSMA");
+        RevertingPreviewRedeemVault4626Mock psmVault = new RevertingPreviewRedeemVault4626Mock(ERC20(psmAsset));
+
+        Lender psmLender = new Lender(Lender.LenderParams({
+            collateral: ERC20(address(new ERC20Mock("Collateral", "COLL"))),
+            psmAsset: ERC20(address(psmAsset)),
+            psmVault: ERC4626(address(psmVault)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 7500,
+            minDebt: 100e18,
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30,
+            stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
+        }));
+
+        return (psmLender, psmVault);
+    }
+
     function createLenderWithPSMAssetOnly() internal returns (Lender) {
         ERC20Mock psmAsset = new ERC20Mock("PSM Asset", "PSMA");
 
@@ -3168,6 +3213,36 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         psmLender.pullLocalReserves();
         uint operatorCoinBalanceAfterLoss = coin.balanceOf(operator);
         assertEq(operatorCoinBalanceAfterLoss, operatorCoinBalanceBeforeSecond, "Should not accrue negative profit on loss");
+    }
+
+    function testPreviewRedeemRevertFallsBackToConvertToAssets() public {
+        (Lender psmLender, RevertingPreviewRedeemVault4626Mock psmVault) = createLenderWithRevertingPreviewRedeemPSM();
+        ERC20 psmAsset = psmLender.psmAsset();
+
+        uint256 initialDeposit = 1e18;
+        ERC20Mock(address(psmAsset)).mint(address(this), initialDeposit);
+        psmAsset.approve(address(psmVault), initialDeposit);
+        psmVault.deposit(initialDeposit, address(this));
+
+        uint256 assetIn = 100e18;
+        ERC20Mock(address(psmAsset)).mint(address(this), assetIn);
+        psmAsset.approve(address(psmLender), assetIn);
+
+        vm.warp(psmLender.deployTimestamp());
+        psmVault.setShouldRevertPreviewRedeem(true);
+        psmLender.buy(assetIn, 99e18);
+        assertEq(psmLender.freePsmAssets(), assetIn, "buy should account via convertToAssets fallback");
+
+        psmVault.setProfitMultiplier(1.1e18);
+        address operator = psmLender.operator();
+        Coin coin = psmLender.coin();
+        uint256 operatorCoinBalanceBefore = coin.balanceOf(operator);
+
+        vm.prank(operator);
+        psmLender.pullLocalReserves();
+
+        uint256 operatorCoinBalanceAfter = coin.balanceOf(operator);
+        assertEq(operatorCoinBalanceAfter - operatorCoinBalanceBefore, 10e18, "accrue should mint profit via convertToAssets fallback");
     }
 
     function testPSMFunctionsRevertWhenNoPSMAsset() public {

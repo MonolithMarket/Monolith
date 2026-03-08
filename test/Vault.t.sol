@@ -18,6 +18,7 @@ contract ERC20Mock is ERC20 {
 
 contract LenderMock is ILender {
     ERC20 public override coin;
+    uint256 public pendingInterest;
 
     constructor(address _coin) {
         coin = ERC20(_coin);
@@ -28,7 +29,11 @@ contract LenderMock is ILender {
     }
 
     function getPendingInterest() external view override returns (uint256 pendingVaultInterest) {
-        return 0;
+        return pendingInterest;
+    }
+
+    function setPendingInterest(uint256 _pendingInterest) external {
+        pendingInterest = _pendingInterest;
     }
 }
 
@@ -302,5 +307,30 @@ contract VaultTest is Test {
         assertEq(previewedAssets, actualAssets, "previewMint should match actual for subsequent mints");
     }
 
-}
+    function test_maxDepositFirstDepositIsZero() public view {
+        assertEq(vault.maxDeposit(user), 0, "maxDeposit should be 0 at bootstrap");
+    }
 
+    function test_maxMintFirstDepositAccountsForMinShares() public view {
+        assertEq(vault.maxMint(user), type(uint256).max - MIN_SHARES, "maxMint should reserve room for MIN_SHARES");
+    }
+
+    function test_maxWithdrawAndMaxRedeemCapToLiquidAssets() public {
+        uint256 depositAmount = 100e18;
+        underlying.mint(user, depositAmount);
+
+        vm.startPrank(user);
+        underlying.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, user);
+        vm.stopPrank();
+
+        lender.setPendingInterest(50e18);
+
+        uint256 liquidAssets = underlying.balanceOf(address(vault));
+        assertEq(vault.maxWithdraw(user), liquidAssets, "maxWithdraw should be capped by liquid assets");
+
+        uint256 expectedMaxRedeem = vault.convertToShares(liquidAssets);
+        assertEq(vault.maxRedeem(user), expectedMaxRedeem, "maxRedeem should be capped by liquid-backed shares");
+    }
+
+}
