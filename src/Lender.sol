@@ -55,6 +55,7 @@ contract Lender {
     uint public totalPaidDebtShares;
     uint public freePsmAssets;
     uint16 public maxBorrowDeltaBps; // max acceptable rounding error in bps when borrowing (e.g., 200 = 2%)
+    bool public inReceivership;
     
     // Constants and immutables
     Coin public immutable coin;
@@ -186,9 +187,19 @@ contract Lender {
         _;
     }
 
+    modifier notInReceivership() {
+        require(!inReceivership, "Receivership active");
+        _;
+    }
+
     // Public functions
 
     function accrueInterest() public {
+        if (inReceivership) {
+            lastAccrue = uint40(block.timestamp);
+            return;
+        }
+
         uint timeElapsed = block.timestamp - lastAccrue;
         if(timeElapsed == 0) return;
 
@@ -233,7 +244,7 @@ contract Lender {
         }
     }
 
-    function adjust(address account, int collateralDelta, int debtDelta) public {
+    function adjust(address account, int collateralDelta, int debtDelta) public notInReceivership {
         accrueInterest();
         // Handle collateral changes
         if (collateralDelta > 0) {
@@ -292,7 +303,7 @@ contract Lender {
         require(debtBalance <= borrowingPower, "Solvency check failed");
     }
 
-    function adjust(address account, int collateralDelta, int debtDelta, bool chooseRedeemable) external {
+    function adjust(address account, int collateralDelta, int debtDelta, bool chooseRedeemable) external notInReceivership {
         setRedemptionStatus(account, chooseRedeemable);
         adjust(account, collateralDelta, debtDelta);
     }
@@ -301,12 +312,12 @@ contract Lender {
     /// @dev Delegatees can call adjust(), setRedemptionStatus(), and the overloaded adjust() with redemption status.
     /// @param delegatee The address to delegate to
     /// @param isDelegatee True to enable delegation, false to revoke
-    function delegate(address delegatee, bool isDelegatee) external {
+    function delegate(address delegatee, bool isDelegatee) external notInReceivership {
         delegations[msg.sender][delegatee] = isDelegatee;
         emit DelegationUpdated(msg.sender, delegatee, isDelegatee);
     }
 
-    function setRedemptionStatus(address account, bool chooseRedeemable) public {
+    function setRedemptionStatus(address account, bool chooseRedeemable) public notInReceivership {
         accrueInterest();
         require(msg.sender == account || delegations[account][msg.sender], "Unauthorized");
         if(chooseRedeemable == isRedeemable[account]) return; // no change
@@ -328,7 +339,7 @@ contract Lender {
     /// @param repayAmount The amount of debt to repay
     /// @param minCollateralOut The minimum amount of collateral to receive (in token decimals)
     /// @return The amount of collateral received (in token decimals)
-    function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external returns(uint) {
+    function liquidate(address borrower, uint repayAmount, uint minCollateralOut) external notInReceivership returns(uint) {
         accrueInterest();
         require(repayAmount > 0, "Repay amount must be greater than 0");
         (uint price,, bool allowLiquidations) = getCollateralPrice();
@@ -371,28 +382,61 @@ contract Lender {
         return collateralReward;
     }
 
+    /// @notice Burns Coin in exchange for a pro-rata share of remaining collateral during receivership
+    /// @dev Uses live contract balances and intentionally ignores per-borrower accounting once receivership is active.
+    ///      The exchange rate is `coinIn * totalCollateral / totalCoinSupply`, rounded down.
+    /// @param coinIn The amount of Coin to burn
+    /// @return collateralOut The amount of collateral transferred to the caller
+    function exchangeInReceivership(uint coinIn) external returns (uint collateralOut) {
+        require(inReceivership, "Receivership inactive");
+
+        uint totalCoinSupply = coin.totalSupply();
+        require(totalCoinSupply > 0, "No coin supply");
+
+        uint collateralHeld = collateral.balanceOf(address(this));
+        require(collateralHeld > 0, "No collateral");
+
+        collateralOut = coinIn.mulDivDown(collateralHeld, totalCoinSupply);
+        require(collateralOut > 0, "amount out is zero");
+
+        coin.transferFrom(msg.sender, address(this), coinIn);
+        coin.burn(coinIn);
+        collateral.safeTransfer(msg.sender, collateralOut);
+
+        emit ReceivershipExchanged(msg.sender, coinIn, collateralOut);
+    }
+
+
     /// @notice Redistributes excess debt of undercollateralized accounts among other borrowers
     /// @param borrower The account in potentiallyundercollateralized state
     /// @return writtenOff True if the borrower was written off, false otherwise
     /// @param to The address to send the collateral to
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
-    function writeOff(address borrower, address to) external returns (bool writtenOff) {
+    function writeOff(address borrower, address to) external notInReceivership returns (bool writtenOff) {
         accrueInterest();
+        (uint price,, bool allowLiquidations) = getCollateralPrice();
+        require(allowLiquidations, "liquidations disabled");
+
+        uint totalDebt = totalFreeDebt + totalPaidDebt;
+        uint totalCollateralValue = collateral.balanceOf(address(this)) * price / 1e18;
+        if (totalDebt > totalCollateralValue) {
+            _enterReceivership(totalDebt, totalCollateralValue);
+            return false;
+        }
+
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
             uint collateralBalance = collateralBalances[borrower]; // in collateral token decimals
-            (uint price,, bool allowLiquidations) = getCollateralPrice();
-            require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
             // if debt is more than 100 times the collateral value, write off
             if(debt > collateralValue * 100) {
                 // 1. delete all of the borrower's debt
                 decreaseDebt(borrower, type(uint).max);
                 // 2. redistribute excess debt among remaining borrowers
-                uint256 totalDebt = totalFreeDebt + totalPaidDebt;
-                if (totalDebt > 0) {
-                    uint256 freeDebtIncrease = debt * totalFreeDebt / totalDebt;
+                uint256 remainingDebt = totalFreeDebt + totalPaidDebt;
+                if (remainingDebt > 0) {
+                    uint256 freeDebtIncrease = debt * totalFreeDebt / remainingDebt;
                     uint256 paidDebtIncrease = debt - freeDebtIncrease;
 
                     totalFreeDebt += freeDebtIncrease;
@@ -416,7 +460,7 @@ contract Lender {
     /// @param minAmountOut The minimum amount of collateral to receive (in token decimals)
     /// @return amountOut The amount of collateral received (in token decimals)
     /// @dev Redemptions are borrower-specific and always target a single redeemable borrower
-    function redeem(address borrower, uint amountIn, uint minAmountOut) external returns (uint amountOut) {
+    function redeem(address borrower, uint amountIn, uint minAmountOut) external notInReceivership returns (uint amountOut) {
         accrueInterest();
         require(isRedeemable[borrower], "Borrower is not redeemable");
         require(amountIn > 0, "amount in is zero");
@@ -457,7 +501,7 @@ contract Lender {
         return amountOut;
     }
 
-    function sell(uint coinIn, uint minAssetOut) external returns (uint assetOut) {
+    function sell(uint coinIn, uint minAssetOut) external notInReceivership returns (uint assetOut) {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         accrueInterest();
         assetOut = getSellAmountOut(coinIn);
@@ -479,7 +523,7 @@ contract Lender {
         emit Sold(msg.sender, coinIn, assetOut);
     }
 
-    function buy(uint assetIn, uint minCoinOut) external beforeDeadline returns (uint coinOut) {
+    function buy(uint assetIn, uint minCoinOut) external beforeDeadline notInReceivership returns (uint coinOut) {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         accrueInterest();
         uint coinFee;
@@ -503,7 +547,7 @@ contract Lender {
         emit Bought(msg.sender, assetIn, coinOut);
     }
 
-    function reapprovePsmVault() external beforeDeadline {
+    function reapprovePsmVault() external beforeDeadline notInReceivership {
         if(psmVault != ERC4626(address(0))){
             //Zero approve to support USDT. Thank you Tabboz
             psmAsset.safeApprove(address(psmVault), 0);
@@ -777,6 +821,7 @@ contract Lender {
     /// @dev This is used by the Vault to include pending yield in totalAssets() for ERC-4626 compliance
     /// @return pendingVaultInterest The amount of interest that would be minted to the vault
     function getPendingInterest() external view returns (uint256 pendingVaultInterest) {
+        if (inReceivership) return 0;
         uint timeElapsed = block.timestamp - lastAccrue;
         if(timeElapsed == 0) return 0;
 
@@ -813,14 +858,14 @@ contract Lender {
 
     // Setters
 
-    function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline {
+    function setHalfLife(uint64 halfLife) external onlyOperatorOrManager beforeDeadline notInReceivership {
         accrueInterest();
         require(halfLife >= 12 hours && halfLife <= 30 days, "Invalid half life");
         expRate = uint64(uint(wadLn(2*1e18)) / halfLife);
         emit HalfLifeUpdated(halfLife);
     }
 
-    function setTargetFreeDebtRatio(uint16 startBps, uint16 endBps) external onlyOperatorOrManager beforeDeadline {
+    function setTargetFreeDebtRatio(uint16 startBps, uint16 endBps) external onlyOperatorOrManager beforeDeadline notInReceivership {
         accrueInterest();
         require(startBps >= 500 && startBps <= endBps, "Invalid start bps");
         require(endBps >= startBps && endBps <= 9500, "Invalid end bps");
@@ -829,49 +874,49 @@ contract Lender {
         emit TargetFreeDebtRatioUpdated(startBps, endBps);
     }
 
-    function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline {
+    function setRedeemFeeBps(uint16 _redeemFeeBps) external onlyOperatorOrManager beforeDeadline notInReceivership {
         accrueInterest();
         require(_redeemFeeBps <= 1000, "Invalid redeem fee bps");
         redeemFeeBps = uint16(_redeemFeeBps);
         emit RedeemFeeBpsUpdated(_redeemFeeBps);
     }
 
-    function setMaxBorrowDeltaBps(uint16 _maxBorrowDeltaBps) external onlyOperatorOrManager beforeDeadline {
+    function setMaxBorrowDeltaBps(uint16 _maxBorrowDeltaBps) external onlyOperatorOrManager beforeDeadline notInReceivership {
         require(_maxBorrowDeltaBps <= 200 && _maxBorrowDeltaBps >= 50, "Invalid borrow delta bps"); // Max 2%
         maxBorrowDeltaBps = _maxBorrowDeltaBps;
         emit MaxBorrowDeltaBpsUpdated(_maxBorrowDeltaBps);
     }
 
-    function setLocalReserveFeeBps(uint _feeBps) external onlyOperator {
+    function setLocalReserveFeeBps(uint _feeBps) external onlyOperator notInReceivership {
         accrueInterest();
         require(_feeBps <= 1000, "Invalid fee");
         feeBps = uint16(_feeBps);
         emit LocalReserveFeeUpdated(_feeBps);
     }
 
-    function setPendingOperator(address _pendingOperator) external onlyOperator {
+    function setPendingOperator(address _pendingOperator) external onlyOperator notInReceivership {
         pendingOperator = _pendingOperator;
         emit PendingOperatorUpdated(_pendingOperator);
     }
 
-    function acceptOperator() external {
+    function acceptOperator() external notInReceivership {
         require(msg.sender == pendingOperator, "Unauthorized");
         operator = pendingOperator;
         pendingOperator = address(0);
         emit OperatorAccepted(pendingOperator);
     }
 
-    function setManager(address _manager) external onlyOperatorOrManager {
+    function setManager(address _manager) external onlyOperatorOrManager notInReceivership {
         manager = _manager;
         emit ManagerUpdated(_manager);
     }
 
-    function enableImmutabilityNow() external onlyOperator beforeDeadline {
+    function enableImmutabilityNow() external onlyOperator beforeDeadline notInReceivership {
         immutabilityDeadline = block.timestamp;
         emit ImmutabilityEnabled(block.timestamp);
     }
 
-    function pullLocalReserves() external onlyOperator {
+    function pullLocalReserves() external onlyOperator notInReceivership {
         accrueInterest();
         accruePsmProfit();
         coin.mint(msg.sender, accruedLocalReserves);
@@ -879,12 +924,17 @@ contract Lender {
         accruedLocalReserves = 0;
     }
 
-    function pullGlobalReserves(address _to) external {
+    function pullGlobalReserves(address _to) external notInReceivership {
         require(msg.sender == address(factory), "Unauthorized");
         accrueInterest();
         coin.mint(_to, accruedGlobalReserves);
         emit AccruedGlobalReserves(accruedGlobalReserves);
         accruedGlobalReserves = 0;
+    }
+
+    function _enterReceivership(uint totalDebt, uint totalCollateralValue) internal {
+        inReceivership = true;
+        emit ReceivershipEntered(totalDebt, totalCollateralValue, collateral.balanceOf(address(this)));
     }
 
     // Events
@@ -908,4 +958,6 @@ contract Lender {
     event ImmutabilityEnabled(uint256 timestamp);
     event AccruedLocalReserves(uint256 amount);
     event AccruedGlobalReserves(uint256 amount);
+    event ReceivershipEntered(uint256 totalDebt, uint256 totalCollateralValue, uint256 collateralBalance);
+    event ReceivershipExchanged(address indexed account, uint256 coinIn, uint256 collateralOut);
 }

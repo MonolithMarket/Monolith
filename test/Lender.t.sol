@@ -1699,6 +1699,7 @@ contract LenderTest is Test {
     function test_writeOff_success() public {
         // Setup: create a severely underwater position
         uint collateralAmount = 4000e18;
+        uint otherCollateralAmount = 4_000_000e18;
         uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000; // Using 50% of capacity
         
         // Prepare test data
@@ -1710,7 +1711,7 @@ contract LenderTest is Test {
         
         // Setup: mint collateral to both borrowers
         collateral.mint(borrower, collateralAmount);
-        collateral.mint(otherBorrower, collateralAmount);
+        collateral.mint(otherBorrower, otherCollateralAmount);
         
         // Setup: borrower 1 deposits collateral and borrows
         vm.startPrank(borrower);
@@ -1720,8 +1721,8 @@ contract LenderTest is Test {
         
         // Setup: borrower 2 (other borrower) also deposits collateral and borrows
         vm.startPrank(otherBorrower);
-        collateral.approve(address(lender), collateralAmount);
-        lender.adjust(otherBorrower, int256(collateralAmount), int256(borrowAmount));
+        collateral.approve(address(lender), otherCollateralAmount);
+        lender.adjust(otherBorrower, int256(otherCollateralAmount), int256(borrowAmount));
         vm.stopPrank();
         
         // Make the first position severely underwater (price drops by 99.9%)
@@ -1793,6 +1794,100 @@ contract LenderTest is Test {
         // Verify debt and collateral remain unchanged
         assertGt(lender.getDebtOf(borrower), 0, "Borrower's debt should remain after failed write-off");
         assertEq(lender.collateralBalances(borrower), collateralAmount, "Borrower's collateral should remain after failed write-off");
+    }
+
+    function test_writeOff_entersReceivership_whenProtocolIsInsolvent() public {
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000;
+
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+
+        collateral.mint(borrower1, collateralAmount);
+        collateral.mint(borrower2, collateralAmount);
+
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount));
+        coin.approve(address(lender), borrowAmount);
+        vm.stopPrank();
+
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+
+        feed.setPrice(0.2e18);
+
+        vm.prank(liquidator);
+        bool result = lender.writeOff(borrower1, liquidator);
+
+        assertFalse(result, "Write-off should stop and enter receivership");
+        assertTrue(lender.inReceivership(), "Receivership should be active");
+
+        vm.startPrank(borrower2);
+        vm.expectRevert("Receivership active");
+        lender.adjust(borrower2, 0, int256(1000e18));
+        vm.stopPrank();
+
+        vm.startPrank(borrower1);
+        uint collateralBefore = collateral.balanceOf(borrower1);
+        uint lenderCollateralBefore = collateral.balanceOf(address(lender));
+        uint totalSupplyBefore = coin.totalSupply();
+        uint expectedCollateralOut = borrowAmount * lenderCollateralBefore / totalSupplyBefore;
+
+        uint collateralOut = lender.exchangeInReceivership(borrowAmount, expectedCollateralOut);
+
+        assertEq(collateralOut, expectedCollateralOut, "Receivership exchange should be pro-rata");
+        assertEq(collateral.balanceOf(borrower1), collateralBefore + expectedCollateralOut, "Borrower should receive collateral");
+        assertEq(coin.balanceOf(borrower1), 0, "Borrower's Coin should be burned");
+        assertEq(coin.totalSupply(), totalSupplyBefore - borrowAmount, "Coin supply should decrease");
+        assertEq(collateral.balanceOf(address(lender)), lenderCollateralBefore - expectedCollateralOut, "Lender collateral should decrease");
+        vm.stopPrank();
+    }
+
+    function test_accrueInterest_noOpsInReceivership() public {
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000;
+
+        address borrower1 = address(0xBEEF);
+        address borrower2 = address(0xF00D);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+
+        collateral.mint(borrower1, collateralAmount);
+        collateral.mint(borrower2, collateralAmount);
+
+        vm.startPrank(borrower1);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), false);
+        vm.stopPrank();
+
+        vm.startPrank(borrower2);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), false);
+        vm.stopPrank();
+
+        feed.setPrice(0.2e18);
+
+        vm.prank(address(0xCAFE));
+        lender.writeOff(borrower1, address(0xCAFE));
+
+        assertTrue(lender.inReceivership(), "Receivership should be active");
+
+        uint totalPaidDebtBefore = lender.totalPaidDebt();
+        uint lastAccrueBefore = lender.lastAccrue();
+
+        vm.warp(block.timestamp + 7 days);
+        lender.accrueInterest();
+
+        assertEq(lender.totalPaidDebt(), totalPaidDebtBefore, "Receivership should stop interest accrual");
+        assertEq(lender.lastAccrue(), block.timestamp, "lastAccrue should advance to current time");
+        assertGt(lender.lastAccrue(), lastAccrueBefore, "lastAccrue should move forward");
     }
 
     function test_redeem_basic() public {
