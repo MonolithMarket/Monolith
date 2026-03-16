@@ -1846,38 +1846,12 @@ contract LenderTest is Test {
         vm.prank(paidBorrower);
         lender.writeOff(freeBorrower, paidBorrower);
 
-        uint256 coinBefore = coin.balanceOf(paidBorrower) + coin.balanceOf(freeBorrower);
-
         address emptyBorrower = freeBorrower;
-        address loadedBorrower = paidBorrower;
 
-        for (uint256 i; i < 20; i++) {
-            vm.startPrank(emptyBorrower);
-            lender.adjust(emptyBorrower, 8_100e18, 1_000e18);
-            vm.stopPrank();
-
-            vm.prank(emptyBorrower);
-            (bool success,) = address(lender).call(
-                abi.encodeWithSelector(Lender.writeOff.selector, loadedBorrower, emptyBorrower)
-            );
-
-            if (!success || lender.getDebtOf(loadedBorrower) != 0) break;
-
-            (emptyBorrower, loadedBorrower) = (loadedBorrower, emptyBorrower);
-        }
-
-        // Try to finish the exploit by clearing the remaining loaded borrower as well.
-        vm.prank(loadedBorrower);
-        (bool finalSuccess,) = address(lender).call(
-            abi.encodeWithSelector(Lender.writeOff.selector, loadedBorrower, loadedBorrower)
-        );
-        finalSuccess;
-
-        uint256 coinAfter = coin.balanceOf(paidBorrower) + coin.balanceOf(freeBorrower);
-        uint256 attackerDebtAfter = lender.getDebtOf(paidBorrower) + lender.getDebtOf(freeBorrower);
-
-        // Any additional coin minted during the attempted exploit must remain backed by attacker debt.
-        assertGe(attackerDebtAfter, coinAfter - coinBefore, "attackers minted unbacked coin");
+        vm.startPrank(emptyBorrower);
+        vm.expectRevert("Reduce only");
+        lender.adjust(emptyBorrower, 8_100e18, 1_000e18);
+        vm.stopPrank();
     }
 
     function test_redeem_basic() public {
