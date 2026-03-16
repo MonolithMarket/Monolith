@@ -678,6 +678,9 @@ contract Lender {
             }
         }
         price = price == 0 ? 1 : price; // avoid division by zero in consumer functions
+        uint totalDebt = totalFreeDebt + totalPaidDebt;
+        uint totalCollateralValue = collateral.balanceOf(address(this)) * price / 1e18;
+        if(totalDebt > totalCollateralValue) reduceOnly = true;
     }
 
     function getFeedPrice() external view returns (uint price, uint updatedAt) {
