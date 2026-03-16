@@ -1795,6 +1795,91 @@ contract LenderTest is Test {
         assertEq(lender.collateralBalances(borrower), collateralAmount, "Borrower's collateral should remain after failed write-off");
     }
 
+    function test_writeOff_singleBadDebtBorrowerCannotMintUnbackedTokens() public {
+        address badDebtBorrower = address(1);
+        address paidBorrower = address(2);
+        address freeBorrower = address(3);
+
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+
+        // Create a large position that will still have substantial debt after collateral is fully liquidated.
+        vm.startPrank(badDebtBorrower);
+        collateral.mint(badDebtBorrower, 2_000_000e18);
+        collateral.approve(address(lender), type(uint256).max);
+        lender.adjust(badDebtBorrower, 2_000_000e18, 1_000_000e18);
+        vm.stopPrank();
+
+        // Seed one paid borrower and one free borrower so write-off socializes debt across both buckets.
+        collateral.mint(paidBorrower, 1e25);
+        collateral.mint(freeBorrower, 1e25);
+        coin.mint(paidBorrower, 1e25);
+
+        vm.startPrank(paidBorrower);
+        collateral.approve(address(lender), type(uint256).max);
+        coin.approve(address(lender), type(uint256).max);
+        lender.adjust(paidBorrower, 8_000e18, 1_000e18);
+        vm.stopPrank();
+
+        vm.startPrank(freeBorrower);
+        collateral.approve(address(lender), type(uint256).max);
+        lender.setRedemptionStatus(freeBorrower, true);
+        lender.adjust(freeBorrower, 8_000e18, 1_000e18);
+        vm.stopPrank();
+
+        // Drive the large position into bad debt, then liquidate until collateral is exhausted.
+        feed.setPrice(0.25e18);
+
+        vm.startPrank(paidBorrower);
+        lender.liquidate(badDebtBorrower, 250_000e18, 0);
+        lender.liquidate(badDebtBorrower, 250_000e18, 0);
+        lender.liquidate(badDebtBorrower, 250_000e18, 0);
+        vm.stopPrank();
+
+        assertEq(lender.collateralBalances(badDebtBorrower), 0, "bad debt borrower should have no collateral left");
+        assertGt(lender.getDebtOf(paidBorrower), 200_000e18, "paid borrower should inherit enough debt to be write-off eligible");
+        assertGt(lender.getDebtOf(freeBorrower), 200_000e18, "free borrower should inherit enough debt to be write-off eligible");
+
+        // First clear one of the two inheriting borrowers so the attack can bounce the debt
+        // between a loaded account and a freshly opened account.
+        vm.prank(paidBorrower);
+        lender.writeOff(freeBorrower, paidBorrower);
+
+        uint256 coinBefore = coin.balanceOf(paidBorrower) + coin.balanceOf(freeBorrower);
+
+        address emptyBorrower = freeBorrower;
+        address loadedBorrower = paidBorrower;
+
+        for (uint256 i; i < 20; i++) {
+            vm.startPrank(emptyBorrower);
+            lender.adjust(emptyBorrower, 8_100e18, 1_000e18);
+            vm.stopPrank();
+
+            vm.prank(emptyBorrower);
+            (bool success,) = address(lender).call(
+                abi.encodeWithSelector(Lender.writeOff.selector, loadedBorrower, emptyBorrower)
+            );
+
+            if (!success || lender.getDebtOf(loadedBorrower) != 0) break;
+
+            (emptyBorrower, loadedBorrower) = (loadedBorrower, emptyBorrower);
+        }
+
+        // Try to finish the exploit by clearing the remaining loaded borrower as well.
+        vm.prank(loadedBorrower);
+        (bool finalSuccess,) = address(lender).call(
+            abi.encodeWithSelector(Lender.writeOff.selector, loadedBorrower, loadedBorrower)
+        );
+        finalSuccess;
+
+        uint256 coinAfter = coin.balanceOf(paidBorrower) + coin.balanceOf(freeBorrower);
+        uint256 attackerDebtAfter = lender.getDebtOf(paidBorrower) + lender.getDebtOf(freeBorrower);
+
+        // Any additional coin minted during the attempted exploit must remain backed by attacker debt.
+        assertGe(attackerDebtAfter, coinAfter - coinBefore, "attackers minted unbacked coin");
+    }
+
     function test_redeem_basic() public {
         uint collateralAmount = 5000e18;
         uint borrowAmount = 2000e18;
