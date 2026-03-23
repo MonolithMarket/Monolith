@@ -1561,6 +1561,9 @@ contract LenderTest is Test {
         // Get position info before liquidation
         uint preDebt = lender.getDebtOf(borrower);
         uint preCollateral = lender.collateralBalances(borrower);
+        uint preCoinBalance = coin.balanceOf(liquidator);
+        uint liqIncentiveBps = 1000; // Max 10% incentive for a severely underwater position
+        uint maxRepayByCollateral = preCollateral * (0.5e18 - 1) / 1e18 * 10000 / (10000 + liqIncentiveBps);
         
         // Liquidate using max amount (type(uint256).max)
         vm.startPrank(liquidator);
@@ -1572,6 +1575,9 @@ contract LenderTest is Test {
         assertGt(collateralReceived, 0, "Liquidator should receive collateral");
         assertLt(lender.getDebtOf(borrower), preDebt, "Borrower debt should decrease");
         assertLt(lender.collateralBalances(borrower), preCollateral, "Borrower collateral should decrease");
+        assertEq(preCoinBalance - coin.balanceOf(liquidator), maxRepayByCollateral, "Liquidator should not pay more coin than collateral can justify");
+        assertEq(collateralReceived, preCollateral, "Collateral-limited liquidation should receive all remaining collateral");
+        assertEq(lender.collateralBalances(borrower), 0, "Collateral-limited liquidation should not leave dust collateral");
     }
     
     function test_liquidation_revertIfNotLiquidatable() public {
@@ -1888,8 +1894,8 @@ contract LenderTest is Test {
 
     function test_redeem_withMultipleBorrowers() public {
         uint collateralAmount = 5000e18;
-        uint borrowAmount = 1000e18;
-        uint redeemAmount = 900e18;
+        uint borrowAmount = 2000e18;
+        uint redeemAmount = 1000e18;
 
         address borrower1 = address(0xBEEF);
         address borrower2 = address(0xF00D);
@@ -1992,6 +1998,60 @@ contract LenderTest is Test {
 
         assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Collateral out should match expected amount with fee");
         assertEq(lender.collateralBalances(borrower), collateralAmount - expectedCollateralOut, "Borrower collateral should decrease");
+    }
+
+    function test_redeem_belowMinDebtReverts() public {
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1500e18;
+        uint redeemAmount = 600e18;
+
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        vm.expectRevert("Debt below minimum and larger than 0");
+        lender.redeem(borrower, redeemAmount, 0);
+        vm.stopPrank();
+    }
+
+    function test_redeem_toZeroStillAllowedBelowMinDebtBoundary() public {
+        uint collateralAmount = 5000e18;
+        uint borrowAmount = 1500e18;
+        uint redeemAmount = borrowAmount;
+
+        address borrower = address(0xBEEF);
+        address redeemer = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+
+        uint expectedCollateralOut = redeemAmount * (10000 - lender.redeemFeeBps()) / 10000;
+
+        vm.startPrank(redeemer);
+        coin.approve(address(lender), redeemAmount);
+        uint collateralOut = lender.redeem(borrower, redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+
+        assertEq(collateralOut, expectedCollateralOut, "Collateral out should match expected amount");
+        assertEq(lender.getDebtOf(borrower), 0, "Borrower debt should be fully repaid");
     }
 
     function test_redeem_withInsufficientAmountOutReverts() public {

@@ -167,6 +167,21 @@ contract VaultTest is Test {
         vault.mint(amount, user);
     }
 
+    function test_mintZeroSharesDoesNotBootstrapVault() public {
+        vm.startPrank(user);
+        underlying.approve(address(vault), type(uint256).max);
+
+        uint256 actualAssets = vault.mint(0, user);
+
+        assertEq(actualAssets, 0, "Minting zero shares should use zero assets");
+        assertEq(vault.totalSupply(), 0, "Zero-share mint should not bootstrap supply");
+        assertEq(vault.balanceOf(user), 0, "User should not receive shares");
+        assertEq(vault.balanceOf(address(0)), 0, "Zero address should not receive MIN_SHARES");
+        assertEq(underlying.balanceOf(address(vault)), 0, "Vault should not receive underlying");
+
+        vm.stopPrank();
+    }
+
     function test_withdraw() public {
         uint256 depositAmount = 100e18;
         uint256 withdrawAmount = 40e18;

@@ -342,14 +342,19 @@ contract Lender {
             repayAmount = liquidatableDebt;
         }
 
+        uint liqIncentiveBps = getLiquidationIncentiveBps(collateralBalance, price, debt);
+        uint maxRepayByCollateral = getMaxRepayByCollateral(collateralBalance, price, liqIncentiveBps);
+        if(repayAmount > maxRepayByCollateral) {
+            repayAmount = maxRepayByCollateral;
+        }
+        require(repayAmount > 0, "insufficient collateral out");
+
         // apply repayment
         decreaseDebt(borrower, repayAmount);
 
         // calculate collateral reward (in collateral token decimals)
-        uint liqIncentiveBps = getLiquidationIncentiveBps(collateralBalance, price, debt);
         uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
-        uint collateralReward = collateralRewardValue * 1e18 / price;
-        collateralReward = collateralReward > collateralBalance ? collateralBalance : collateralReward;
+        uint collateralReward = repayAmount == maxRepayByCollateral ? collateralBalance : collateralRewardValue * 1e18 / price;
         
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
@@ -437,8 +442,10 @@ contract Lender {
 
         // Repay borrower debt and derive the exact debt amount reduced by shares arithmetic.
         decreaseDebt(borrower, amountIn);
-        amountIn = borrowerDebt - getDebtOf(borrower);
+        uint remainingDebt = getDebtOf(borrower);
+        amountIn = borrowerDebt - remainingDebt;
         require(amountIn > 0, "amount in too small");
+        require(remainingDebt == 0 || remainingDebt >= minDebt, "Debt below minimum and larger than 0");
 
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
         require(amountOut > 0, "amount out is zero");
@@ -610,6 +617,11 @@ contract Lender {
         liquidatableDebt = debt / 4; // 25% of the debt
         // liquidate at least MIN_LIQUIDATION_DEBT (or the entire debt if it's less than MIN_LIQUIDATION_DEBT)
         if(liquidatableDebt < MIN_LIQUIDATION_DEBT) liquidatableDebt = debt < MIN_LIQUIDATION_DEBT ? debt : MIN_LIQUIDATION_DEBT;
+    }
+
+    function getMaxRepayByCollateral(uint collateralBalance, uint price, uint liqIncentiveBps) internal pure returns(uint) {
+        uint collateralValue = collateralBalance * price / 1e18;
+        return collateralValue * 10000 / (10000 + liqIncentiveBps);
     }
 
     function getLiquidationIncentiveBps(uint collateralBalance, uint price, uint debt) internal view returns(uint) {

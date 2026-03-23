@@ -72,6 +72,7 @@ contract Vault is ERC4626 {
     /// @param receiver Address to receive the shares
     /// @return assets Amount of assets deposited
     function mint(uint256 shares, address receiver) public accrueInterest override returns (uint256 assets) {
+        if (shares == 0) return 0;
         // Get the amount of assets required including amount to burn MIN_SHARES if first deposit
         assets = previewMint(shares); 
         // Need to transfer before minting or ERC777s could reenter.
