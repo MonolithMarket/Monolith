@@ -437,8 +437,10 @@ contract Lender {
 
         // Repay borrower debt and derive the exact debt amount reduced by shares arithmetic.
         decreaseDebt(borrower, amountIn);
-        amountIn = borrowerDebt - getDebtOf(borrower);
+        uint remainingDebt = getDebtOf(borrower);
+        amountIn = borrowerDebt - remainingDebt;
         require(amountIn > 0, "amount in too small");
+        require(remainingDebt == 0 || remainingDebt >= minDebt, "Debt below minimum and larger than 0");
 
         amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
         require(amountOut > 0, "amount out is zero");
