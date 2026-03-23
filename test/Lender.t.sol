@@ -1561,6 +1561,9 @@ contract LenderTest is Test {
         // Get position info before liquidation
         uint preDebt = lender.getDebtOf(borrower);
         uint preCollateral = lender.collateralBalances(borrower);
+        uint preCoinBalance = coin.balanceOf(liquidator);
+        uint liqIncentiveBps = 1000; // Max 10% incentive for a severely underwater position
+        uint maxRepayByCollateral = preCollateral * (0.5e18 - 1) / 1e18 * 10000 / (10000 + liqIncentiveBps);
         
         // Liquidate using max amount (type(uint256).max)
         vm.startPrank(liquidator);
@@ -1572,6 +1575,9 @@ contract LenderTest is Test {
         assertGt(collateralReceived, 0, "Liquidator should receive collateral");
         assertLt(lender.getDebtOf(borrower), preDebt, "Borrower debt should decrease");
         assertLt(lender.collateralBalances(borrower), preCollateral, "Borrower collateral should decrease");
+        assertEq(preCoinBalance - coin.balanceOf(liquidator), maxRepayByCollateral, "Liquidator should not pay more coin than collateral can justify");
+        assertEq(collateralReceived, preCollateral, "Collateral-limited liquidation should receive all remaining collateral");
+        assertEq(lender.collateralBalances(borrower), 0, "Collateral-limited liquidation should not leave dust collateral");
     }
     
     function test_liquidation_revertIfNotLiquidatable() public {
