@@ -873,7 +873,7 @@ contract Lender {
         require(msg.sender == pendingOperator, "Unauthorized");
         operator = pendingOperator;
         pendingOperator = address(0);
-        emit OperatorAccepted(pendingOperator);
+        emit OperatorAccepted(operator);
     }
 
     function setManager(address _manager) external onlyOperatorOrManager {
