@@ -151,10 +151,10 @@ contract Vault is ERC4626 {
     ///      Returning 0 at bootstrap prevents misleading pre-flight checks for small first deposits.
     function maxDeposit(address) public view override returns (uint256) {
         uint256 supply = totalSupply;
-        if (supply == 0) return 0;
+        if (supply == 0) return type(uint).max;
 
         uint256 assetsManaged = totalAssets();
-        if (assetsManaged == 0) return 0;
+        if (assetsManaged == 0) return type(uint).max;
 
         // Bound by overflow in convertToShares: assets * supply.
         return type(uint256).max / supply;
@@ -184,12 +184,10 @@ contract Vault is ERC4626 {
         if (assetsManaged == 0) return 0;
 
         uint256 ownerAssets = balanceOf[owner].mulDivDown(assetsManaged, supply);
-        uint256 liquidAssets = asset.balanceOf(address(this));
-        return ownerAssets < liquidAssets ? ownerAssets : liquidAssets;
+        return ownerAssets;
     }
 
     /// @notice Returns the maximum shares that `owner` can redeem right now
-    /// @dev Caps to shares backed by liquid assets currently held by the vault.
     function maxRedeem(address owner) public view override returns (uint256) {
         uint256 supply = totalSupply;
         if (supply == 0) return 0;
@@ -198,7 +196,6 @@ contract Vault is ERC4626 {
         if (assetsManaged == 0) return 0;
 
         uint256 ownerShares = balanceOf[owner];
-        uint256 liquidShares = asset.balanceOf(address(this)).mulDivDown(supply, assetsManaged);
-        return ownerShares < liquidShares ? ownerShares : liquidShares;
+        return ownerShares;
     }
 }
