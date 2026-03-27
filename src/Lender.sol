@@ -479,6 +479,7 @@ contract Lender {
             uint256 actualAssetOutToSeller = psmVault.redeem(sharesOut, msg.sender, address(this));
             freePsmAssets -= assetOut;
             require(actualAssetOutToSeller >= minAssetOut, "redeem failed");
+            assetOut = actualAssetOutToSeller;
         } else {
             freePsmAssets -= assetOut;
             psmAsset.safeTransfer(msg.sender, assetOut);
