@@ -490,10 +490,6 @@ contract Lender {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         accrueInterest();
         uint coinFee;
-        (coinOut, coinFee) = getBuyAmountOut(assetIn);
-        require(coinOut >= minCoinOut, "insufficient amount out");
-
-        if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
 
         // get assets from caller
         psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
@@ -501,10 +497,15 @@ contract Lender {
             require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
             uint256 shares = psmVault.deposit(assetIn, address(this));
             require(shares > 0, "PSM deposit failed");
-            freePsmAssets += previewRedeemOrConvertToAssets(shares);
+            uint256 redeemableFor = previewRedeemOrConvertToAssets(shares);
+            freePsmAssets += redeemableFor;
+            (coinOut, coinFee) = getBuyAmountOut(redeemableFor);
         } else {
             freePsmAssets += assetIn;
+            (coinOut, coinFee) = getBuyAmountOut(assetIn);
         }
+        if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
+        require(coinOut >= minCoinOut, "insufficient amount out");
         // give coins to caller
         coin.mint(msg.sender, coinOut);
         emit Bought(msg.sender, assetIn, coinOut);
