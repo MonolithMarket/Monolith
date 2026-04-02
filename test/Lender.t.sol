@@ -1911,7 +1911,7 @@ contract LenderTest is Test {
         decimalLender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
         vm.stopPrank();
 
-        assertEq(decimalLender._cachedCollateralBalances(borrower), 5_000e18, "Internal collateral should normalize to 18 decimals");
+        assertEq(decimalLender.internalCollateralBalances(borrower), 5_000e18, "Internal collateral should normalize to 18 decimals");
         assertEq(decimalLender.collateralBalances(borrower), collateralAmount, "External collateral getter should stay in token decimals");
         (uint price, bool reduceOnly, bool allowLiquidations) = decimalLender.getCollateralPrice();
         assertEq(price, 1e18, "Price should normalize against internal 18-decimal collateral");
@@ -3445,8 +3445,6 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
         // Setup: create a borrower with debt
         address borrower = address(0xBEEF);
         ERC20 collateral = lender.collateral();
-        Coin coin = lender.coin();
-        
         uint collateralAmount = 10000e18;
         uint borrowAmount = 2000e18;
         

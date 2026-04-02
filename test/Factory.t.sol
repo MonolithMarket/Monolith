@@ -452,7 +452,7 @@ contract FactoryTest is Test {
             maxBorrowDeltaBps: 50,
             minTotalSupply: 1
         });
-        (address lender, address coin, address vault) = factory.deploy(params);
+        (address lender,,) = factory.deploy(params);
 
         // Verify manager is correctly stored in Lender
         Lender lenderContract = Lender(lender);

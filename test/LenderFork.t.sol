@@ -101,7 +101,7 @@ contract LenderForkTest is Test {
     Coin coin;
     function setUp() public {
         string memory url = vm.rpcUrl("mainnet");
-        uint mainnetFork = vm.createSelectFork(url);
+        vm.createSelectFork(url);
         lens = new Lens();
         // Get the existing Lender contract address
         address lenderAddress = 0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A;

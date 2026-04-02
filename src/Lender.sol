@@ -84,7 +84,7 @@ contract Lender {
     uint256 private constant WRITEOFF_GAS_REQUIREMENT = 120_000;
 
     // Mappings
-    mapping(address => uint) public _cachedCollateralBalances; // stored in internal 18 decimals
+    mapping(address => uint) public internalCollateralBalances; // stored in internal 18 decimals
     mapping(address => uint) public freeDebtShares;
     mapping(address => uint) public paidDebtShares;
     mapping(address => bool) public isRedeemable;
@@ -239,7 +239,7 @@ contract Lender {
         if (collateralDelta > 0) {
             uint256 collateralAmount = uint(collateralDelta);
             uint256 internalAmount = collateralToInternal(collateralAmount);
-            _cachedCollateralBalances[account] += internalAmount;
+            internalCollateralBalances[account] += internalAmount;
             if (collateralDecimals > 18) collateralAmount = internalToCollateral(internalAmount);
             // Transfer actual token amount
             collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
@@ -247,7 +247,7 @@ contract Lender {
             uint256 collateralAmount = uint(-collateralDelta);
             uint256 internalAmount = collateralToInternal(collateralAmount);
             collateralAmount = internalToCollateral(internalAmount);
-            _cachedCollateralBalances[account] -= internalAmount;
+            internalCollateralBalances[account] -= internalAmount;
             collateral.safeTransfer(msg.sender, collateralAmount);
         }
 
@@ -292,7 +292,7 @@ contract Lender {
         // Check solvency
         (uint price, bool reduceOnly, ) = getCollateralPrice();
         require(!reduceOnly, "Reduce only");
-        uint borrowingPower = price * _cachedCollateralBalances[account] * collateralFactor / 1e18 / 10000;
+        uint borrowingPower = price * internalCollateralBalances[account] * collateralFactor / 1e18 / 10000;
         require(debtBalance <= borrowingPower, "Solvency check failed");
     }
 
@@ -338,7 +338,7 @@ contract Lender {
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
         uint debt = getDebtOf(borrower);
-        uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
+        uint collateralBalance = internalCollateralBalances[borrower]; // in internal 18 decimals
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
         require(liquidatableDebt > 0, "insufficient liquidatable debt");
@@ -368,7 +368,7 @@ contract Lender {
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
         if(internalCollateralReward > 0) {
-            _cachedCollateralBalances[borrower] = collateralBalance - internalCollateralReward;
+            internalCollateralBalances[borrower] = collateralBalance - internalCollateralReward;
             collateral.safeTransfer(msg.sender, collateralReward);
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
@@ -395,7 +395,7 @@ contract Lender {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
-            uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
+            uint collateralBalance = internalCollateralBalances[borrower]; // in internal 18 decimals
             (uint price,, bool allowLiquidations) = getCollateralPrice();
             require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
@@ -413,7 +413,7 @@ contract Lender {
                     totalPaidDebt += paidDebtIncrease;
                 }
 
-                _cachedCollateralBalances[borrower] = 0;
+                internalCollateralBalances[borrower] = 0;
                 uint collateralAmount = internalToCollateral(collateralBalance);
                 
                 emit WrittenOff(borrower, to, debt, collateralAmount);
@@ -436,7 +436,7 @@ contract Lender {
         require(isRedeemable[borrower], "Borrower is not redeemable");
         require(amountIn > 0, "amount in is zero");
 
-        uint collateralBalance = _cachedCollateralBalances[borrower];
+        uint collateralBalance = internalCollateralBalances[borrower];
         require(collateralBalance > 0, "Borrower has no collateral");
 
         (uint price,, bool allowLiquidations) = getCollateralPrice();
@@ -465,7 +465,7 @@ contract Lender {
         require(amountOut >= minAmountOut, "insufficient amount out");
 
         // Seize collateral directly from borrower.
-        _cachedCollateralBalances[borrower] = collateralBalance - internalAmountOut;
+        internalCollateralBalances[borrower] = collateralBalance - internalAmountOut;
 
         coin.transferFrom(msg.sender, address(this), amountIn);
         coin.burn(amountIn);
@@ -682,7 +682,7 @@ contract Lender {
     }
 
     function collateralBalances(address account) public view returns (uint) {
-        return internalToCollateral(_cachedCollateralBalances[account]);
+        return internalToCollateral(internalCollateralBalances[account]);
     }
 
     /// @notice Gets the current price of the collateral asset

@@ -19,7 +19,7 @@ contract Lens {
     {
         if (amountIn == 0 || !_lender.isRedeemable(borrower)) return (0, 0);
 
-        uint256 internalCollateralBalance = _lender._cachedCollateralBalances(borrower);
+        uint256 internalCollateralBalance = _lender.internalCollateralBalances(borrower);
         if (internalCollateralBalance == 0) return (0, 0);
 
         (uint256 price,, bool allowLiquidations) = _lender.getCollateralPrice();
