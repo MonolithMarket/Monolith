@@ -19,17 +19,25 @@ contract ERC20Mock is ERC20 {
 contract LenderMock is ILender {
     ERC20 public override coin;
     uint256 public pendingInterest;
+    address public vault;
 
     constructor(address _coin) {
         coin = ERC20(_coin);
     }
 
     function accrueInterest() external override {
-        // Do nothing in the mock
+        if (pendingInterest == 0) return;
+
+        ERC20Mock(address(coin)).mint(vault, pendingInterest);
+        pendingInterest = 0;
     }
 
     function getPendingInterest() external view override returns (uint256 pendingVaultInterest) {
         return pendingInterest;
+    }
+
+    function setVault(address _vault) external {
+        vault = _vault;
     }
 
     function setPendingInterest(uint256 _pendingInterest) external {
@@ -60,6 +68,8 @@ contract VaultTest is Test {
             "USDC",
             address(lender)
         );
+
+        lender.setVault(address(vault));
     }
 
     function test_constructor() public view {
@@ -322,15 +332,15 @@ contract VaultTest is Test {
         assertEq(previewedAssets, actualAssets, "previewMint should match actual for subsequent mints");
     }
 
-    function test_maxDepositFirstDepositIsZero() public view {
-        assertEq(vault.maxDeposit(user), 0, "maxDeposit should be 0 at bootstrap");
+    function test_maxDepositFirstDepositIsUnlimited() public view {
+        assertEq(vault.maxDeposit(user), type(uint256).max, "maxDeposit should be unlimited at bootstrap");
     }
 
     function test_maxMintFirstDepositAccountsForMinShares() public view {
         assertEq(vault.maxMint(user), type(uint256).max - MIN_SHARES, "maxMint should reserve room for MIN_SHARES");
     }
 
-    function test_maxWithdrawAndMaxRedeemCapToLiquidAssets() public {
+    function test_maxWithdrawAndMaxRedeemIncludeAccruedInterest() public {
         uint256 depositAmount = 100e18;
         underlying.mint(user, depositAmount);
 
@@ -341,11 +351,10 @@ contract VaultTest is Test {
 
         lender.setPendingInterest(50e18);
 
-        uint256 liquidAssets = underlying.balanceOf(address(vault));
-        assertEq(vault.maxWithdraw(user), liquidAssets, "maxWithdraw should be capped by liquid assets");
+        uint256 expectedAssets = vault.convertToAssets(vault.balanceOf(user));
+        assertEq(vault.maxWithdraw(user), expectedAssets, "maxWithdraw should include accrued interest");
 
-        uint256 expectedMaxRedeem = vault.convertToShares(liquidAssets);
-        assertEq(vault.maxRedeem(user), expectedMaxRedeem, "maxRedeem should be capped by liquid-backed shares");
+        assertEq(vault.maxRedeem(user), vault.balanceOf(user), "maxRedeem should include accrued interest");
     }
 
 }
