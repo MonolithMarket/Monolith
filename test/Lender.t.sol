@@ -1892,6 +1892,45 @@ contract LenderTest is Test {
         assertEq(lender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower debt should decrease");
     }
 
+    function test_redeem_basic_with6DecimalCollateral() public {
+        Lender decimalLender = createLenderWithCollateralDecimals(6);
+        uint collateralAmount = 5_000e6;
+        uint borrowAmount = 2_000e18;
+        uint redeemAmount = 1_000e18;
+
+        address borrower = address(0xBEE6);
+        address redeemer = address(0xCAF6);
+        ERC20MockWithDecimals collateral = ERC20MockWithDecimals(address(decimalLender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(decimalLender.coin()));
+
+        collateral.mint(borrower, collateralAmount);
+        coin.mint(redeemer, redeemAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(decimalLender), collateralAmount);
+        decimalLender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+
+        assertEq(decimalLender._cachedCollateralBalances(borrower), 5_000e18, "Internal collateral should normalize to 18 decimals");
+        assertEq(decimalLender.collateralBalances(borrower), collateralAmount, "External collateral getter should stay in token decimals");
+        (uint price, bool reduceOnly, bool allowLiquidations) = decimalLender.getCollateralPrice();
+        assertEq(price, 1e18, "Price should normalize against internal 18-decimal collateral");
+        assertFalse(reduceOnly, "Healthy position should not be reduce-only");
+        assertTrue(allowLiquidations, "Liquidations should be enabled with a valid price");
+
+        uint expectedCollateralOut = redeemAmount * (10000 - decimalLender.redeemFeeBps()) / 10000 / 1e12;
+
+        vm.startPrank(redeemer);
+        coin.approve(address(decimalLender), redeemAmount);
+        uint collateralOut = decimalLender.redeem(borrower, redeemAmount, expectedCollateralOut);
+        vm.stopPrank();
+
+        assertEq(collateralOut, expectedCollateralOut, "Collateral out should be returned in token decimals");
+        assertEq(collateral.balanceOf(redeemer), expectedCollateralOut, "Redeemer should receive the expected collateral amount");
+        assertEq(decimalLender.collateralBalances(borrower), collateralAmount - collateralOut, "Borrower collateral should decrease in token decimals");
+        assertEq(decimalLender.getDebtOf(borrower), borrowAmount - redeemAmount, "Borrower debt should decrease");
+    }
+
     function test_redeem_withMultipleBorrowers() public {
         uint collateralAmount = 5000e18;
         uint borrowAmount = 2000e18;
@@ -2953,6 +2992,33 @@ contract LenderTest is Test {
             targetFreeDebtRatioEndBps: 4000,
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
+            maxBorrowDeltaBps: 50,
+            minTotalSupply: 1
+        }));
+    }
+
+    function createLenderWithCollateralDecimals(uint8 decimals) internal returns (Lender) {
+        ERC20MockWithDecimals collateral = new ERC20MockWithDecimals("Collateral", "COLL", decimals);
+
+        return new Lender(Lender.LenderParams({
+            collateral: ERC20(address(collateral)),
+            psmAsset: ERC20(address(0)),
+            psmVault: ERC4626(address(0)),
+            feed: IChainlinkFeed(address(new FeedMock())),
+            coin: Coin(address(new ERC20Mock("Coin", "COIN"))),
+            vault: Vault(address(new VaultMock())),
+            interestModel: InterestModel(address(new InterestModelMock())),
+            factory: IFactory(address(new FactoryMock())),
+            operator: operatorAddr,
+            manager: address(0),
+            collateralFactor: 5000,
+            minDebt: 1000e18,
+            timeUntilImmutability: 365 days,
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
             minTotalSupply: 1
         }));

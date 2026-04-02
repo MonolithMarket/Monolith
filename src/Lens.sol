@@ -19,8 +19,8 @@ contract Lens {
     {
         if (amountIn == 0 || !_lender.isRedeemable(borrower)) return (0, 0);
 
-        uint256 collateralBalance = _lender.collateralBalances(borrower);
-        if (collateralBalance == 0) return (0, 0);
+        uint256 internalCollateralBalance = _lender._cachedCollateralBalances(borrower);
+        if (internalCollateralBalance == 0) return (0, 0);
 
         (uint256 price,, bool allowLiquidations) = _lender.getCollateralPrice();
         if (!allowLiquidations) return (0, 0);
@@ -30,12 +30,14 @@ contract Lens {
 
         coinIn = amountIn > borrowerDebt ? borrowerDebt : amountIn;
         uint256 redeemFeeBps = _lender.redeemFeeBps();
-        uint256 maxRedeemByCollateral = collateralBalance * price * 10000 / 1e18 / (10000 - redeemFeeBps);
+        uint256 maxRedeemByCollateral = internalCollateralBalance * price * 10000 / 1e18 / (10000 - redeemFeeBps);
         if (maxRedeemByCollateral == 0) return (0, 0);
         if (coinIn > maxRedeemByCollateral) coinIn = maxRedeemByCollateral;
 
-        amountOut = coinIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
-        if (amountOut == 0 || amountOut > collateralBalance) return (0, 0);
+        uint256 internalAmountOut = coinIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+        if (internalAmountOut == 0 || internalAmountOut > internalCollateralBalance) return (0, 0);
+        amountOut = _lender.internalToCollateral(internalAmountOut);
+        if (amountOut == 0) return (0, 0);
     }
 
     /// @notice Returns the current debt of a borrower including accrued interest

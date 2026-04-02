@@ -84,7 +84,7 @@ contract Lender {
     uint256 private constant WRITEOFF_GAS_REQUIREMENT = 120_000;
 
     // Mappings
-    mapping(address => uint) public collateralBalances; // stored in collateral token native decimals
+    mapping(address => uint) public _cachedCollateralBalances; // stored in internal 18 decimals
     mapping(address => uint) public freeDebtShares;
     mapping(address => uint) public paidDebtShares;
     mapping(address => bool) public isRedeemable;
@@ -238,12 +238,16 @@ contract Lender {
         // Handle collateral changes
         if (collateralDelta > 0) {
             uint256 collateralAmount = uint(collateralDelta);
-            collateralBalances[account] += collateralAmount;
+            uint256 internalAmount = collateralToInternal(collateralAmount);
+            _cachedCollateralBalances[account] += internalAmount;
+            if (collateralDecimals > 18) collateralAmount = internalToCollateral(internalAmount);
             // Transfer actual token amount
             collateral.safeTransferFrom(msg.sender, address(this), collateralAmount);
         } else if (collateralDelta < 0) {
             uint256 collateralAmount = uint(-collateralDelta);
-            collateralBalances[account] -= collateralAmount;
+            uint256 internalAmount = collateralToInternal(collateralAmount);
+            collateralAmount = internalToCollateral(internalAmount);
+            _cachedCollateralBalances[account] -= internalAmount;
             collateral.safeTransfer(msg.sender, collateralAmount);
         }
 
@@ -288,7 +292,7 @@ contract Lender {
         // Check solvency
         (uint price, bool reduceOnly, ) = getCollateralPrice();
         require(!reduceOnly, "Reduce only");
-        uint borrowingPower = price * collateralBalances[account] * collateralFactor / 1e18 / 10000;
+        uint borrowingPower = price * _cachedCollateralBalances[account] * collateralFactor / 1e18 / 10000;
         require(debtBalance <= borrowingPower, "Solvency check failed");
     }
 
@@ -334,7 +338,7 @@ contract Lender {
         (uint price,, bool allowLiquidations) = getCollateralPrice();
         require(allowLiquidations, "liquidations disabled");
         uint debt = getDebtOf(borrower);
-        uint collateralBalance = collateralBalances[borrower]; // in collateral token decimals
+        uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
         // check liquidation condition
         uint liquidatableDebt = getLiquidatableDebt(collateralBalance, price, debt);
         require(liquidatableDebt > 0, "insufficient liquidatable debt");
@@ -352,14 +356,19 @@ contract Lender {
         // apply repayment
         decreaseDebt(borrower, repayAmount);
 
-        // calculate collateral reward (in collateral token decimals)
-        uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
-        uint collateralReward = repayAmount == maxRepayByCollateral ? collateralBalance : collateralRewardValue * 1e18 / price;
+        uint internalCollateralReward = getInternalLiquidationReward(
+            collateralBalance,
+            price,
+            repayAmount,
+            liqIncentiveBps,
+            maxRepayByCollateral
+        );
+        uint collateralReward = internalToCollateral(internalCollateralReward);
         
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
-        if(collateralReward > 0) {
-            collateralBalances[borrower] = collateralBalance - collateralReward;
+        if(internalCollateralReward > 0) {
+            _cachedCollateralBalances[borrower] = collateralBalance - internalCollateralReward;
             collateral.safeTransfer(msg.sender, collateralReward);
         }
         coin.transferFrom(msg.sender, address(this), repayAmount);
@@ -386,7 +395,7 @@ contract Lender {
         // check for write off
         uint debt = getDebtOf(borrower);
         if(debt > 0) {
-            uint collateralBalance = collateralBalances[borrower]; // in collateral token decimals
+            uint collateralBalance = _cachedCollateralBalances[borrower]; // in internal 18 decimals
             (uint price,, bool allowLiquidations) = getCollateralPrice();
             require(allowLiquidations, "liquidations disabled");
             uint collateralValue = price * collateralBalance / 1e18;
@@ -404,13 +413,14 @@ contract Lender {
                     totalPaidDebt += paidDebtIncrease;
                 }
 
-                collateralBalances[borrower] = 0;
+                _cachedCollateralBalances[borrower] = 0;
+                uint collateralAmount = internalToCollateral(collateralBalance);
                 
-                emit WrittenOff(borrower, to, debt, collateralBalance);
+                emit WrittenOff(borrower, to, debt, collateralAmount);
                 writtenOff = true;
                 
                 // 3. send collateral to caller
-                collateral.safeTransfer(to, collateralBalance);
+                collateral.safeTransfer(to, collateralAmount);
             }
         }
     }
@@ -426,7 +436,7 @@ contract Lender {
         require(isRedeemable[borrower], "Borrower is not redeemable");
         require(amountIn > 0, "amount in is zero");
 
-        uint collateralBalance = collateralBalances[borrower];
+        uint collateralBalance = _cachedCollateralBalances[borrower];
         require(collateralBalance > 0, "Borrower has no collateral");
 
         (uint price,, bool allowLiquidations) = getCollateralPrice();
@@ -447,14 +457,15 @@ contract Lender {
         require(amountIn > 0, "amount in too small");
         require(remainingDebt == 0 || remainingDebt >= minDebt, "Debt below minimum and larger than 0");
 
-        amountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+        uint internalAmountOut = amountIn * 1e18 * (10000 - redeemFeeBps) / price / 10000;
+        amountOut = internalToCollateral(internalAmountOut);
         require(amountOut > 0, "amount out is zero");
-        require(amountOut <= collateralBalance, "Insufficient borrower collateral");
+        require(internalAmountOut <= collateralBalance, "Insufficient borrower collateral");
 
         require(amountOut >= minAmountOut, "insufficient amount out");
 
         // Seize collateral directly from borrower.
-        collateralBalances[borrower] = collateralBalance - amountOut;
+        _cachedCollateralBalances[borrower] = collateralBalance - internalAmountOut;
 
         coin.transferFrom(msg.sender, address(this), amountIn);
         coin.burn(amountIn);
@@ -626,6 +637,18 @@ contract Lender {
         return collateralValue * 10000 / (10000 + liqIncentiveBps);
     }
 
+    function getInternalLiquidationReward(
+        uint collateralBalance,
+        uint price,
+        uint repayAmount,
+        uint liqIncentiveBps,
+        uint maxRepayByCollateral
+    ) internal pure returns (uint internalCollateralReward) {
+        if (repayAmount == maxRepayByCollateral) return collateralBalance;
+        uint collateralRewardValue = repayAmount * (10000 + liqIncentiveBps) / 10000;
+        return collateralRewardValue * 1e18 / price;
+    }
+
     function getLiquidationIncentiveBps(uint collateralBalance, uint price, uint debt) internal view returns(uint) {
         uint collateralValue = collateralBalance * price / 1e18;
         if (collateralValue == 0) return 0; // avoid division by zero, return 0% incentive
@@ -658,8 +681,12 @@ contract Lender {
         }
     }
 
+    function collateralBalances(address account) public view returns (uint) {
+        return internalToCollateral(_cachedCollateralBalances[account]);
+    }
+
     /// @notice Gets the current price of the collateral asset
-    /// @return price The price in USD normalized to (36 - collateral decimals) decimals
+    /// @return price The price in USD normalized to 18 collateral decimals
     /// @return reduceOnly A boolean indicating if reduce only mode is enabled
     /// @return allowLiquidations A boolean indicating if liquidations and write-offs are enabled
     function getCollateralPrice() public view returns (uint price, bool reduceOnly, bool allowLiquidations) {
@@ -693,7 +720,7 @@ contract Lender {
         }
         price = price == 0 ? 1 : price; // avoid division by zero in consumer functions
         uint totalDebt = totalFreeDebt + totalPaidDebt;
-        uint totalCollateralValue = collateral.balanceOf(address(this)) * price / 1e18;
+        uint totalCollateralValue = collateralToInternal(collateral.balanceOf(address(this))) * price / 1e18;
         if(totalDebt > totalCollateralValue) reduceOnly = true;
     }
 
@@ -702,7 +729,7 @@ contract Lender {
         updatedAt = feedUpdatedAt;
         if(feedPrice <= 0) return (0, updatedAt); //convert negative price to 0 to signal invalid price
         uint8 feedDecimals = feed.decimals();
-        uint8 tokenDecimals = uint8(collateralDecimals); // collateral balances are kept in native token decimals
+        uint8 tokenDecimals = 18; // collateral balances are kept in internal 18 decimals
         if(feedDecimals + tokenDecimals <= 36) {
             uint8 decimals = 36 - tokenDecimals - feedDecimals;
             price = uint(feedPrice) * (10**decimals);
@@ -787,6 +814,26 @@ contract Lender {
             return assets / (10 ** (psmAssetDecimals - 18));
         } else {
             return assets * (10 ** (18 - psmAssetDecimals));
+        }
+    }
+
+    function collateralToInternal(uint256 amount) public view returns (uint256) {
+        if (collateralDecimals == 18) {
+            return amount;
+        } else if (collateralDecimals > 18) {
+            return amount / (10 ** (collateralDecimals - 18));
+        } else {
+            return amount * (10 ** (18 - collateralDecimals));
+        }
+    }
+
+    function internalToCollateral(uint256 amount) public view returns (uint256) {
+        if (collateralDecimals == 18) {
+            return amount;
+        } else if (collateralDecimals > 18) {
+            return amount * (10 ** (collateralDecimals - 18));
+        } else {
+            return amount / (10 ** (18 - collateralDecimals));
         }
     }
 
