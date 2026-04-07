@@ -67,7 +67,6 @@ contract Lender {
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
-    uint public immutable minDebtFloor;
     uint public immutable deployTimestamp;
     uint public immutable psmAssetDecimals;
     uint public immutable collateralDecimals;
@@ -123,7 +122,7 @@ contract Lender {
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
         require(params.redeemFeeBps <= 500, "Invalid redeem fee bps");
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 2%
-        minDebtFloor = IFactory(params.factory).minDebtFloor();
+        uint minDebtFloor = IFactory(params.factory).minDebtFloor();
         require(params.minDebt >= minDebtFloor, "Invalid min debt");
         require(address(params.psmAsset) != address(params.coin), "PSM Asset must be different than Coin");
        
@@ -409,7 +408,6 @@ contract Lender {
                 emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
                 
-                // 3. send collateral to caller
                 collateral.safeTransfer(to, collateralBalance);
             }
         }
@@ -479,6 +477,7 @@ contract Lender {
             uint256 actualAssetOutToSeller = psmVault.redeem(sharesOut, msg.sender, address(this));
             freePsmAssets -= assetOut;
             require(actualAssetOutToSeller >= minAssetOut, "redeem failed");
+            assetOut = actualAssetOutToSeller;
         } else {
             freePsmAssets -= assetOut;
             psmAsset.safeTransfer(msg.sender, assetOut);
@@ -490,10 +489,6 @@ contract Lender {
         require(psmAsset != ERC20(address(0)), "PSM asset was not set");
         accrueInterest();
         uint coinFee;
-        (coinOut, coinFee) = getBuyAmountOut(assetIn);
-        require(coinOut >= minCoinOut, "insufficient amount out");
-
-        if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
 
         // get assets from caller
         psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
@@ -501,10 +496,15 @@ contract Lender {
             require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
             uint256 shares = psmVault.deposit(assetIn, address(this));
             require(shares > 0, "PSM deposit failed");
-            freePsmAssets += previewRedeemOrConvertToAssets(shares);
+            uint256 redeemableFor = previewRedeemOrConvertToAssets(shares);
+            freePsmAssets += redeemableFor;
+            (coinOut, coinFee) = getBuyAmountOut(redeemableFor);
         } else {
             freePsmAssets += assetIn;
+            (coinOut, coinFee) = getBuyAmountOut(assetIn);
         }
+        if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
+        require(coinOut >= minCoinOut, "insufficient amount out");
         // give coins to caller
         coin.mint(msg.sender, coinOut);
         emit Bought(msg.sender, assetIn, coinOut);
