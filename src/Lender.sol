@@ -67,7 +67,6 @@ contract Lender {
     IFactory public immutable factory;
     uint public immutable collateralFactor;
     uint public immutable minDebt;
-    uint public immutable minDebtFloor;
     uint public immutable deployTimestamp;
     uint public immutable psmAssetDecimals;
     uint public immutable collateralDecimals;
@@ -123,7 +122,7 @@ contract Lender {
         require(params.targetFreeDebtRatioEndBps <= 9500, "Invalid end bps");
         require(params.redeemFeeBps <= 500, "Invalid redeem fee bps");
         require(params.maxBorrowDeltaBps <= 200 && params.maxBorrowDeltaBps >= 50, "Invalid max borrow delta bps"); // Max 2%
-        minDebtFloor = IFactory(params.factory).minDebtFloor();
+        uint minDebtFloor = IFactory(params.factory).minDebtFloor();
         require(params.minDebt >= minDebtFloor, "Invalid min debt");
         require(address(params.psmAsset) != address(params.coin), "PSM Asset must be different than Coin");
        
