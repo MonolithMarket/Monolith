@@ -408,7 +408,6 @@ contract Lender {
                 emit WrittenOff(borrower, to, debt, collateralBalance);
                 writtenOff = true;
                 
-                // 3. send collateral to caller
                 collateral.safeTransfer(to, collateralBalance);
             }
         }
