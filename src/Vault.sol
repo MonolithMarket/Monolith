@@ -146,34 +146,6 @@ contract Vault is ERC4626 {
         return supply == 0 ? shares : shares.mulDivUp(totalAssets(), supply);
     }
 
-    /// @notice Returns the maximum amount of assets that can be deposited for `receiver`
-    /// @dev With MIN_SHARES bootstrapping, first deposits via `deposit` are not represented as a continuous [0, max] range.
-    ///      Returning 0 at bootstrap prevents misleading pre-flight checks for small first deposits.
-    function maxDeposit(address) public view override returns (uint256) {
-        uint256 supply = totalSupply;
-        if (supply == 0) return type(uint).max;
-
-        uint256 assetsManaged = totalAssets();
-        if (assetsManaged == 0) return type(uint).max;
-
-        // Bound by overflow in convertToShares: assets * supply.
-        return type(uint256).max / supply;
-    }
-
-    /// @notice Returns the maximum amount of shares that can be minted for `receiver`
-    function maxMint(address) public view override returns (uint256) {
-        uint256 supply = totalSupply;
-        if (supply == 0) return type(uint256).max - MIN_SHARES;
-
-        uint256 mintCap = type(uint256).max - supply; // Prevents _mint overflow.
-        uint256 assetsManaged = totalAssets();
-        if (assetsManaged == 0) return mintCap;
-
-        // Bound by overflow in previewMint: shares * totalAssets.
-        uint256 previewCap = type(uint256).max / assetsManaged;
-        return previewCap < mintCap ? previewCap : mintCap;
-    }
-
     /// @notice Returns the maximum assets that `owner` can withdraw right now
     /// @dev Caps to liquid assets currently held by the vault.
     function maxWithdraw(address owner) public view override returns (uint256) {

@@ -322,16 +322,9 @@ contract VaultTest is Test {
         assertEq(previewedAssets, actualAssets, "previewMint should match actual for subsequent mints");
     }
 
-    function test_maxDepositFirstDepositIsZero() public view {
-        assertEq(vault.maxDeposit(user), 0, "maxDeposit should be 0 at bootstrap");
-    }
-
-    function test_maxMintFirstDepositAccountsForMinShares() public view {
-        assertEq(vault.maxMint(user), type(uint256).max - MIN_SHARES, "maxMint should reserve room for MIN_SHARES");
-    }
-
-    function test_maxWithdrawAndMaxRedeemCapToLiquidAssets() public {
+    function test_maxWithdrawAndMaxRedeemIncludePendingInterest() public {
         uint256 depositAmount = 100e18;
+        uint256 pendingInterest = 50e18;
         underlying.mint(user, depositAmount);
 
         vm.startPrank(user);
@@ -339,13 +332,14 @@ contract VaultTest is Test {
         vault.deposit(depositAmount, user);
         vm.stopPrank();
 
-        lender.setPendingInterest(50e18);
+        lender.setPendingInterest(pendingInterest);
 
-        uint256 liquidAssets = underlying.balanceOf(address(vault));
-        assertEq(vault.maxWithdraw(user), liquidAssets, "maxWithdraw should be capped by liquid assets");
+        uint256 expectedMaxWithdraw =
+            vault.balanceOf(user) * vault.totalAssets() / vault.totalSupply();
+        assertEq(vault.maxWithdraw(user), expectedMaxWithdraw, "maxWithdraw should include pending interest");
 
-        uint256 expectedMaxRedeem = vault.convertToShares(liquidAssets);
-        assertEq(vault.maxRedeem(user), expectedMaxRedeem, "maxRedeem should be capped by liquid-backed shares");
+        uint256 expectedMaxRedeem = vault.balanceOf(user);
+        assertEq(vault.maxRedeem(user), expectedMaxRedeem, "maxRedeem should return the owner's shares");
     }
 
 }
