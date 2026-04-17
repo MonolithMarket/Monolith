@@ -752,6 +752,12 @@ contract Lender {
         return buyFeeBps > 100 ? 100 : buyFeeBps;
     }
 
+    /// Provides an upperbound of assets received
+    /// @dev the amount will be precise if no vault is attached to the PSM, but may overshoot on assets received if:
+    /// 1. There is a rounding loss in the vault. This is almost guaranteed.
+    /// 2. There is a withdraw fee or other loss occuring in the vault
+    /// To get a more precise estimate, we suggest using the following code in case the contract uses a PSM:
+    /// `getBuyAmountOut(vault.previewRedeem(vault.previewDeposit(assetIn)))`
     function getBuyAmountOut(uint assetIn) public view returns (uint coinOut, uint coinFee) {
         uint8 coinDecimals = 18;
         uint8 assetDecimals = psmAsset.decimals();
