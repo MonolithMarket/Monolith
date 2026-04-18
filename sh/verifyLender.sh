@@ -3,6 +3,10 @@
 # To load the variables in the .env file
 source .env
 
+read -p "Enter network name (e.g. eth-sepolia, eth-mainnet): " NETWORK
+
+RPC_URL="https://${NETWORK}.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+
 # Hardcoded constructor parameters for Lender contract verification
 LENDER_ADDRESS="0x44AfC35b52dbeBF43e1940D4f12C372446D52D5A"
 COLLATERAL_ADDRESS="0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"

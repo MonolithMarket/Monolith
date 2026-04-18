@@ -6,7 +6,7 @@ import {Factory} from "src/Factory.sol";
 
 contract FactoryScript is Script {
 
-    address constant operator = 0x3FcB35a1CbFB6007f9BC638D388958Bc4550cB28;
+    address constant operator = 0x926dF14a23BE491164dCF93f4c468A50ef659D5B;
     uint256 constant minDebtFloor = 1e15;
 
     function setUp() public {}
