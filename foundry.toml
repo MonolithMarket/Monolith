@@ -7,7 +7,4 @@ optimizer = true
 optimizer_runs = 200
 via-ir = true
 
-[rpc_endpoints]
-mainnet = "${RPC_MAINNET}"
-
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
