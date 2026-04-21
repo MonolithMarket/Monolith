@@ -892,10 +892,11 @@ contract Lender {
         emit ImmutabilityEnabled(block.timestamp);
     }
 
-    function pullLocalReserves() external onlyOperator {
+    function pullLocalReserves() external {
         accrueInterest();
         accruePsmProfit();
-        coin.mint(msg.sender, accruedLocalReserves);
+        if (accruedLocalReserves == 0) return;
+        coin.mint(operator, accruedLocalReserves);
         emit AccruedLocalReserves(accruedLocalReserves);
         accruedLocalReserves = 0;
     }

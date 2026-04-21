@@ -2415,12 +2415,53 @@ contract LenderTest is Test {
         assertEq(coin.balanceOf(operatorAddr), localReserves, "Operator should receive local reserves");
     }
 
-    function test_pullLocalReserves_revertUnauthorized() public {
-        address unauthorized = address(0xBAD);
-        
-        vm.prank(unauthorized);
-        vm.expectRevert("Unauthorized");
+    function test_pullLocalReserves_permissionlessSendsToOperator() public {
+        // Generate some local reserves through interest accrual
+        address borrower = address(0xBEEF);
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = 2000e18;
+
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        collateral.mint(borrower, collateralAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false);
+        vm.stopPrank();
+
+        vm.prank(operatorAddr);
+        lender.setLocalReserveFeeBps(1000);
+
+        vm.warp(block.timestamp + 30 days);
+        lender.accrueInterest();
+
+        uint localReserves = lender.accruedLocalReserves();
+        assertGt(localReserves, 0, "Local reserves should be greater than 0 after interest accrual");
+
+        // Non-operator can call pullLocalReserves; funds go to operator, not caller
+        address caller = address(0xBAD);
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        uint operatorBalanceBefore = coin.balanceOf(operatorAddr);
+        uint callerBalanceBefore = coin.balanceOf(caller);
+
+        vm.prank(caller);
         lender.pullLocalReserves();
+
+        assertEq(lender.accruedLocalReserves(), 0, "Local reserves should be reset to 0 after pulling");
+        assertEq(coin.balanceOf(operatorAddr) - operatorBalanceBefore, localReserves, "Operator should receive local reserves");
+        assertEq(coin.balanceOf(caller), callerBalanceBefore, "Caller should not receive reserves");
+    }
+
+    function test_pullLocalReserves_noOpWhenEmpty() public {
+        assertEq(lender.accruedLocalReserves(), 0, "Precondition: no reserves");
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        uint operatorBalanceBefore = coin.balanceOf(operatorAddr);
+
+        // Should not revert and should not mint anything
+        lender.pullLocalReserves();
+
+        assertEq(lender.accruedLocalReserves(), 0, "Still zero after no-op call");
+        assertEq(coin.balanceOf(operatorAddr), operatorBalanceBefore, "No coins minted on empty pull");
     }
 
     function test_pullGlobalReserves() public {
