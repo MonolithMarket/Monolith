@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.13;
+pragma solidity 0.8.24;
 
 interface ILender {
     function operator() external view returns (address);
 }
+
 contract Metadata {
     enum CoinType {
         Stablecoin,
@@ -25,14 +26,6 @@ contract Metadata {
     // price feed for the collateral asset in case the market price feed is not denominated in USD
     mapping(address => address) public collateralUsdPriceFeed;
 
-    modifier onlyOperator(address _lender) {
-        require(
-            msg.sender == ILender(_lender).operator(),
-            "Only operator can set metadata"
-        );
-        _;
-    }
-
     struct MetadataValues {
         string websiteUrl;
         string xUrl;
@@ -47,6 +40,29 @@ contract Metadata {
         string coinDenomination;
         address collateralUsdPriceFeed;
         string description;
+    }
+
+    event MetadataUpdated(address indexed lender, MetadataValues values);
+    event WebsiteUrlUpdated(address indexed lender, string websiteUrl);
+    event XUrlUpdated(address indexed lender, string xUrl);
+    event DiscordUrlUpdated(address indexed lender, string discordUrl);
+    event TelegramUrlUpdated(address indexed lender, string telegramUrl);
+    event OtherUrlUpdated(address indexed lender, string otherUrl);
+    event CoinLogoUrlUpdated(address indexed lender, string coinLogoUrl);
+    event VaultLogoUrlUpdated(address indexed lender, string vaultLogoUrl);
+    event ProjectNameUpdated(address indexed lender, string projectName);
+    event ProjectLogoUrlUpdated(address indexed lender, string projectLogoUrl);
+    event CoinTypeUpdated(address indexed lender, CoinType coinType);
+    event CoinDenominationUpdated(address indexed lender, string coinDenomination);
+    event DescriptionUpdated(address indexed lender, string description);
+    event CollateralUsdPriceFeedUpdated(address indexed lender, address collateralUsdPriceFeed);
+
+    modifier onlyOperator(address _lender) {
+        require(
+            msg.sender == ILender(_lender).operator(),
+            "Only operator can set metadata"
+        );
+        _;
     }
 
     function setMetadata(
@@ -66,6 +82,7 @@ contract Metadata {
         coinDenomination[_lender] = m.coinDenomination;
         collateralUsdPriceFeed[_lender] = m.collateralUsdPriceFeed;
         description[_lender] = m.description;
+        emit MetadataUpdated(_lender, m);
     }
 
     function getMetadata(
@@ -94,6 +111,7 @@ contract Metadata {
         string calldata _description
     ) external onlyOperator(_lender) {
         description[_lender] = _description;
+        emit DescriptionUpdated(_lender, _description);
     }
 
     function setWebsiteUrl(
@@ -101,6 +119,7 @@ contract Metadata {
         string calldata _websiteUrl
     ) external onlyOperator(_lender) {
         websiteUrl[_lender] = _websiteUrl;
+        emit WebsiteUrlUpdated(_lender, _websiteUrl);
     }
 
     function setXUrl(
@@ -108,6 +127,7 @@ contract Metadata {
         string calldata _xUrl
     ) external onlyOperator(_lender) {
         xUrl[_lender] = _xUrl;
+        emit XUrlUpdated(_lender, _xUrl);
     }
 
     function setDiscordUrl(
@@ -115,6 +135,7 @@ contract Metadata {
         string calldata _discordUrl
     ) external onlyOperator(_lender) {
         discordUrl[_lender] = _discordUrl;
+        emit DiscordUrlUpdated(_lender, _discordUrl);
     }
 
     function setTelegramUrl(
@@ -122,6 +143,7 @@ contract Metadata {
         string calldata _telegramUrl
     ) external onlyOperator(_lender) {
         telegramUrl[_lender] = _telegramUrl;
+        emit TelegramUrlUpdated(_lender, _telegramUrl);
     }
 
     function setOtherUrl(
@@ -129,6 +151,7 @@ contract Metadata {
         string calldata _otherUrl
     ) external onlyOperator(_lender) {
         otherUrl[_lender] = _otherUrl;
+        emit OtherUrlUpdated(_lender, _otherUrl);
     }
 
     function setCoinLogoUrl(
@@ -136,6 +159,7 @@ contract Metadata {
         string calldata _coinLogoUrl
     ) external onlyOperator(_lender) {
         coinLogoUrl[_lender] = _coinLogoUrl;
+        emit CoinLogoUrlUpdated(_lender, _coinLogoUrl);
     }
 
     function setVaultLogoUrl(
@@ -143,6 +167,7 @@ contract Metadata {
         string calldata _vaultLogoUrl
     ) external onlyOperator(_lender) {
         vaultLogoUrl[_lender] = _vaultLogoUrl;
+        emit VaultLogoUrlUpdated(_lender, _vaultLogoUrl);
     }
 
     function setProjectName(
@@ -150,6 +175,7 @@ contract Metadata {
         string calldata _projectName
     ) external onlyOperator(_lender) {
         projectName[_lender] = _projectName;
+        emit ProjectNameUpdated(_lender, _projectName);
     }
 
     function setProjectLogoUrl(
@@ -157,6 +183,7 @@ contract Metadata {
         string calldata _projectLogoUrl
     ) external onlyOperator(_lender) {
         projectLogoUrl[_lender] = _projectLogoUrl;
+        emit ProjectLogoUrlUpdated(_lender, _projectLogoUrl);
     }
 
     function setCoinType(
@@ -164,6 +191,7 @@ contract Metadata {
         CoinType _coinType
     ) external onlyOperator(_lender) {
         coinType[_lender] = _coinType;
+        emit CoinTypeUpdated(_lender, _coinType);
     }
 
     function setCoinDenomination(
@@ -171,6 +199,7 @@ contract Metadata {
         string calldata _coinDenomination
     ) external onlyOperator(_lender) {
         coinDenomination[_lender] = _coinDenomination;
+        emit CoinDenominationUpdated(_lender, _coinDenomination);
     }
 
     function setCollateralUsdPriceFeed(
@@ -178,5 +207,6 @@ contract Metadata {
         address _collateralUsdPriceFeed
     ) external onlyOperator(_lender) {
         collateralUsdPriceFeed[_lender] = _collateralUsdPriceFeed;
+        emit CollateralUsdPriceFeedUpdated(_lender, _collateralUsdPriceFeed);
     }
 }
