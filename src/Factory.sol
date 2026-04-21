@@ -123,6 +123,7 @@ contract Factory {
         require(msg.sender == feeRecipient, "Only fee recipient can pull reserves");
         require(isDeployed[_deployment], "Deployment not found");
         Lender(_deployment).pullGlobalReserves(msg.sender);
+        emit ReservesPulled(_deployment, msg.sender);
     }
 
     struct DeployParams {
@@ -191,4 +192,5 @@ contract Factory {
     event PendingOperatorUpdated(address indexed pendingOperator);
     event FeeRecipientUpdated(address indexed feeRecipient);
     event FeeBpsUpdated(uint256 feeBps);
+    event ReservesPulled(address indexed lender, address indexed recipient);
 }
