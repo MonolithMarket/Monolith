@@ -537,9 +537,10 @@ contract LenderMock {
     bool private _pullGlobalReservesCalled;
     address private _pullGlobalReservesRecipient;
     
-    function pullGlobalReserves(address recipient) external {
+    function pullGlobalReserves(address recipient) external returns (uint256) {
         _pullGlobalReservesCalled = true;
         _pullGlobalReservesRecipient = recipient;
+        return 0;
     }
     
     function pullGlobalReservesCalled() external view returns (bool) {

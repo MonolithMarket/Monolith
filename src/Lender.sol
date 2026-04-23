@@ -225,6 +225,7 @@ contract Lender {
             lastAccrue = uint40(block.timestamp);
             lastBorrowRateMantissa = uint88(currBorrowRate);
             cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
+            emit InterestAccrued(interest, currBorrowRate);
         } catch {
             // If the call failed, check if sufficient gas was provided
             // We need to ensure the caller provided enough gas for accrueInterest to execute
@@ -901,11 +902,12 @@ contract Lender {
         accruedLocalReserves = 0;
     }
 
-    function pullGlobalReserves(address _to) external {
+    function pullGlobalReserves(address _to) external returns (uint256 amount) {
         require(msg.sender == address(factory), "Unauthorized");
         accrueInterest();
-        coin.mint(_to, accruedGlobalReserves);
-        emit AccruedGlobalReserves(accruedGlobalReserves);
+        amount = accruedGlobalReserves;
+        coin.mint(_to, amount);
+        emit AccruedGlobalReserves(amount);
         accruedGlobalReserves = 0;
     }
 
@@ -930,4 +932,5 @@ contract Lender {
     event ImmutabilityEnabled(uint256 timestamp);
     event AccruedLocalReserves(uint256 amount);
     event AccruedGlobalReserves(uint256 amount);
+    event InterestAccrued(uint256 interestAccrued, uint256 newBorrowRateMantissa);
 }
