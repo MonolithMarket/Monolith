@@ -305,7 +305,7 @@ contract FactoryTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 
@@ -372,7 +372,7 @@ contract FactoryTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         (address lender1, address coin1, address vault1) = factory.deploy(params1);
 
@@ -396,7 +396,7 @@ contract FactoryTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         (address lender2, address coin2, address vault2) = factory.deploy(params2);
         
@@ -450,7 +450,7 @@ contract FactoryTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         (address lender, address coin, address vault) = factory.deploy(params);
 

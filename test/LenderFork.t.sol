@@ -131,7 +131,7 @@ contract LenderForkTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         vm.mockCall(
             address(deployedLender.factory()),

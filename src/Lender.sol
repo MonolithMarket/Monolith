@@ -71,7 +71,7 @@ contract Lender {
     uint public immutable psmAssetDecimals;
     uint public immutable collateralDecimals;
     uint public immutable stalenessThreshold; 
-    uint public immutable minTotalSupply;
+    uint public immutable psmVaultMinTotalSupply;
 
     uint public constant STALENESS_UNWIND_DURATION = 24 hours;
     uint public constant MIN_LIQUIDATION_DEBT = 10_000e18; // 10,000 Coin
@@ -111,7 +111,7 @@ contract Lender {
         uint16 redeemFeeBps;
         uint32 stalenessThreshold;
         uint16 maxBorrowDeltaBps;
-        uint128 minTotalSupply;
+        uint128 psmVaultMinTotalSupply;
     }
 
     constructor(LenderParams memory params) {
@@ -128,7 +128,7 @@ contract Lender {
        
         if(params.psmVault != ERC4626(address(0))) {
             require(params.psmVault.asset() == params.psmAsset, "PSM asset mismatch");
-            require(params.minTotalSupply > 0, "Invalid min total supply");
+            require(params.psmVaultMinTotalSupply > 0, "Invalid PSM vault min total supply");
         }
         
         // Validate collateral decimals
@@ -157,7 +157,7 @@ contract Lender {
         redeemFeeBps = params.redeemFeeBps;
         maxBorrowDeltaBps = params.maxBorrowDeltaBps;
         stalenessThreshold = params.stalenessThreshold;
-        minTotalSupply = params.minTotalSupply;
+        psmVaultMinTotalSupply = params.psmVaultMinTotalSupply;
         cachedGlobalFeeBps = uint16(factory.getFeeOf(address(this)));
         if(psmVault != ERC4626(address(0)))
             psmAsset.safeApprove(address(psmVault), type(uint).max);
@@ -493,7 +493,7 @@ contract Lender {
         // get assets from caller
         psmAsset.safeTransferFrom(msg.sender, address(this), assetIn);
         if(psmVault != ERC4626(address(0))) {
-            require(psmVault.totalSupply() > minTotalSupply, "PSM vault total supply below minimum");
+            require(psmVault.totalSupply() > psmVaultMinTotalSupply, "PSM vault total supply below minimum");
             uint256 shares = psmVault.deposit(assetIn, address(this));
             require(shares > 0, "PSM deposit failed");
             uint256 redeemableFor = previewRedeemOrConvertToAssets(shares);

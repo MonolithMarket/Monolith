@@ -164,7 +164,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         lender = new Lender(lenderParams);
     
@@ -201,7 +201,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         Lender newLender = new Lender(newLenderParams);
 
@@ -2830,7 +2830,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         });
         Lender lenderWithCustomFactory = new Lender(customFactoryParams);
         
@@ -2938,7 +2938,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         }));
     }
 
@@ -2966,7 +2966,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         }));
 
         return (psmLender, psmVault);
@@ -2995,7 +2995,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         }));
     }
 
@@ -3022,7 +3022,7 @@ contract LenderTest is Test {
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         }));
     }
 
@@ -3049,7 +3049,7 @@ function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns 
             redeemFeeBps: 30,
             stalenessThreshold: 24 hours,
             maxBorrowDeltaBps: 50,
-            minTotalSupply: 1
+            psmVaultMinTotalSupply: 1
         }));
     }
 
