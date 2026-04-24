@@ -6,6 +6,7 @@ import "src/Metadata.sol";
 
 contract LenderMock {
     address public operator;
+    address public manager;
 
     constructor(address _operator) {
         operator = _operator;
@@ -14,12 +15,17 @@ contract LenderMock {
     function setOperator(address _operator) external {
         operator = _operator;
     }
+
+    function setManager(address _manager) external {
+        manager = _manager;
+    }
 }
 
 contract MetadataTest is Test {
     Metadata metadata;
     LenderMock lender;
     address operator = address(0xA11CE);
+    address manager = address(0xD00D);
     address stranger = address(0xB0B);
     address priceFeed = address(0xFEED);
 
@@ -41,6 +47,7 @@ contract MetadataTest is Test {
     function setUp() public {
         metadata = new Metadata();
         lender = new LenderMock(operator);
+        lender.setManager(manager);
     }
 
     function _sampleValues() internal view returns (Metadata.MetadataValues memory) {
@@ -88,8 +95,85 @@ contract MetadataTest is Test {
     function testSetMetadataRevertsForNonOperator() public {
         Metadata.MetadataValues memory v = _sampleValues();
         vm.prank(stranger);
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setMetadata(address(lender), v);
+    }
+
+    function testSetMetadataByManager() public {
+        Metadata.MetadataValues memory v = _sampleValues();
+
+        vm.prank(manager);
+        vm.expectEmit(true, false, false, true, address(metadata));
+        emit MetadataUpdated(address(lender), v);
+        metadata.setMetadata(address(lender), v);
+
+        Metadata.MetadataValues memory r = metadata.getMetadata(address(lender));
+        assertEq(r.websiteUrl, v.websiteUrl);
+        assertEq(r.description, v.description);
+    }
+
+    function testIndividualSettersAllowManager() public {
+        vm.startPrank(manager);
+
+        metadata.setWebsiteUrl(address(lender), "https://a");
+        assertEq(metadata.websiteUrl(address(lender)), "https://a");
+
+        metadata.setXUrl(address(lender), "https://x");
+        assertEq(metadata.xUrl(address(lender)), "https://x");
+
+        metadata.setDiscordUrl(address(lender), "https://d");
+        assertEq(metadata.discordUrl(address(lender)), "https://d");
+
+        metadata.setTelegramUrl(address(lender), "https://t");
+        assertEq(metadata.telegramUrl(address(lender)), "https://t");
+
+        metadata.setOtherUrl(address(lender), "https://o");
+        assertEq(metadata.otherUrl(address(lender)), "https://o");
+
+        metadata.setCoinLogoUrl(address(lender), "https://c.png");
+        assertEq(metadata.coinLogoUrl(address(lender)), "https://c.png");
+
+        metadata.setVaultLogoUrl(address(lender), "https://v.png");
+        assertEq(metadata.vaultLogoUrl(address(lender)), "https://v.png");
+
+        metadata.setProjectName(address(lender), "Acme");
+        assertEq(metadata.projectName(address(lender)), "Acme");
+
+        metadata.setProjectLogoUrl(address(lender), "https://p.png");
+        assertEq(metadata.projectLogoUrl(address(lender)), "https://p.png");
+
+        metadata.setCoinType(address(lender), Metadata.CoinType.Volatile);
+        assertEq(uint(metadata.coinType(address(lender))), uint(Metadata.CoinType.Volatile));
+
+        metadata.setCoinDenomination(address(lender), "USD");
+        assertEq(metadata.coinDenomination(address(lender)), "USD");
+
+        metadata.setDescription(address(lender), "desc");
+        assertEq(metadata.description(address(lender)), "desc");
+
+        metadata.setCollateralUsdPriceFeed(address(lender), priceFeed);
+        assertEq(metadata.collateralUsdPriceFeed(address(lender)), priceFeed);
+
+        vm.stopPrank();
+    }
+
+    function testManagerRotationChangesAuthority() public {
+        // original manager can set
+        vm.prank(manager);
+        metadata.setWebsiteUrl(address(lender), "https://one");
+
+        // rotate manager
+        lender.setManager(stranger);
+
+        // old manager can no longer set
+        vm.prank(manager);
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
+        metadata.setWebsiteUrl(address(lender), "https://two");
+
+        // new manager can set
+        vm.prank(stranger);
+        metadata.setWebsiteUrl(address(lender), "https://three");
+        assertEq(metadata.websiteUrl(address(lender)), "https://three");
     }
 
     function testEmptyGetMetadataReturnsDefaults() public view {
@@ -109,7 +193,7 @@ contract MetadataTest is Test {
 
     function testSetWebsiteUrlRevertsForNonOperator() public {
         vm.prank(stranger);
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setWebsiteUrl(address(lender), "https://a");
     }
 
@@ -212,31 +296,31 @@ contract MetadataTest is Test {
     function testIndividualSettersRevertForNonOperator() public {
         vm.startPrank(stranger);
 
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setWebsiteUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setXUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setDiscordUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setTelegramUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setOtherUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setCoinLogoUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setVaultLogoUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setProjectName(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setProjectLogoUrl(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setCoinType(address(lender), Metadata.CoinType.Volatile);
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setCoinDenomination(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setDescription(address(lender), "x");
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setCollateralUsdPriceFeed(address(lender), priceFeed);
 
         vm.stopPrank();
@@ -252,7 +336,7 @@ contract MetadataTest is Test {
 
         // old operator can no longer set
         vm.prank(operator);
-        vm.expectRevert(bytes("Only operator can set metadata"));
+        vm.expectRevert(bytes("Only operator or manager can set metadata"));
         metadata.setWebsiteUrl(address(lender), "https://two");
 
         // new operator can set

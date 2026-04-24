@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 interface ILender {
     function operator() external view returns (address);
+    function manager() external view returns (address);
 }
 
 contract Metadata {
@@ -57,10 +58,11 @@ contract Metadata {
     event DescriptionUpdated(address indexed lender, string description);
     event CollateralUsdPriceFeedUpdated(address indexed lender, address collateralUsdPriceFeed);
 
-    modifier onlyOperator(address _lender) {
+    modifier onlyOperatorOrManager(address _lender) {
         require(
-            msg.sender == ILender(_lender).operator(),
-            "Only operator can set metadata"
+            msg.sender == ILender(_lender).operator() ||
+                msg.sender == ILender(_lender).manager(),
+            "Only operator or manager can set metadata"
         );
         _;
     }
@@ -68,7 +70,7 @@ contract Metadata {
     function setMetadata(
         address _lender,
         MetadataValues calldata m
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         websiteUrl[_lender] = m.websiteUrl;
         xUrl[_lender] = m.xUrl;
         discordUrl[_lender] = m.discordUrl;
@@ -109,7 +111,7 @@ contract Metadata {
     function setDescription(
         address _lender,
         string calldata _description
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         description[_lender] = _description;
         emit DescriptionUpdated(_lender, _description);
     }
@@ -117,7 +119,7 @@ contract Metadata {
     function setWebsiteUrl(
         address _lender,
         string calldata _websiteUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         websiteUrl[_lender] = _websiteUrl;
         emit WebsiteUrlUpdated(_lender, _websiteUrl);
     }
@@ -125,7 +127,7 @@ contract Metadata {
     function setXUrl(
         address _lender,
         string calldata _xUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         xUrl[_lender] = _xUrl;
         emit XUrlUpdated(_lender, _xUrl);
     }
@@ -133,7 +135,7 @@ contract Metadata {
     function setDiscordUrl(
         address _lender,
         string calldata _discordUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         discordUrl[_lender] = _discordUrl;
         emit DiscordUrlUpdated(_lender, _discordUrl);
     }
@@ -141,7 +143,7 @@ contract Metadata {
     function setTelegramUrl(
         address _lender,
         string calldata _telegramUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         telegramUrl[_lender] = _telegramUrl;
         emit TelegramUrlUpdated(_lender, _telegramUrl);
     }
@@ -149,7 +151,7 @@ contract Metadata {
     function setOtherUrl(
         address _lender,
         string calldata _otherUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         otherUrl[_lender] = _otherUrl;
         emit OtherUrlUpdated(_lender, _otherUrl);
     }
@@ -157,7 +159,7 @@ contract Metadata {
     function setCoinLogoUrl(
         address _lender,
         string calldata _coinLogoUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         coinLogoUrl[_lender] = _coinLogoUrl;
         emit CoinLogoUrlUpdated(_lender, _coinLogoUrl);
     }
@@ -165,7 +167,7 @@ contract Metadata {
     function setVaultLogoUrl(
         address _lender,
         string calldata _vaultLogoUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         vaultLogoUrl[_lender] = _vaultLogoUrl;
         emit VaultLogoUrlUpdated(_lender, _vaultLogoUrl);
     }
@@ -173,7 +175,7 @@ contract Metadata {
     function setProjectName(
         address _lender,
         string calldata _projectName
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         projectName[_lender] = _projectName;
         emit ProjectNameUpdated(_lender, _projectName);
     }
@@ -181,7 +183,7 @@ contract Metadata {
     function setProjectLogoUrl(
         address _lender,
         string calldata _projectLogoUrl
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         projectLogoUrl[_lender] = _projectLogoUrl;
         emit ProjectLogoUrlUpdated(_lender, _projectLogoUrl);
     }
@@ -189,7 +191,7 @@ contract Metadata {
     function setCoinType(
         address _lender,
         CoinType _coinType
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         coinType[_lender] = _coinType;
         emit CoinTypeUpdated(_lender, _coinType);
     }
@@ -197,7 +199,7 @@ contract Metadata {
     function setCoinDenomination(
         address _lender,
         string calldata _coinDenomination
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         coinDenomination[_lender] = _coinDenomination;
         emit CoinDenominationUpdated(_lender, _coinDenomination);
     }
@@ -205,7 +207,7 @@ contract Metadata {
     function setCollateralUsdPriceFeed(
         address _lender,
         address _collateralUsdPriceFeed
-    ) external onlyOperator(_lender) {
+    ) external onlyOperatorOrManager(_lender) {
         collateralUsdPriceFeed[_lender] = _collateralUsdPriceFeed;
         emit CollateralUsdPriceFeedUpdated(_lender, _collateralUsdPriceFeed);
     }
