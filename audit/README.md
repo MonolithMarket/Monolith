@@ -13,7 +13,7 @@ A pending PR on `dev` reapplies a fix in `Lender.sol::increaseDebt` (free-debt b
 
 ## What we did
 
-A four-step audit, escalating in rigor as each step couldn't fully close the question.
+A six-step audit, escalating in rigor as each step couldn't fully close the question.
 
 ### Step 1 — Pattern-matching audit (`Nemesis auditor`)
 
@@ -98,6 +98,35 @@ The proof is only as good as the model. Re-ran Nemesis methodology on `formal_ve
 
 Three findings, all informational, none invalidate the verdict — see `META_AUDIT.md` for details.
 
+### Step 6 — Halmos cross-validation against extracted bytecode
+
+A Z3 model is a manual translation. Halmos runs symbolically on actual EVM bytecode — no model maintenance, no translation risk. Used Halmos to cross-validate the Z3 result.
+
+Extracted the FREE-debt logic from `Lender.sol` byte-for-byte into `src/MockLenderFreeDebt.sol` (every function annotated with the source-line range it was copied from), then wrote `test/MockLenderHalmos.t.sol` with `check_*` functions that install symbolic state via `vm.store` and exercise each operation.
+
+**Results match Z3 wherever Halmos can solve:**
+
+| Test | Halmos | Z3 |
+|---|---|---|
+| `check_I_after_increaseDebt` | ✅ PASS (0.07s) | ✅ proven |
+| `check_I_after_decreaseDebt_max` | ❌ same CE | ❌ same CE |
+| `check_I_after_writeOffRedistribute` | ✅ PASS (0.06s) | ✅ proven |
+| `check_J_after_writeOffRedistribute` | ✅ PASS (0.04s) | ✅ proven |
+| 4 others (decreaseDebt nonmax/max, increaseDebt under J) | ⏱ TIMEOUT | ✅ proven |
+
+Halmos's counter-example for `check_I_after_decreaseDebt_max`:
+```
+D = 0x8000  (32768   = 2^15)
+S = 0xc000  (49152   = 3·2^14)    ← D < S
+X = 0xbfff  (49151   = S − 1)
+```
+
+Same shape as Z3's CE — `D < S` precondition with `X = S − 1`, which Z3 then proves to be unreachable.
+
+**Where Halmos and Z3 diverge:** Halmos times out on every query that involves symbolic `mulDivUp`/`mulDivDown` with two symbolic operands (bit-blasting symbolic uint256 multiplication explodes the SMT formula). Z3 with unbounded Int sidesteps this. Halmos timeouts are not findings — they're "couldn't refute" verdicts that Z3 closes.
+
+See `HALMOS_RESULTS.md` for full details.
+
 ## Final verdict
 
 **The bug `D=0, S>0` is formally unreachable in current `dev` code.** The PR fix is *not* preventing a currently exploitable bug. Apply it anyway because:
@@ -157,16 +186,42 @@ forge test --match-test test_NEMESIS_PoC_zeroDebtNonZeroShares_unbacked_borrow
 # apply the fix to src/Lender.sol::increaseDebt and re-run — it passes.
 ```
 
+### Run Halmos symbolic execution (~8 min for full run)
+```bash
+# Halmos profile turns off via-ir (which strips the AST that halmos needs)
+rm -rf out
+FOUNDRY_PROFILE=halmos forge build
+FOUNDRY_PROFILE=halmos halmos --contract MockLenderHalmosTest --solver-timeout-assertion 120000
+```
+Expect: 3 PASS, 1 FAIL (the same counter-example Z3 found, requiring `D < S`), 4 TIMEOUT.
+
 ## Files in this directory
 
 | File | Purpose |
 |---|---|
 | `README.md` | this document |
-| `VERDICT.md` | original verdict from the formal verification step |
-| `META_AUDIT.md` | Nemesis-style meta-audit of the formal model itself |
+| `VERDICT.md` | verdict from the Z3 inductive proof step |
+| `META_AUDIT.md` | Nemesis-style meta-audit of the Z3 model itself |
+| `HALMOS_RESULTS.md` | Halmos cross-validation results |
 | `formal_verify.py` | Z3 inductive proof script |
 | `sanity_check_muldiv.py` | SMT-proves Z3's `mul_div_up`/`mul_div_down` ≡ Solmate's |
 | `z3-proof-output.txt` | output of the formal verification run |
+| `halmos-output.txt` | output of the halmos run |
+| `halmos-summary.txt` | filtered halmos output (PASS/FAIL/TIMEOUT only) |
+
+Plus, in `src/`:
+| File | Purpose |
+|---|---|
+| `MockLenderFreeDebt.sol` | extracted minimal harness (PRE-PR form) for Halmos |
+| `MockLenderFreeDebtFixed.sol` | extracted minimal harness (FIX form) for Halmos |
+
+And in `test/`:
+| File | Purpose |
+|---|---|
+| `MockLenderHalmos.t.sol` | Halmos `check_*` functions |
+| `MockLenderHalmosFixed.t.sol` | Halmos `check_*` for the FIX form |
+| `LenderInvariant.t.sol` | Foundry invariant fuzz |
+| `Lender.t.sol::test_NEMESIS_PoC_zeroDebtNonZeroShares_unbacked_borrow` | concrete PoC |
 
 ## Methodology summary
 
@@ -174,22 +229,28 @@ forge test --match-test test_NEMESIS_PoC_zeroDebtNonZeroShares_unbacked_borrow
 question
   │
   ▼
-[Nemesis pattern audit]  → no current-code path; historical bug only
+[Nemesis pattern audit]    → no current-code path; historical bug only
   │
   ▼
-[concrete PoC]           → confirms bug if state reached, says nothing about reachability
+[concrete PoC]             → confirms bug if state reached, says nothing about reachability
   │
   ▼
-[Foundry invariant fuzz] → 128k random sequences, no violation (still only sampling)
+[Foundry invariant fuzz]   → 128k random sequences, no violation (still only sampling)
   │
   ▼
-[Z3 inductive proof]     → formally proves D ≥ S is invariant ⇒ D=0,S>0 unreachable
+[Z3 inductive proof]       → formally proves D ≥ S is invariant ⇒ D=0,S>0 unreachable
   │
   ▼
-[meta-audit of model]    → Z3 mul_div_up/down ≡ Solmate (SMT-proven), all mutators covered
+[meta-audit of Z3 model]   → Z3 mul_div_up/down ≡ Solmate (SMT-proven), all mutators covered
+  │
+  ▼
+[Halmos cross-validation]  → independently confirms Z3 on every query it can solve;
+                             same counter-example shape; no contradictory finding
   │
   ▼
 verdict
 ```
 
-Each step strictly stronger than the last. The formal proof would not have been worth the effort if pattern-matching had found a current-code bug; the meta-audit would not have been worth it if the formal proof had given a counter-example. The escalation pattern is reusable for similar audits.
+Each step strictly stronger than (or independent confirmation of) the last. The Halmos step exists to address one residual concern from Step 4: a Z3 model is a manual translation of Solidity, so a model bug could in principle produce a wrong verdict. Halmos works on actual EVM bytecode and confirms the same conclusion wherever it can solve.
+
+The escalation pattern is reusable for similar audits.
