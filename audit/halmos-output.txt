@@ -1,0 +1,3407 @@
+No files changed, compilation skipped
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/InterestModel.t.sol:6:8
+  |
+6 | import "lib/solmate/src/utils/SignedWadMath.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lens.sol:4:8
+  |
+4 | import "./Lender.sol";
+  |        ^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Factory.sol:4:8
+  |
+4 | import "lib/solmate/src/utils/CREATE3.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Factory.sol:5:8
+  |
+5 | import "src/Lender.sol";
+  |        ^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Factory.sol:6:8
+  |
+6 | import "src/Vault.sol";
+  |        ^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Factory.sol:7:8
+  |
+7 | import "src/Coin.sol";
+  |        ^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Factory.sol:8:8
+  |
+8 | import "src/InterestModel.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/Factory.t.sol:5:8
+  |
+5 | import "src/Factory.sol";
+  |        ^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/Factory.t.sol:6:8
+  |
+6 | import "src/Lender.sol";
+  |        ^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/Factory.t.sol:7:8
+  |
+7 | import "src/Vault.sol";
+  |        ^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/Factory.t.sol:8:8
+  |
+8 | import "src/Coin.sol";
+  |        ^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/Factory.t.sol:9:8
+  |
+9 | import "src/InterestModel.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+  --> test/Factory.t.sol:10:8
+   |
+10 | import "lib/solmate/src/utils/CREATE3.sol";
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+  --> test/Factory.t.sol:11:8
+   |
+11 | import "lib/solmate/src/tokens/ERC20.sol";
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unwrapped-modifier-logic]: wrap modifier logic to reduce code size
+  --> src/Metadata.sol:61:5
+   |
+61 | /     modifier onlyOperatorOrManager(address _lender) {
+62 | |         require(
+63 | |             msg.sender == ILender(_lender).operator() ||
+64 | |                 msg.sender == ILender(_lender).manager(),
+...  |
+67 | |         _;
+68 | |     }
+   | |_____^
+   |
+help: wrap modifier logic to reduce code size
+   |
+61 ~     modifier onlyOperatorOrManager(address _lender) {
+62 +         _onlyOperatorOrManager(_lender);
+63 +         _;
+64 +     }
+65 + 
+66 +     function _onlyOperatorOrManager(address _lender) internal {
+67 +         require(
+68 +             msg.sender == ILender(_lender).operator() ||
+69 +                 msg.sender == ILender(_lender).manager(),
+70 +             "Only operator or manager can set metadata"
+71 +         );
+72 +     }
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unwrapped-modifier-logic
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/MockLenderFreeDebt.sol:4:8
+  |
+4 | import "lib/solmate/src/utils/FixedPointMathLib.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[screaming-snake-case-const]: constants should use SCREAMING_SNAKE_CASE
+ --> script/Factory.s.sol:9:22
+  |
+9 |     address constant operator = 0x926dF14a23BE491164dCF93f4c468A50ef659D5B;
+  |                      ^^^^^^^^ help: consider using: `OPERATOR`
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-const
+
+note[screaming-snake-case-const]: constants should use SCREAMING_SNAKE_CASE
+  --> script/Factory.s.sol:10:22
+   |
+10 |     uint256 constant minDebtFloor = 1e15;
+   |                      ^^^^^^^^^^^^ help: consider using: `MIN_DEBT_FLOOR`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-const
+
+note[mixed-case-variable]: mutable variables should use mixedCase
+  --> test/InterestModel.t.sol:41:18
+   |
+41 |             uint MIN_RATE = 5e15; // 0.5%
+   |                  ^^^^^^^^ help: consider using: `minRate`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-variable
+
+note[screaming-snake-case-const]: constants should use SCREAMING_SNAKE_CASE
+  --> test/MockLenderHalmosFixed.t.sol:13:22
+   |
+13 |     address constant target = address(0xA);
+   |                      ^^^^^^ help: consider using: `TARGET`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-const
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Coin.sol:4:8
+  |
+4 | import "lib/solmate/src/tokens/ERC20.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unused-import]: unused imports should be removed
+ --> test/InterestModel.t.sol:4:15
+  |
+4 | import {Test, console} from "forge-std/Test.sol";
+  |               ^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Vault.sol:4:8
+  |
+4 | import "lib/solmate/src/tokens/ERC4626.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmosFixed.t.sol:35:14
+   |
+35 |     function check_I_after_increaseDebt_FIX(uint256 D, uint256 S, uint256 X, uint256 amount) external {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkIAfterIncreaseDebtFix`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Factory.sol:64:30
+   |
+64 |     address public immutable interestModel;
+   |                              ^^^^^^^^^^^^^ help: consider using: `INTEREST_MODEL`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Factory.sol:65:30
+   |
+65 |     uint256 public immutable minDebtFloor;
+   |                              ^^^^^^^^^^^^ help: consider using: `MIN_DEBT_FLOOR`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Vault.sol:16:30
+   |
+16 |     ILender public immutable lender;
+   |                              ^^^^^^ help: consider using: `LENDER`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmosFixed.t.sol:44:14
+   |
+44 |     function check_J_after_increaseDebt_FIX(uint256 D, uint256 S, uint256 X, uint256 amount) external {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkJAfterIncreaseDebtFix`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[unused-import]: unused imports should be removed
+ --> test/Factory.t.sol:4:15
+  |
+4 | import {Test, console} from "forge-std/Test.sol";
+  |               ^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unwrapped-modifier-logic]: wrap modifier logic to reduce code size
+  --> src/Vault.sol:34:5
+   |
+34 | /     modifier accrueInterest() {
+35 | |         lender.accrueInterest();
+36 | |         _;
+37 | |     }
+   | |_____^
+   |
+help: wrap modifier logic to reduce code size
+   |
+34 ~     modifier accrueInterest() {
+35 +         _accrueInterest();
+36 +         _;
+37 +     }
+38 + 
+39 +     function _accrueInterest() internal {
+40 +         lender.accrueInterest();
+41 +     }
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unwrapped-modifier-logic
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> test/Metadata.t.sol:5:8
+  |
+5 | import "src/Metadata.sol";
+  |        ^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[asm-keccak256]: use of inefficient hashing mechanism; consider using inline assembly
+  --> src/Factory.sol:18:16
+   |
+18 |         return keccak256(abi.encode("lender", block.chainid, address(this), caller, nonce));
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#asm-keccak256
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/MockLenderFreeDebtFixed.sol:4:8
+  |
+4 | import "lib/solmate/src/utils/FixedPointMathLib.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unused-import]: unused imports should be removed
+ --> test/LenderFork.t.sol:4:15
+  |
+4 | import {Test, console, console2} from "forge-std/Test.sol";
+  |               ^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[asm-keccak256]: use of inefficient hashing mechanism; consider using inline assembly
+  --> src/Factory.sol:32:16
+   |
+32 |         return keccak256(abi.encode("vault", block.chainid, address(this), caller, nonce));
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#asm-keccak256
+
+note[asm-keccak256]: use of inefficient hashing mechanism; consider using inline assembly
+  --> src/Factory.sol:46:16
+   |
+46 |         return keccak256(abi.encode("coin", block.chainid, address(this), caller, nonce));
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#asm-keccak256
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+ --> src/Coin.sol:8:30
+  |
+8 |     address public immutable minter;
+  |                              ^^^^^^ help: consider using: `MINTER`
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[unused-import]: unused imports should be removed
+ --> test/Coin.t.sol:4:15
+  |
+4 | import {Test, console} from "forge-std/Test.sol";
+  |               ^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unused-import]: unused imports should be removed
+ --> test/LenderFork.t.sol:5:30
+  |
+5 | import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
+  |                              ^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unused-import]: unused imports should be removed
+ --> test/LenderFork.t.sol:5:37
+  |
+5 | import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
+  |                                     ^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unused-import]: unused imports should be removed
+ --> test/LenderFork.t.sol:5:52
+  |
+5 | import {Lender, ERC20, Coin, Vault, InterestModel, IChainlinkFeed, IFactory} from "src/Lender.sol";
+  |                                                    ^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unwrapped-modifier-logic]: wrap modifier logic to reduce code size
+  --> src/Factory.sol:78:5
+   |
+78 | /     modifier onlyOperator() {
+79 | |         require(msg.sender == operator, "Only operator can call this function");
+80 | |         _;
+81 | |     }
+   | |_____^
+   |
+help: wrap modifier logic to reduce code size
+   |
+78 ~     modifier onlyOperator() {
+79 +         _onlyOperator();
+80 +         _;
+81 +     }
+82 + 
+83 +     function _onlyOperator() internal {
+84 +         require(msg.sender == operator, "Only operator can call this function");
+85 +     }
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unwrapped-modifier-logic
+
+note[unused-import]: unused imports should be removed
+ --> test/Vault.t.sol:5:32
+  |
+5 | import {Vault, ILender, ERC20, ERC4626} from "src/Vault.sol";
+  |                                ^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[screaming-snake-case-const]: constants should use SCREAMING_SNAKE_CASE
+  --> test/MockLenderHalmos.t.sol:15:22
+   |
+15 |     address constant target = address(0xA);
+   |                      ^^^^^^ help: consider using: `TARGET`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-const
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:170:34
+    |
+170 |         lender.adjust(borrower2, int256(collateralAmount2), int256(borrowAmount2), true); // opt into redemptions
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lender.sol:4:8
+  |
+4 | import "lib/solmate/src/tokens/ERC20.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lender.sol:5:8
+  |
+5 | import "lib/solmate/src/tokens/ERC4626.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lender.sol:6:8
+  |
+6 | import "lib/solmate/src/utils/SafeTransferLib.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lender.sol:7:8
+  |
+7 | import "lib/solmate/src/utils/FixedPointMathLib.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lender.sol:8:8
+  |
+8 | import "./Coin.sol";
+  |        ^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/InterestModel.sol:4:8
+  |
+4 | import "lib/solmate/src/utils/SignedWadMath.sol";
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmos.t.sol:52:14
+   |
+52 |     function check_I_after_increaseDebt(uint256 D, uint256 S, uint256 X, uint256 amount) external {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkIAfterIncreaseDebt`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+ --> src/Lender.sol:9:8
+  |
+9 | import "./Vault.sol";
+  |        ^^^^^^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+note[unaliased-plain-import]: use named imports '{A, B}' or alias 'import ".." as X'
+  --> src/Lender.sol:10:8
+   |
+10 | import "./InterestModel.sol";
+   |        ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unaliased-plain-import
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:170:61
+    |
+170 |         lender.adjust(borrower2, int256(collateralAmount2), int256(borrowAmount2), true); // opt into redemptions
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+    --> test/Lender.t.sol:2917:14
+     |
+2917 |     function createLenderWithPSM() internal returns (Lender) {
+     |              ^^^^^^^^^^^^^^^^^^^ help: consider using: `createLenderWithPsm`
+     |
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmos.t.sol:61:14
+   |
+61 |     function check_I_after_decreaseDebt_nonmax(uint256 D, uint256 S, uint256 X, uint256 amount) external {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkIAfterDecreaseDebtNonmax`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:60:27
+   |
+60 |     Coin public immutable coin;
+   |                           ^^^^ help: consider using: `COIN`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:61:28
+   |
+61 |     ERC20 public immutable collateral;
+   |                            ^^^^^^^^^^ help: consider using: `COLLATERAL`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:62:28
+   |
+62 |     ERC20 public immutable psmAsset;
+   |                            ^^^^^^^^ help: consider using: `PSM_ASSET`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:63:30
+   |
+63 |     ERC4626 public immutable psmVault;
+   |                              ^^^^^^^^ help: consider using: `PSM_VAULT`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:64:37
+   |
+64 |     IChainlinkFeed public immutable feed;
+   |                                     ^^^^ help: consider using: `FEED`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:65:28
+   |
+65 |     Vault public immutable vault;
+   |                            ^^^^^ help: consider using: `VAULT`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:66:36
+   |
+66 |     InterestModel public immutable interestModel;
+   |                                    ^^^^^^^^^^^^^ help: consider using: `INTEREST_MODEL`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:67:31
+   |
+67 |     IFactory public immutable factory;
+   |                               ^^^^^^^ help: consider using: `FACTORY`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[mixed-case-function]: function names should use mixedCase
+    --> test/Lender.t.sol:2945:14
+     |
+2945 |     function createLenderWithRevertingPreviewRedeemPSM() internal returns (Lender, RevertingPreviewRedeemVault4626Mock) {
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `createLenderWithRevertingPreviewRedeemPsm`
+     |
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmos.t.sol:71:14
+   |
+71 |     function check_I_after_decreaseDebt_max(uint256 D, uint256 S, uint256 X) external {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkIAfterDecreaseDebtMax`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:68:27
+   |
+68 |     uint public immutable collateralFactor;
+   |                           ^^^^^^^^^^^^^^^^ help: consider using: `COLLATERAL_FACTOR`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:177:34
+    |
+177 |         lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount1), true); // opt into redemptions
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> src/InterestModel.sol:33:41
+   |
+33 |         uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'int256' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+    --> test/Lender.t.sol:2975:14
+     |
+2975 |     function createLenderWithPSMAssetOnly() internal returns (Lender) {
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `createLenderWithPsmAssetOnly`
+     |
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmos.t.sol:79:14
+   |
+79 |     function check_I_after_writeOffRedistribute(
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkIAfterWriteOffRedistribute`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:177:61
+    |
+177 |         lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount1), true); // opt into redemptions
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:69:27
+   |
+69 |     uint public immutable minDebt;
+   |                           ^^^^^^^ help: consider using: `MIN_DEBT`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:70:27
+   |
+70 |     uint public immutable deployTimestamp;
+   |                           ^^^^^^^^^^^^^^^ help: consider using: `DEPLOY_TIMESTAMP`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:71:27
+   |
+71 |     uint public immutable psmAssetDecimals;
+   |                           ^^^^^^^^^^^^^^^^ help: consider using: `PSM_ASSET_DECIMALS`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:72:27
+   |
+72 |     uint public immutable collateralDecimals;
+   |                           ^^^^^^^^^^^^^^^^^^ help: consider using: `COLLATERAL_DECIMALS`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:73:27
+   |
+73 |     uint public immutable stalenessThreshold; 
+   |                           ^^^^^^^^^^^^^^^^^^ help: consider using: `STALENESS_THRESHOLD`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:183:47
+    |
+183 | ...   lender.adjust(nonRedeemableBorrower3, int256(nonRedeemableCollateralAmount), int256(nonRedeemableBorrowAmount), false); // no...
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+  --> test/MockLenderHalmos.t.sol:94:14
+   |
+94 |     function check_J_after_increaseDebt(uint256 D, uint256 S, uint256 X, uint256 amount) external {
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkJAfterIncreaseDebt`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[screaming-snake-case-immutable]: immutables should use SCREAMING_SNAKE_CASE
+  --> src/Lender.sol:74:27
+   |
+74 |     uint public immutable psmVaultMinTotalSupply;
+   |                           ^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `PSM_VAULT_MIN_TOTAL_SUPPLY`
+   |
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#screaming-snake-case-immutable
+
+note[mixed-case-function]: function names should use mixedCase
+    --> test/Lender.t.sol:3002:14
+     |
+3002 |     function createLenderWithPSMAssetDecimals(uint8 decimals) internal returns (Lender) {
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `createLenderWithPsmAssetDecimals`
+     |
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+  --> src/InterestModel.sol:48:50
+   |
+48 |                     uint timeToMin = uint(-wadLn(int(MIN_RATE * 1e18 / _lastRate))) / _expRate;
+   |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: consider disabling this lint if you're certain the cast is safe
+           
+           // casting to 'int256' is safe because [explain why]
+           // forge-lint: disable-next-line(unsafe-typecast)
+           
+           
+   = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/MockLenderHalmos.t.sol:103:14
+    |
+103 |     function check_J_after_decreaseDebt_nonmax(uint256 D, uint256 S, uint256 X, uint256 amount) external {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkJAfterDecreaseDebtNonmax`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+    --> test/Lender.t.sol:3029:10
+     |
+3029 | function createLenderWithPSMVaultAssetDecimals(uint8 decimals) internal returns (Lender) {
+     |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `createLenderWithPsmVaultAssetDecimals`
+     |
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/MockLenderHalmos.t.sol:113:14
+    |
+113 |     function check_J_after_decreaseDebt_max(uint256 D, uint256 S, uint256 X) external {
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkJAfterDecreaseDebtMax`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:183:86
+    |
+183 | ...   lender.adjust(nonRedeemableBorrower3, int256(nonRedeemableCollateralAmount), int256(nonRedeemableBorrowAmount), false); // no...
+    |                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:192:41
+    |
+192 |             lender.adjust(borrower1, 0, int256(borrowingPower));
+    |                                         ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:205:35
+    |
+205 |         lender.adjust(borrower2, -int(collateralBalance2), -int(lender.getDebtOf(borrower2))); 
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[mixed-case-function]: function names should use mixedCase
+   --> test/MockLenderHalmos.t.sol:121:14
+    |
+121 |     function check_J_after_writeOffRedistribute(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `checkJAfterWriteOffRedistribute`
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#mixed-case-function
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:236:48
+    |
+236 |         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[unwrapped-modifier-logic]: wrap modifier logic to reduce code size
+   --> src/Lender.sol:173:5
+    |
+173 | /     modifier onlyOperator() {
+174 | |         require(msg.sender == operator, "Unauthorized");
+175 | |         _;
+176 | |     }
+    | |_____^
+    |
+help: wrap modifier logic to reduce code size
+    |
+173 ~     modifier onlyOperator() {
+174 +         _onlyOperator();
+175 +         _;
+176 +     }
+177 + 
+178 +     function _onlyOperator() internal {
+179 +         require(msg.sender == operator, "Unauthorized");
+180 +     }
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unwrapped-modifier-logic
+
+note[unwrapped-modifier-logic]: wrap modifier logic to reduce code size
+   --> src/Lender.sol:178:5
+    |
+178 | /     modifier onlyOperatorOrManager() {
+179 | |         require(msg.sender == operator || msg.sender == manager, "Unauthorized");
+180 | |         _;
+181 | |     }
+    | |_____^
+    |
+help: wrap modifier logic to reduce code size
+    |
+178 ~     modifier onlyOperatorOrManager() {
+179 +         _onlyOperatorOrManager();
+180 +         _;
+181 +     }
+182 + 
+183 +     function _onlyOperatorOrManager() internal {
+184 +         require(msg.sender == operator || msg.sender == manager, "Unauthorized");
+185 +     }
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unwrapped-modifier-logic
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:236:86
+    |
+236 |         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
+    |                                                                                      ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[unused-import]: unused imports should be removed
+ --> test/Lender.t.sol:4:15
+  |
+4 | import {Test, console, console2} from "forge-std/Test.sol";
+  |               ^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+note[unused-import]: unused imports should be removed
+ --> test/Lender.t.sol:4:24
+  |
+4 | import {Test, console, console2} from "forge-std/Test.sol";
+  |                        ^^^^^^^^
+  |
+  = help: https://book.getfoundry.sh/reference/forge/forge-lint#unused-import
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:274:34
+    |
+274 |         lender.adjust(borrower2, int256(collateralAmount2), int256(borrowAmount2), true); // opt into redemptions
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+note[unwrapped-modifier-logic]: wrap modifier logic to reduce code size
+   --> src/Lender.sol:183:5
+    |
+183 | /     modifier beforeDeadline() {
+184 | |         require(block.timestamp < immutabilityDeadline, "Deadline passed");
+185 | |         _;
+186 | |     }
+    | |_____^
+    |
+help: wrap modifier logic to reduce code size
+    |
+183 ~     modifier beforeDeadline() {
+184 +         _beforeDeadline();
+185 +         _;
+186 +     }
+187 + 
+188 +     function _beforeDeadline() internal {
+189 +         require(block.timestamp < immutabilityDeadline, "Deadline passed");
+190 +     }
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unwrapped-modifier-logic
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:274:61
+    |
+274 |         lender.adjust(borrower2, int256(collateralAmount2), int256(borrowAmount2), true); // opt into redemptions
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:281:34
+    |
+281 |         lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount1), true); // opt into redemptions
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:244:29
+    |
+244 |         lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:281:61
+    |
+281 |         lender.adjust(borrower1, int256(collateralAmount1), int256(borrowAmount1), true); // opt into redemptions
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:205:39
+    |
+205 |             uint120 localReserveFee = uint120(interest * feeBps / 10000);
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint120' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:206:40
+    |
+206 |             uint120 globalReserveFee = uint120(interest * cachedGlobalFeeBps / 10000);
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint120' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:219:41
+    |
+219 |                 accruedLocalReserves += uint120(remainingInterest);
+    |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint120' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:226:38
+    |
+226 |             lastBorrowRateMantissa = uint88(currBorrowRate);
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint88' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:273:29
+    |
+273 |         lender.adjust(user, int256(firstDeposit), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:282:29
+    |
+282 |         lender.adjust(user, int256(secondDeposit), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:240:40
+    |
+240 |             uint256 collateralAmount = uint(collateralDelta);
+    |                                        ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:287:47
+    |
+287 | ...   lender.adjust(nonRedeemableBorrower3, int256(nonRedeemableCollateralAmount), int256(nonRedeemableBorrowAmount), false); // no...
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:287:86
+    |
+287 | ...   lender.adjust(nonRedeemableBorrower3, int256(nonRedeemableCollateralAmount), int256(nonRedeemableBorrowAmount), false); // no...
+    |                                                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:245:40
+    |
+245 |             uint256 collateralAmount = uint(-collateralDelta);
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:295:41
+    |
+295 |             lender.adjust(borrower1, 0, int256(borrowingPower));
+    |                                         ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:254:27
+    |
+254 |             uint amount = uint256(debtDelta);
+    |                           ^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:311:35
+    |
+311 |         lender.adjust(borrower2, -int(collateralBalance2), -int(lender.getDebtOf(borrower2))); 
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:259:27
+    |
+259 |             uint amount = uint256(-debtDelta);
+    |                           ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:315:29
+    |
+315 |         lender.adjust(user, int256(depositAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:263:36
+    |
+263 |                 actualDebtDelta = -int(debt); // Use actual debt repaid for full repayment
+    |                                    ^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[erc20-unchecked-transfer]: ERC20 'transfer' and 'transferFrom' calls should check the return value
+   --> src/Lender.sol:268:13
+    |
+268 |             coin.transferFrom(msg.sender, address(this), amount);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#erc20-unchecked-transfer
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:346:48
+    |
+346 |         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:346:86
+    |
+346 |         lender.adjust(nonRedeemableBorrower3, -int(nonRedeemableCollateralBalance), -int(nonRedeemableDebt)); 
+    |                                                                                      ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:358:29
+    |
+358 |         lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:384:34
+    |
+384 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1), true);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[erc20-unchecked-transfer]: ERC20 'transfer' and 'transferFrom' calls should check the return value
+   --> src/Lender.sol:365:9
+    |
+365 |         coin.transferFrom(msg.sender, address(this), repayAmount);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#erc20-unchecked-transfer
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:384:60
+    |
+384 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1), true);
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:393:29
+    |
+393 |         lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:389:34
+    |
+389 |         lender.adjust(borrower2, int256(nonRedeemableCollateralAmount), int256(borrowAmount2), false);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:396:30
+    |
+396 |         lender.adjust(user, -int256(withdrawAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:389:73
+    |
+389 |         lender.adjust(borrower2, int256(nonRedeemableCollateralAmount), int256(borrowAmount2), false);
+    |                                                                         ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[erc20-unchecked-transfer]: ERC20 'transfer' and 'transferFrom' calls should check the return value
+   --> src/Lender.sol:458:9
+    |
+458 |         coin.transferFrom(msg.sender, address(this), amountIn);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#erc20-unchecked-transfer
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:426:34
+    |
+426 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1), true);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:426:60
+    |
+426 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1), true);
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[erc20-unchecked-transfer]: ERC20 'transfer' and 'transferFrom' calls should check the return value
+   --> src/Lender.sol:472:9
+    |
+472 |         coin.transferFrom(msg.sender, address(this), coinIn);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#erc20-unchecked-transfer
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:431:34
+    |
+431 |         lender.adjust(borrower2, int256(nonRedeemableCollateralAmount), int256(borrowAmount2), false);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:423:29
+    |
+423 |         lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:426:30
+    |
+426 |         lender.adjust(user, -int256(depositAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/LenderFork.t.sol:431:73
+    |
+431 |         lender.adjust(borrower2, int256(nonRedeemableCollateralAmount), int256(borrowAmount2), false);
+    |                                                                         ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:507:49
+    |
+507 |         if(coinFee > 0) accruedLocalReserves += uint120(coinFee);
+    |                                                 ^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint120' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:454:29
+    |
+454 |         lender.adjust(user, int256(totalAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:457:30
+    |
+457 |         lender.adjust(user, -int256(firstWithdrawal), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:465:30
+    |
+465 |         lender.adjust(user, -int256(secondWithdrawal), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:704:31
+    |
+704 |         uint8 tokenDecimals = uint8(collateralDecimals); // collateral balances are kept in native token decimals
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint8' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:707:21
+    |
+707 |             price = uint(feedPrice) * (10**decimals);
+    |                     ^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:710:21
+    |
+710 |             price = uint(feedPrice) / (10**decimals);
+    |                     ^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:495:29
+    |
+495 |         lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:500:30
+    |
+500 |         lender.adjust(user, -int256(withdrawAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:525:29
+    |
+525 |         lender.adjust(user, int256(depositAmount), 0, chooseRedeemable);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:538:30
+    |
+538 |         lender.adjust(user, -int256(withdrawAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:816:39
+    |
+816 |             uint120 localReserveFee = uint120(interest * feeBps / 10000);
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint120' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:817:40
+    |
+817 |             uint120 globalReserveFee = uint120(interest * cachedGlobalFeeBps / 10000);
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint120' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:571:29
+    |
+571 |         lender.adjust(user, int256(depositAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:579:30
+    |
+579 |         lender.adjust(user, -int256(withdrawAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> src/Lender.sol:870:18
+    |
+870 |         feeBps = uint16(_feeBps);
+    |                  ^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'uint16' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:605:29
+    |
+605 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:608:32
+    |
+608 |         lender.adjust(user, 0, int256(borrowAmount));
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:618:30
+    |
+618 |         lender.adjust(user, -int256(safeWithdrawalAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:649:29
+    |
+649 |         lender.adjust(user, int256(depositAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:655:30
+    |
+655 |         lender.adjust(user, -int256(withdrawAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:684:29
+    |
+684 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:687:32
+    |
+687 |         lender.adjust(user, 0, int256(borrowAmount));
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:698:30
+    |
+698 |         lender.adjust(user, -int256(withdrawAmount), 0);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:729:29
+    |
+729 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:737:32
+    |
+737 |         lender.adjust(user, 0, int256(borrowAmount));
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:770:29
+    |
+770 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:773:32
+    |
+773 |         lender.adjust(user, 0, int256(firstBorrow));
+    |                                ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:780:32
+    |
+780 |         lender.adjust(user, 0, int256(secondBorrow));
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:813:29
+    |
+813 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:822:32
+    |
+822 |         lender.adjust(user, 0, int256(borrowAmount), chooseRedeemable);
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:850:29
+    |
+850 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:866:32
+    |
+866 |         lender.adjust(user, 0, int256(borrowAmount));
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:898:29
+    |
+898 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:908:32
+    |
+908 |         lender.adjust(user, 0, int256(maxBorrowAmount + 1));
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:931:29
+    |
+931 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:938:32
+    |
+938 |         lender.adjust(user, 0, int256(borrowAmount));
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:959:29
+    |
+959 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:972:32
+    |
+972 |         lender.adjust(user, 0, int256(borrowAmount), chooseRedeemable);
+    |                                ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+   --> test/Lender.t.sol:999:29
+    |
+999 |         lender.adjust(user, int256(collateralAmount), 0);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: consider disabling this lint if you're certain the cast is safe
+            
+            // casting to 'int256' is safe because [explain why]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            
+            
+    = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1002:32
+     |
+1002 |         lender.adjust(user, 0, int256(borrowAmount));
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1013:32
+     |
+1013 |         lender.adjust(user, 0, int256(borrowAmount));
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1041:29
+     |
+1041 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount), chooseRedeemable);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1041:55
+     |
+1041 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount), chooseRedeemable);
+     |                                                       ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1047:33
+     |
+1047 |         lender.adjust(user, 0, -int256(repayAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1074:29
+     |
+1074 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount), chooseRedeemable);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1074:55
+     |
+1074 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount), chooseRedeemable);
+     |                                                       ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1080:33
+     |
+1080 |         lender.adjust(user, 0, -int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1110:29
+     |
+1110 |         lender.adjust(user, int256(collateralAmount), 0);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1116:32
+     |
+1116 |         lender.adjust(user, 0, int256(borrowAmount));
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1122:33
+     |
+1122 |         lender.adjust(user, 0, -int256(excessAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1150:29
+     |
+1150 |         lender.adjust(user, int256(collateralAmount), 0);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1153:32
+     |
+1153 |         lender.adjust(user, 0, int256(borrowAmount), chooseRedeemable);
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1159:33
+     |
+1159 |         lender.adjust(user, 0, -int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1188:29
+     |
+1188 |         lender.adjust(user, int256(collateralAmount), 0);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1194:32
+     |
+1194 |         lender.adjust(user, 0, int256(borrowAmount));
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1200:33
+     |
+1200 |         lender.adjust(user, 0, -int256(firstRepay));
+     |                                 ^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1207:33
+     |
+1207 |         lender.adjust(user, 0, -int256(secondRepay));
+     |                                 ^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1235:29
+     |
+1235 |         lender.adjust(user, int256(collateralAmount), 0);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1241:32
+     |
+1241 |         lender.adjust(user, 0, int256(borrowAmount));
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1257:33
+     |
+1257 |         lender.adjust(user, 0, -int256(repayAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1293:29
+     |
+1293 |         lender.adjust(user, int256(collateralAmount), 0);
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1296:32
+     |
+1296 |         lender.adjust(user, 0, int256(borrowAmount));
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1305:33
+     |
+1305 |         lender.adjust(user, 0, -int256(repayAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1333:29
+     |
+1333 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1333:55
+     |
+1333 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                                                       ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1365:33
+     |
+1365 |         lender.adjust(user, 0, -int256(expectedTotalDebt));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1401:34
+     |
+1401 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1));
+     |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1401:60
+     |
+1401 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount1));
+     |                                                            ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1407:34
+     |
+1407 |         lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount2));
+     |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1407:60
+     |
+1407 |         lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount2));
+     |                                                            ^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1425:38
+     |
+1425 |         lender.adjust(borrower1, 0, -int256(repayAmount1));
+     |                                      ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1428:38
+     |
+1428 |         lender.adjust(borrower2, 0, -int256(repayAmount2));
+     |                                      ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1451:38
+     |
+1451 |         lender.adjust(borrower1, 0, -int256(remainingDebt1));
+     |                                      ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1454:38
+     |
+1454 |         lender.adjust(borrower2, 0, -int256(remainingDebt2));
+     |                                      ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1497:33
+     |
+1497 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1497:59
+     |
+1497 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1555:33
+     |
+1555 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1555:59
+     |
+1555 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1605:33
+     |
+1605 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1605:59
+     |
+1605 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1643:33
+     |
+1643 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1643:59
+     |
+1643 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1682:33
+     |
+1682 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1682:59
+     |
+1682 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1724:33
+     |
+1724 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1724:59
+     |
+1724 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1730:38
+     |
+1730 |         lender.adjust(otherBorrower, int256(collateralAmount), int256(borrowAmount));
+     |                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1730:64
+     |
+1730 |         lender.adjust(otherBorrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1786:33
+     |
+1786 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1786:59
+     |
+1786 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1878:33
+     |
+1878 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1878:59
+     |
+1878 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1912:34
+     |
+1912 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true);
+     |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1912:60
+     |
+1912 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                            ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1917:34
+     |
+1917 |         lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true);
+     |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1917:60
+     |
+1917 |         lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                            ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1954:33
+     |
+1954 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1954:59
+     |
+1954 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1986:33
+     |
+1986 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1986:59
+     |
+1986 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:1990:32
+     |
+1990 |         lender.setRedeemFeeBps(uint16(newRedeemFeeBps));
+     |                                ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'uint16' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2018:33
+     |
+2018 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2018:59
+     |
+2018 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2043:33
+     |
+2043 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2043:59
+     |
+2043 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2072:33
+     |
+2072 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2072:59
+     |
+2072 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2100:33
+     |
+2100 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2100:59
+     |
+2100 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2389:33
+     |
+2389 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // non-redeemable debt
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2389:59
+     |
+2389 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // non-redeemable debt
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2429:33
+     |
+2429 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false);
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2429:59
+     |
+2429 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false);
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2480:33
+     |
+2480 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // non-redeemable debt
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2480:59
+     |
+2480 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // non-redeemable debt
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2561:29
+     |
+2561 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2561:55
+     |
+2561 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                                                       ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2613:29
+     |
+2613 |         lender.adjust(user, int256(collateralAmount), 0, true); // Set redeemable to true
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2614:32
+     |
+2614 |         lender.adjust(user, 0, int256(borrowAmount)); // Borrow
+     |                                ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2688:29
+     |
+2688 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2688:55
+     |
+2688 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                                                       ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2717:29
+     |
+2717 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2717:55
+     |
+2717 |         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
+     |                                                       ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2760:30
+     |
+2760 |         lender.adjust(userA, int256(collateralAmount), int256(borrowAmount));
+     |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2760:56
+     |
+2760 |         lender.adjust(userA, int256(collateralAmount), int256(borrowAmount));
+     |                                                        ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2766:30
+     |
+2766 |         lender.adjust(userB, int256(collateralAmount), 0, true); // Set redeemable to true
+     |                              ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2767:33
+     |
+2767 |         lender.adjust(userB, 0, int256(borrowAmount)); // Borrow
+     |                                 ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2844:50
+     |
+2844 |         lenderWithCustomFactory.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:2844:76
+     |
+2844 |         lenderWithCustomFactory.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+     |                                                                            ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[erc20-unchecked-transfer]: ERC20 'transfer' and 'transferFrom' calls should check the return value
+    --> test/Lender.t.sol:3208:9
+     |
+3208 |         psmVault.transfer(address(psmLender), shares);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#erc20-unchecked-transfer
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:3434:33
+     |
+3434 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // opt out of redemptions
+     |                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:3434:59
+     |
+3434 |         lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false); // opt out of redemptions
+     |                                                           ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:3483:34
+     |
+3483 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+     |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:3483:60
+     |
+3483 |         lender.adjust(borrower1, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+     |                                                            ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:3490:34
+     |
+3490 |         lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+     |                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+warning[unsafe-typecast]: typecasts that can truncate values should be checked
+    --> test/Lender.t.sol:3490:60
+     |
+3490 |         lender.adjust(borrower2, int256(collateralAmount), int256(borrowAmount), true); // opt into redemptions
+     |                                                            ^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: consider disabling this lint if you're certain the cast is safe
+             
+             // casting to 'int256' is safe because [explain why]
+             // forge-lint: disable-next-line(unsafe-typecast)
+             
+             
+     = help: https://book.getfoundry.sh/reference/forge/forge-lint#unsafe-typecast
+
+
+Running 8 tests for test/MockLenderHalmos.t.sol:MockLenderHalmosTest
+[31mCounterexample: 
+    p_D_uint256_0b5a5cc_00 = 0x8000
+    p_S_uint256_44a9c35_00 = 0xc000
+    p_X_uint256_7644859_00 = 0xbfff[0m
+[31m[FAIL][0m check_I_after_decreaseDebt_max(uint256,uint256,uint256) (paths: 10, time: 0.50s, bounds: [])
+[33m[TIMEOUT][0m check_I_after_decreaseDebt_nonmax(uint256,uint256,uint256,uint256) (paths: 9, time: 120.18s, bounds: [])
+[36mTimeout queries saved in: /var/folders/2r/4lfncq5n4qz77ctpct09g_v80000gn/T/check_I_after_decreaseDebt_nonmax-3w2wspo6-timeout[0m
+[32m[PASS][0m check_I_after_increaseDebt(uint256,uint256,uint256,uint256) (paths: 6, time: 0.07s, bounds: [])
+[32m[PASS][0m check_I_after_writeOffRedistribute(uint256,uint256,uint256,uint256) (paths: 7, time: 0.06s, bounds: [])
+[33m[TIMEOUT][0m check_J_after_decreaseDebt_max(uint256,uint256,uint256) (paths: 11, time: 120.14s, bounds: [])
+[36mTimeout queries saved in: /var/folders/2r/4lfncq5n4qz77ctpct09g_v80000gn/T/check_J_after_decreaseDebt_max-8mcn34_s-timeout[0m
+[33m[TIMEOUT][0m check_J_after_decreaseDebt_nonmax(uint256,uint256,uint256,uint256) (paths: 11, time: 120.42s, bounds: [])
+[36mTimeout queries saved in: /var/folders/2r/4lfncq5n4qz77ctpct09g_v80000gn/T/check_J_after_decreaseDebt_nonmax-lpx0a4d2-timeout[0m
+[33m[TIMEOUT][0m check_J_after_increaseDebt(uint256,uint256,uint256,uint256) (paths: 7, time: 120.09s, bounds: [])
+[36mTimeout queries saved in: /var/folders/2r/4lfncq5n4qz77ctpct09g_v80000gn/T/check_J_after_increaseDebt-1duvqw8n-timeout[0m
+[32m[PASS][0m check_J_after_writeOffRedistribute(uint256,uint256,uint256,uint256) (paths: 4, time: 0.04s, bounds: [])
+Symbolic test result: 3 passed; 5 failed; time: 481.52s
