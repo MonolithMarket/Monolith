@@ -2913,6 +2913,71 @@ contract LenderTest is Test {
             "Interest with 40% fee should be about 4x the interest with 10% fee");
     }
 
+    function test_isSolvent_basic() public {
+        FeedMock feed = FeedMock(address(lender.feed()));
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        address borrowerA = address(0xA);
+        address borrowerB = address(0xB);
+        uint collateralAmount = 2000e18;
+        uint borrowAmount = 1000e18;
+
+        collateral.mint(borrowerA, collateralAmount);
+        collateral.mint(borrowerB, collateralAmount);
+
+        vm.startPrank(borrowerA);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrowerA, int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+
+        vm.startPrank(borrowerB);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrowerB, int256(collateralAmount), int256(borrowAmount), false);
+        vm.stopPrank();
+
+        assertEq(lender.isSolvent(), true, "Should be solvent at 1.0 price");
+
+        feed.setPrice(int256(4e17)); // 0.4 price makes collateral value < total debt
+        assertEq(lender.isSolvent(), false, "Should be insolvent after price drop");
+    }
+
+    function test_isSolvent_zeroCollateral() public {
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        address borrower = address(0xC);
+        uint collateralAmount = 2000e18;
+        uint borrowAmount = 1000e18;
+
+        collateral.mint(borrower, collateralAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+
+        deal(address(collateral), address(lender), 0);
+        assertEq(lender.isSolvent(), false, "Zero collateral with debt should be insolvent");
+    }
+
+    function test_isSolvent_roundingBoundary() public {
+        FeedMock feed = FeedMock(address(lender.feed()));
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        address borrower = address(0xD);
+        uint collateralAmount = 10000e18;
+        uint borrowAmount = 1000e18;
+
+        collateral.mint(borrower, collateralAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), true);
+        vm.stopPrank();
+
+        feed.setPrice(int256(1e17));
+        assertEq(lender.isSolvent(), true, "Equal collateral value and debt should be solvent");
+
+        feed.setPrice(int256(1e17 - 1));
+        assertEq(lender.isSolvent(), false, "Rounding below debt should be insolvent");
+    }
+
     // PSM Test Setup
     function createLenderWithPSM() internal returns (Lender) {
         ERC20Mock psmAsset = new ERC20Mock("PSM Asset", "PSMA");
