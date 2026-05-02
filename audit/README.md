@@ -13,7 +13,7 @@ A pending PR on `dev` reapplies a fix in `Lender.sol::increaseDebt` (free-debt b
 
 ## What we did
 
-A six-step audit, escalating in rigor as each step couldn't fully close the question.
+A multi-step audit, escalating in rigor as each step couldn't fully close the question. (Plus one attempt at a third verification tool that didn't pan out — see step 7.)
 
 ### Step 1 — Pattern-matching audit (`Nemesis auditor`)
 
@@ -126,6 +126,16 @@ Same shape as Z3's CE — `D < S` precondition with `X = S − 1`, which Z3 then
 **Where Halmos and Z3 diverge:** Halmos times out on every query that involves symbolic `mulDivUp`/`mulDivDown` with two symbolic operands (bit-blasting symbolic uint256 multiplication explodes the SMT formula). Z3 with unbounded Int sidesteps this. Halmos timeouts are not findings — they're "couldn't refute" verdicts that Z3 closes.
 
 See `HALMOS_RESULTS.md` for full details.
+
+### Step 7 — Kontrol cross-validation attempt (did not complete)
+
+To get a third independent verification, we tried Kontrol (Runtime Verification's KEVM-based prover). Kontrol's lemma system is well-suited to the symbolic `mulDivUp`/`mulDivDown` queries that Halmos timed out on.
+
+The build path on macOS without Docker Desktop went via Colima (lightweight VM) running the `runtimeverificationinc/kontrol` Docker image under QEMU emulation (image is `linux/amd64`, host is `arm64`). After working through OOM issues (Colima needed 16 GB), bind-mount UID mismatches (chmod 777 on `out/`), and other glue, we still hit a kompile failure inside the Kontrol image (apparent K-version/evm-semantics mismatch in `bytes-simplification.k`). Five build attempts, each ~15 min, all failed at the LLVM kompile step.
+
+We stopped after attempt 5 — diminishing returns. The Z3 result is already corroborated by Halmos on every query Halmos can solve; Kontrol would have been a third corroboration, not a new verdict. See `KONTROL_RESULTS.md` for the detailed setup journey and lesson-learned for future audits.
+
+The Kontrol test file (`test/MockLenderKontrol.t.sol`) and extracted harness (`src/MockLenderFreeDebt.sol`) are committed regardless — should anyone want to retry with a different host / Kontrol version.
 
 ## Final verdict
 
