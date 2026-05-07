@@ -60,6 +60,67 @@ contract Lens {
         }
     }
 
+    /// @notice Returns the current real-time borrow rate mantissa (18 decimals, annual)
+    /// @param _lender The Lender contract to query
+    /// @return borrowRate The real-time borrow rate mantissa
+    function getRealTimeBorrowRate(Lender _lender) public view returns (uint256 borrowRate) {
+        uint256 timeElapsed = block.timestamp - _lender.lastAccrue();
+
+        if (timeElapsed == 0) {
+            return _lender.lastBorrowRateMantissa();
+        }
+
+        try _lender.interestModel().calculateInterest(
+            _lender.totalPaidDebt(),
+            _lender.lastBorrowRateMantissa(),
+            timeElapsed,
+            _lender.expRate(),
+            _lender.getFreeDebtRatio(),
+            _lender.targetFreeDebtRatioStartBps(),
+            _lender.targetFreeDebtRatioEndBps()
+        ) returns (uint256 currBorrowRate, uint256) {
+            return currBorrowRate;
+        } catch {
+            return _lender.lastBorrowRateMantissa();
+        }
+    }
+
+    /// @notice Returns the current real-time savings rate mantissa (18 decimals, annual)
+    /// @param _lender The Lender contract to query
+    /// @return savingsRate The real-time savings rate mantissa for stakers
+    function getRealTimeSavingsRate(Lender _lender) public view returns (uint256 savingsRate) {
+        return _getSavingsRate(_lender, getRealTimeBorrowRate(_lender));
+    }
+
+    /// @notice Returns both the borrow and savings rates in a single call
+    /// @param _lender The Lender contract to query
+    /// @return borrowRate The real-time borrow rate mantissa (18 decimals, annual)
+    /// @return savingsRate The real-time savings rate mantissa (18 decimals, annual)
+    function getRates(Lender _lender) external view returns (uint256 borrowRate, uint256 savingsRate) {
+        borrowRate = getRealTimeBorrowRate(_lender);
+        savingsRate = _getSavingsRate(_lender, borrowRate);
+    }
+
+    /// @notice Internal helper to compute savings rate from borrow rate
+    /// @dev Savings rate = borrowRate * (1 - fees) * min(1, totalPaidDebt / totalStaked)
+    function _getSavingsRate(Lender _lender, uint256 borrowRate) internal view returns (uint256) {
+        if (borrowRate == 0) return 0;
+
+        uint256 totalPaidDebt = _lender.totalPaidDebt();
+        if (totalPaidDebt == 0) return 0;
+
+        uint256 totalStaked = _lender.coin().balanceOf(address(_lender.vault()));
+        if (totalStaked == 0) return 0;
+
+        uint256 netFeeFactor = 10000 - _lender.feeBps() - _lender.cachedGlobalFeeBps();
+
+        // When totalStaked < totalPaidDebt, savings rate is capped at borrow rate (after fees)
+        // When totalStaked >= totalPaidDebt, interest is diluted across more stakers
+        uint256 refBalance = totalStaked < totalPaidDebt ? totalPaidDebt : totalStaked;
+
+        return borrowRate.mulDivDown(totalPaidDebt, refBalance) * netFeeFactor / 10000;
+    }
+
     /// @notice Internal helper to calculate total debt including accrued interest
     /// @param _lender The Lender contract to query
     /// @return syncedTotalPaidDebt The total paid debt including accrued interest
@@ -67,14 +128,14 @@ contract Lens {
     function _getSyncedTotalDebt(Lender _lender) internal view returns (uint256 syncedTotalPaidDebt, uint256 syncedTotalFreeDebt) {
         uint256 totalPaidDebt = _lender.totalPaidDebt();
         syncedTotalFreeDebt = _lender.totalFreeDebt();
-        
+
         // Calculate accrued interest since last accrual
         uint256 timeElapsed = block.timestamp - _lender.lastAccrue();
-        
+
         if (timeElapsed == 0) {
             return (totalPaidDebt, syncedTotalFreeDebt);
         }
-        
+
         // Call the interest model to calculate accrued interest
         try _lender.interestModel().calculateInterest(
             totalPaidDebt,
