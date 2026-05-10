@@ -44,7 +44,7 @@ contract Lens {
     /// @return The current debt amount including all accrued interest
     function getDebtOf(Lender _lender, address borrower) public view returns (uint256) {
         // Get the current total debt including accrued interest
-        (uint256 totalPaidDebt, uint256 totalFreeDebt) = _getSyncedTotalDebt(_lender);
+        (uint256 totalDebt, uint256 totalPaidDebt, uint256 totalFreeDebt) = getSyncedTotalDebts(_lender);
         
         // Calculate the borrower's share of debt based on whether they are redeemable
         if (_lender.isRedeemable(borrower)) {
@@ -64,10 +64,18 @@ contract Lens {
     /// @param _lender The Lender contract to query
     /// @return borrowRate The real-time borrow rate mantissa
     function getRealTimeBorrowRate(Lender _lender) public view returns (uint256 borrowRate) {
+        (borrowRate,) = _getRealTimeBorrowRateAndInterest(_lender);
+    }
+
+    /// @notice Returns the current real-time borrow rate mantissa (18 decimals, annual)
+    /// @param _lender The Lender contract to query
+    /// @return borrowRate The real-time borrow rate mantissa
+    /// @return pendingInterests The pending borrowing interests
+    function _getRealTimeBorrowRateAndInterest(Lender _lender) public view returns (uint256 borrowRate, uint256 pendingInterests) {
         uint256 timeElapsed = block.timestamp - _lender.lastAccrue();
 
         if (timeElapsed == 0) {
-            return _lender.lastBorrowRateMantissa();
+            return (_lender.lastBorrowRateMantissa(), 0);
         }
 
         try _lender.interestModel().calculateInterest(
@@ -78,10 +86,10 @@ contract Lens {
             _lender.getFreeDebtRatio(),
             _lender.targetFreeDebtRatioStartBps(),
             _lender.targetFreeDebtRatioEndBps()
-        ) returns (uint256 currBorrowRate, uint256) {
-            return currBorrowRate;
+        ) returns (uint256 currBorrowRate, uint256 interest) {
+            return (currBorrowRate, interest);
         } catch {
-            return _lender.lastBorrowRateMantissa();
+            return (_lender.lastBorrowRateMantissa(), 0);
         }
     }
 
@@ -97,8 +105,20 @@ contract Lens {
     /// @return borrowRate The real-time borrow rate mantissa (18 decimals, annual)
     /// @return savingsRate The real-time savings rate mantissa (18 decimals, annual)
     function getRates(Lender _lender) external view returns (uint256 borrowRate, uint256 savingsRate) {
-        borrowRate = getRealTimeBorrowRate(_lender);
+        (borrowRate,) = _getRealTimeBorrowRateAndInterest(_lender);
         savingsRate = _getSavingsRate(_lender, borrowRate);
+    }
+
+    /// @notice Returns both the borrow and savings rates in a single call
+    /// @param _lender The Lender contract to query
+    /// @return borrowRate The real-time borrow rate mantissa (18 decimals, annual)
+    /// @return savingsRate The real-time savings rate mantissa (18 decimals, annual)
+    /// @return interests pending borrowing interests
+    /// @return interestsToStakers part of the pending interests going to stakers
+    function getRatesAndInterests(Lender _lender) external view returns (uint256 borrowRate, uint256 savingsRate, uint256 interests, uint256 interestsToStakers) {
+        (borrowRate, interests) = _getRealTimeBorrowRateAndInterest(_lender);
+        savingsRate = _getSavingsRate(_lender, borrowRate);
+        interestsToStakers = _lender.getPendingInterest();
     }
 
     /// @notice Internal helper to compute savings rate from borrow rate
@@ -121,11 +141,12 @@ contract Lens {
         return borrowRate.mulDivDown(totalPaidDebt, refBalance) * netFeeFactor / 10000;
     }
 
-    /// @notice Internal helper to calculate total debt including accrued interest
+    /// @notice helper to calculate total debt including accrued interest
     /// @param _lender The Lender contract to query
+    /// @return syncedTotalDebt The total debt including accrued interest
     /// @return syncedTotalPaidDebt The total paid debt including accrued interest
     /// @return syncedTotalFreeDebt The total free debt
-    function _getSyncedTotalDebt(Lender _lender) internal view returns (uint256 syncedTotalPaidDebt, uint256 syncedTotalFreeDebt) {
+    function getSyncedTotalDebts(Lender _lender) public view returns (uint256 syncedTotalDebt, uint256 syncedTotalPaidDebt, uint256 syncedTotalFreeDebt) {
         uint256 totalPaidDebt = _lender.totalPaidDebt();
         syncedTotalFreeDebt = _lender.totalFreeDebt();
 
@@ -133,7 +154,7 @@ contract Lens {
         uint256 timeElapsed = block.timestamp - _lender.lastAccrue();
 
         if (timeElapsed == 0) {
-            return (totalPaidDebt, syncedTotalFreeDebt);
+            return (totalPaidDebt + syncedTotalFreeDebt, totalPaidDebt, syncedTotalFreeDebt);
         }
 
         // Call the interest model to calculate accrued interest
@@ -152,5 +173,6 @@ contract Lens {
             // If interest calculation fails, return current totals
             syncedTotalPaidDebt = totalPaidDebt;
         }
+        syncedTotalDebt = syncedTotalPaidDebt + syncedTotalFreeDebt;
     }
 }
