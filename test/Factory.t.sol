@@ -299,10 +299,10 @@ contract FactoryTest is Test {
             timeUntilImmutability: timeUntilImmutability,
             operator: deployerOperator,
             manager: managerAddr,
+            eventTriggerOperator: address(0xE7E7),
             halfLife: 7 days,
-            targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30,
+            targetPsmDebtRatioStartBps: 2000,
+            targetPsmDebtRatioEndBps: 4000,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
             psmVaultMinTotalSupply: 1
@@ -326,6 +326,7 @@ contract FactoryTest is Test {
         assertEq(lenderContract.collateralFactor(), collateralFactor, "Lender collateralFactor should be set correctly");
         assertEq(lenderContract.minDebt(), minDebt, "Lender minDebt should be set correctly");
         assertEq(lenderContract.manager(), managerAddr, "Lender manager should be set correctly");
+        assertEq(lenderContract.eventTriggerOperator(), address(0xE7E7), "Lender event trigger operator should be set correctly");
         
         // Verify coin configuration
         Coin coinContract = Coin(coin);
@@ -366,10 +367,10 @@ contract FactoryTest is Test {
             timeUntilImmutability: 365 days,
             operator: deployerOperator,
             manager: managerAddr1,
+            eventTriggerOperator: address(0xE7E7),
             halfLife: 7 days,
-            targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30,
+            targetPsmDebtRatioStartBps: 2000,
+            targetPsmDebtRatioEndBps: 4000,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
             psmVaultMinTotalSupply: 1
@@ -390,10 +391,10 @@ contract FactoryTest is Test {
             timeUntilImmutability: 365 days,
             operator: deployerOperator,
             manager: managerAddr2,
+            eventTriggerOperator: address(0xE7E7),
             halfLife: 7 days,
-            targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30,
+            targetPsmDebtRatioStartBps: 2000,
+            targetPsmDebtRatioEndBps: 4000,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
             psmVaultMinTotalSupply: 1
@@ -444,15 +445,15 @@ contract FactoryTest is Test {
             timeUntilImmutability: timeUntilImmutability,
             operator: deployerOperator,
             manager: managerAddr,
+            eventTriggerOperator: address(0xE7E7),
             halfLife: 7 days,
-            targetFreeDebtRatioStartBps: 2000,
-            targetFreeDebtRatioEndBps: 4000,
-            redeemFeeBps: 30,
+            targetPsmDebtRatioStartBps: 2000,
+            targetPsmDebtRatioEndBps: 4000,
             stalenessThreshold: 48 hours,
             maxBorrowDeltaBps: 50,
             psmVaultMinTotalSupply: 1
         });
-        (address lender, address coin, address vault) = factory.deploy(params);
+        (address lender,,) = factory.deploy(params);
 
         // Verify manager is correctly stored in Lender
         Lender lenderContract = Lender(lender);

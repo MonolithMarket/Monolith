@@ -22,9 +22,9 @@ contract InterestModel {
         uint _lastRate,
         uint _timeElapsed,
         uint _expRate,
-        uint _lastFreeDebtRatioBps,
-        uint _targetFreeDebtRatioStartBps,
-        uint _targetFreeDebtRatioEndBps
+        uint _lastPsmDebtRatioBps,
+        uint _targetPsmDebtRatioStartBps,
+        uint _targetPsmDebtRatioEndBps
     ) external pure returns (uint currBorrowRate, uint interest) {
         // check _expRate * _timeElapsed overflow
         if(uint(type(int256).max) / _expRate < _timeElapsed) _timeElapsed = uint(type(int256).max) / _expRate;
@@ -32,11 +32,11 @@ contract InterestModel {
         // Results of positive exponents can exceed max uint256, negative exponents only return a value between [0, 1e18]
         uint growthDecay = uint(wadExp(-int(_expRate * _timeElapsed)));
         
-        if (_lastFreeDebtRatioBps < _targetFreeDebtRatioStartBps) {
+        if (_lastPsmDebtRatioBps < _targetPsmDebtRatioStartBps) {
             if (growthDecay == 0) growthDecay = 1;
             currBorrowRate = _lastRate * 1e18 / growthDecay;
             interest = _totalPaidDebt * (currBorrowRate - _lastRate) / _expRate / 365 days;
-        } else if (_lastFreeDebtRatioBps > _targetFreeDebtRatioEndBps) {
+        } else if (_lastPsmDebtRatioBps > _targetPsmDebtRatioEndBps) {
             currBorrowRate = _lastRate * growthDecay / 1e18;
             if (currBorrowRate < MIN_RATE) {
                 currBorrowRate = MIN_RATE;
