@@ -1,0 +1,14 @@
+Running 8 tests for test/MockLenderHalmos.t.sol:MockLenderHalmosTest
+[31mCounterexample: 
+    p_D_uint256_0b5a5cc_00 = 0x8000
+    p_S_uint256_44a9c35_00 = 0xc000
+    p_X_uint256_7644859_00 = 0xbfff[0m
+[31m[FAIL][0m check_I_after_decreaseDebt_max(uint256,uint256,uint256) (paths: 10, time: 0.50s, bounds: [])
+[33m[TIMEOUT][0m check_I_after_decreaseDebt_nonmax(uint256,uint256,uint256,uint256) (paths: 9, time: 120.18s, bounds: [])
+[32m[PASS][0m check_I_after_increaseDebt(uint256,uint256,uint256,uint256) (paths: 6, time: 0.07s, bounds: [])
+[32m[PASS][0m check_I_after_writeOffRedistribute(uint256,uint256,uint256,uint256) (paths: 7, time: 0.06s, bounds: [])
+[33m[TIMEOUT][0m check_J_after_decreaseDebt_max(uint256,uint256,uint256) (paths: 11, time: 120.14s, bounds: [])
+[33m[TIMEOUT][0m check_J_after_decreaseDebt_nonmax(uint256,uint256,uint256,uint256) (paths: 11, time: 120.42s, bounds: [])
+[33m[TIMEOUT][0m check_J_after_increaseDebt(uint256,uint256,uint256,uint256) (paths: 7, time: 120.09s, bounds: [])
+[32m[PASS][0m check_J_after_writeOffRedistribute(uint256,uint256,uint256,uint256) (paths: 4, time: 0.04s, bounds: [])
+Symbolic test result: 3 passed; 5 failed; time: 481.52s

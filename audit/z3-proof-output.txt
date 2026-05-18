@@ -1,0 +1,49 @@
+======================================================================
+PART 1: invariant I := (D = 0 ⇒ S = 0)
+======================================================================
+[ increaseDebt PRE-PR preserves I ]
+  ✓ PROVEN INDUCTIVE
+
+[ increaseDebt FIX preserves I ]
+  ✓ PROVEN INDUCTIVE
+
+[ decreaseDebt non-max preserves I ]
+  ✓ PROVEN INDUCTIVE
+
+[ decreaseDebt max preserves I ]
+  ✗ COUNTER-EXAMPLE:
+      D = 1
+      S = 2
+      X = 1
+      div0 = [else -> 0]
+      mod0 = [else -> 0]
+
+[ writeOff redistribute preserves I ]
+  ✓ PROVEN INDUCTIVE
+
+======================================================================
+PART 2: stronger invariant J := (D ≥ S) — implies I
+======================================================================
+[ decreaseDebt non-max preserves J (D >= S) ]
+  ✓ PROVEN INDUCTIVE
+
+[ decreaseDebt max preserves J ]
+  ✓ PROVEN INDUCTIVE
+
+[ increaseDebt PRE-PR preserves J ]
+  ✓ PROVEN INDUCTIVE
+
+[ writeOff redistribute preserves J ]
+  ✓ PROVEN INDUCTIVE
+
+======================================================================
+PART 3: Reachability of D < S via valid operations
+======================================================================
+
+If we cannot prove (J ⇒ J' for every operation), check whether the failing
+operation can REACH a state with D < S from a state with D >= S.
+This is what the bug ultimately needs.
+
+======================================================================
+DONE
+======================================================================

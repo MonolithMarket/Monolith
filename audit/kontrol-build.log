@@ -1,0 +1,47 @@
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+🔨 Building Kontrol project 🔨 
+ Add `--verbose` to `kontrol build` for more details!
+An error occurred while building your Kontrol project: Command '('kompile', 
+'out/kompiled/foundry.k', '--main-module', 'KONTROL-MAIN', '-I', 
+'/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kproj/evm-semantics', 
+'-I', '/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kproj/plugin', 
+'-I', '/home/user/.local/lib/python3.10/site-packages/kontrol/kdist', 
+'--md-selector', 'k & ! symbolic', '--hook-namespaces', 'JSON KRYPTO', 
+'--emit-json', '--backend', 'llvm', '--llvm-kompile-type', 'c', '-O2', '-ccopt',
+'-std=c++20', '-ccopt', '-lssl', '-ccopt', '-lcrypto', '-ccopt', '-lsecp256k1', 
+'-ccopt', '/home/user/.cache/kdist-1356d38/evm-semantics/plugin/krypto.a', 
+'-ccopt', '-Wno-deprecated-declarations', '--output-definition', 
+'out/kompiled/llvm-library', '--type-inference-mode', 'simplesub', '-Wno', 
+'non-exhaustive-match,missing-syntax-module')' returned non-zero exit status 1.
+Traceback (most recent call last):
+  File "/home/user/.local/bin/kontrol", line 8, in <module>
+    sys.exit(main())
+  File "/home/user/.local/lib/python3.10/site-packages/kontrol/__main__.py", line 131, in main
+    execute(options)
+  File "/home/user/.local/lib/python3.10/site-packages/kontrol/__main__.py", line 167, in exec_build
+    raise e
+  File "/home/user/.local/lib/python3.10/site-packages/kontrol/__main__.py", line 158, in exec_build
+    foundry_kompile(
+  File "/home/user/.local/lib/python3.10/site-packages/kontrol/kompile.py", line 161, in foundry_kompile
+    kevm_kompile(
+  File "/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kompile.py", line 70, in kevm_kompile
+    return run_kompile(
+  File "/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kompile.py", line 218, in run_kompile
+    [future.result() for future in futures]
+  File "/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kompile.py", line 218, in <listcomp>
+    [future.result() for future in futures]
+  File "/usr/lib/python3.10/concurrent/futures/_base.py", line 458, in result
+    return self.__get_result()
+  File "/usr/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
+    raise self._exception
+  File "/usr/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kompile.py", line 196, in _kompile_llvm
+    kompile_llvm(
+  File "/home/user/.local/lib/python3.10/site-packages/pyk/ktool/kompile.py", line 335, in __call__
+    proc_res = run_process_2(
+  File "/home/user/.local/lib/python3.10/site-packages/pyk/utils.py", line 527, in run_process_2
+    res.check_returncode()
+  File "/usr/lib/python3.10/subprocess.py", line 457, in check_returncode
+    raise CalledProcessError(self.returncode, self.args, self.stdout,
+subprocess.CalledProcessError: Command '('kompile', 'out/kompiled/foundry.k', '--main-module', 'KONTROL-MAIN', '-I', '/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kproj/evm-semantics', '-I', '/home/user/.local/lib/python3.10/site-packages/kevm_pyk/kproj/plugin', '-I', '/home/user/.local/lib/python3.10/site-packages/kontrol/kdist', '--md-selector', 'k & ! symbolic', '--hook-namespaces', 'JSON KRYPTO', '--emit-json', '--backend', 'llvm', '--llvm-kompile-type', 'c', '-O2', '-ccopt', '-std=c++20', '-ccopt', '-lssl', '-ccopt', '-lcrypto', '-ccopt', '-lsecp256k1', '-ccopt', '/home/user/.cache/kdist-1356d38/evm-semantics/plugin/krypto.a', '-ccopt', '-Wno-deprecated-declarations', '--output-definition', 'out/kompiled/llvm-library', '--type-inference-mode', 'simplesub', '-Wno', 'non-exhaustive-match,missing-syntax-module')' returned non-zero exit status 1.
