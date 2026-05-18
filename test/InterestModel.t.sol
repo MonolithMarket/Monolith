@@ -11,27 +11,27 @@ contract InterestModelTest is Test {
         interestModel = new InterestModel();
     }
     
-    function test_calculateInterest(uint _totalPaidDebt, uint lastFreeDebtRatioBps, uint timeElapsed, uint halfLife, uint lastRate) public view {
-        lastFreeDebtRatioBps = bound(lastFreeDebtRatioBps, 0, 10000);
+    function test_calculateInterest(uint _totalPaidDebt, uint lastPsmDebtRatioBps, uint timeElapsed, uint halfLife, uint lastRate) public view {
+        lastPsmDebtRatioBps = bound(lastPsmDebtRatioBps, 0, 10000);
         timeElapsed = bound(timeElapsed, 1, 7 days);
         halfLife = bound(halfLife, 12 hours, 30 days);
         lastRate = bound(lastRate, 5e15, 1e18);
 
         uint totalPaidDebt = bound(_totalPaidDebt, 1e18, 1e20);
         uint expRate = uint(wadLn(2*1e18)) / halfLife;
-        uint targetFreeDebtRatioStartBps = 2500; // 25%
-        uint targetFreeDebtRatioEndBps = 7500; // 75%
+        uint targetPsmDebtRatioStartBps = 2500; // 25%
+        uint targetPsmDebtRatioEndBps = 7500; // 75%
 
-        (uint currBorrowRate, uint interest) = interestModel.calculateInterest(totalPaidDebt, lastRate, timeElapsed, expRate, lastFreeDebtRatioBps, targetFreeDebtRatioStartBps, targetFreeDebtRatioEndBps);
+        (uint currBorrowRate, uint interest) = interestModel.calculateInterest(totalPaidDebt, lastRate, timeElapsed, expRate, lastPsmDebtRatioBps, targetPsmDebtRatioStartBps, targetPsmDebtRatioEndBps);
 
         uint expectedBorrowRate = lastRate;
         uint expectedInterest;
 
         for (uint i = 0; i < timeElapsed; i++) {
-            if(lastFreeDebtRatioBps < targetFreeDebtRatioStartBps) {
+            if(lastPsmDebtRatioBps < targetPsmDebtRatioStartBps) {
                 // borrow rate grows
                 expectedBorrowRate += expectedBorrowRate * expRate / 1e18;
-            } else if(lastFreeDebtRatioBps > targetFreeDebtRatioEndBps) {
+            } else if(lastPsmDebtRatioBps > targetPsmDebtRatioEndBps) {
                 // borrow rate decays
                 expectedBorrowRate -= expectedBorrowRate * expRate / 1e18;
             } else {
@@ -55,18 +55,18 @@ contract InterestModelTest is Test {
         uint timeElapsed = 60 days;
         uint halfLife = 12 hours;
         uint expRate = uint(wadLn(2e18)) / halfLife;
-        uint lastFreeDebtRatioBps = 1000;
-        uint targetFreeDebtRatioStartBps = 2500;
-        uint targetFreeDebtRatioEndBps = 7500;
+        uint lastPsmDebtRatioBps = 1000;
+        uint targetPsmDebtRatioStartBps = 2500;
+        uint targetPsmDebtRatioEndBps = 7500;
 
         (uint currBorrowRate, uint interest) = interestModel.calculateInterest(
             totalPaidDebt,
             lastRate,
             timeElapsed,
             expRate,
-            lastFreeDebtRatioBps,
-            targetFreeDebtRatioStartBps,
-            targetFreeDebtRatioEndBps
+            lastPsmDebtRatioBps,
+            targetPsmDebtRatioStartBps,
+            targetPsmDebtRatioEndBps
         );
 
         // When growthDecay underflows to 0, we set it to 1, causing currBorrowRate
