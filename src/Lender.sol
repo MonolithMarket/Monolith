@@ -358,12 +358,12 @@ contract Lender {
         
         require(collateralReward >= minCollateralOut, "insufficient collateral out");
 
+        coin.transferFrom(msg.sender, address(this), repayAmount);
+        coin.burn(repayAmount);
         if(collateralReward > 0) {
             collateralBalances[borrower] = collateralBalance - collateralReward;
             collateral.safeTransfer(msg.sender, collateralReward);
         }
-        coin.transferFrom(msg.sender, address(this), repayAmount);
-        coin.burn(repayAmount);
         emit Liquidated(borrower, msg.sender, repayAmount, collateralReward);
         
         uint256 gasBefore = gasleft();
@@ -382,6 +382,7 @@ contract Lender {
     /// @param to The address to send the collateral to
     /// @dev This function is called by liquidate() when a borrower's position is undercollateralized. It should never revert to avoid liquidation failure.
     function writeOff(address borrower, address to) external returns (bool writtenOff) {
+        require(msg.sender == address(this), "only via liquidate");
         accrueInterest();
         // check for write off
         uint debt = getDebtOf(borrower);
