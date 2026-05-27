@@ -138,10 +138,10 @@ contract Factory {
         uint256 timeUntilImmutability;
         address operator;
         address manager;
+        address eventTriggerOperator;
         uint64 halfLife;
-        uint16 targetFreeDebtRatioStartBps;
-        uint16 targetFreeDebtRatioEndBps;
-        uint16 redeemFeeBps;
+        uint16 targetPsmDebtRatioStartBps;
+        uint16 targetPsmDebtRatioEndBps;
         uint32 stalenessThreshold;
         uint16 maxBorrowDeltaBps;
         uint128 psmVaultMinTotalSupply;
@@ -164,13 +164,13 @@ contract Factory {
             factory: IFactory(address(this)),
             operator: params.operator,
             manager: params.manager,
+            eventTriggerOperator: params.eventTriggerOperator,
             collateralFactor: params.collateralFactor,
             minDebt: params.minDebt,
             timeUntilImmutability: params.timeUntilImmutability,
             halfLife: params.halfLife,
-            targetFreeDebtRatioStartBps: params.targetFreeDebtRatioStartBps,
-            targetFreeDebtRatioEndBps: params.targetFreeDebtRatioEndBps,
-            redeemFeeBps: params.redeemFeeBps,
+            targetPsmDebtRatioStartBps: params.targetPsmDebtRatioStartBps,
+            targetPsmDebtRatioEndBps: params.targetPsmDebtRatioEndBps,
             stalenessThreshold: params.stalenessThreshold,
             maxBorrowDeltaBps: params.maxBorrowDeltaBps,
             psmVaultMinTotalSupply: params.psmVaultMinTotalSupply
