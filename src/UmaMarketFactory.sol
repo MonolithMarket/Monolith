@@ -10,6 +10,7 @@ contract UmaMarketFactory {
     address public immutable optimisticOracleV3;
 
     address[] public umaMarkets;
+    mapping(address => bool) public isUmaMarket;
     mapping(address => address) public eventTriggerOracleOf;
 
     constructor(address _factory, address _optimisticOracleV3) {
@@ -76,6 +77,7 @@ contract UmaMarketFactory {
         UmaEventTriggerOracle(eventTriggerOracle).bindLender(lender);
 
         umaMarkets.push(lender);
+        isUmaMarket[lender] = true;
         eventTriggerOracleOf[lender] = eventTriggerOracle;
 
         emit UmaMarketDeployed(msg.sender, lender, coin, vault, eventTriggerOracle);
