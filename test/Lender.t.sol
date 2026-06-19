@@ -1702,6 +1702,27 @@ contract LenderTest is Test {
         vm.stopPrank();
     }
     
+    function test_writeOff_blocksDirectCall() public {
+        uint collateralAmount = 4000e18;
+        uint borrowAmount = collateralAmount * lender.collateralFactor() / 10000;
+        address borrower = address(0xBEEF);
+        address liquidator = address(0xCAFE);
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        FeedMock feed = FeedMock(address(lender.feed()));
+
+        collateral.mint(borrower, collateralAmount);
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount));
+        vm.stopPrank();
+
+        feed.setPrice(0.001e18);
+
+        vm.prank(liquidator);
+        vm.expectRevert("only via liquidate");
+        lender.writeOff(borrower, liquidator);
+    }
+
     function test_writeOff_success() public {
         // Setup: create a severely underwater position
         uint collateralAmount = 4000e18;
@@ -1738,13 +1759,15 @@ contract LenderTest is Test {
         uint initialTotalFreeDebt = lender.totalFreeDebt();
         uint initialTotalPaidDebt = lender.totalPaidDebt();
         uint otherBorrowerInitialDebt = lender.getDebtOf(otherBorrower);
-        
-        // Execute write-off
-        vm.prank(liquidator);
-        bool result = lender.writeOff(borrower, liquidator);
-        
-        // Verify write-off was successful
-        assertTrue(result, "Write-off should be successful");
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        uint repayBudget = borrowAmount * 10;
+        coin.mint(liquidator, repayBudget);
+
+        // write-off only runs at the end of liquidate(), not as a standalone call
+        vm.startPrank(liquidator);
+        coin.approve(address(lender), repayBudget);
+        lender.liquidate(borrower, repayBudget, 0);
+        vm.stopPrank();
         
         // Verify borrower's debt is zero
         assertEq(lender.getDebtOf(borrower), 0, "Borrower's debt should be zero after write-off");
@@ -1754,10 +1777,13 @@ contract LenderTest is Test {
         
         // Verify liquidator received all collateral
         assertEq(collateral.balanceOf(liquidator), initialCollateral, "Liquidator should receive all borrower's collateral");
-        
-        // Verify debt was redistributed (total debt should still include the written off debt)
-        assertEq(lender.totalFreeDebt() + lender.totalPaidDebt(), initialTotalFreeDebt + initialTotalPaidDebt, 
-                 "Total debt should remain the same after write-off (redistributed)");
+
+        // liquidation burns coin before write-off redistributes the remainder
+        assertLt(
+            lender.totalFreeDebt() + lender.totalPaidDebt(),
+            initialTotalFreeDebt + initialTotalPaidDebt,
+            "total debt should drop because liquidator repaid coin before write-off"
+        );
         
         // Verify other borrower's debt has increased due to redistribution
         assertGt(lender.getDebtOf(otherBorrower), otherBorrowerInitialDebt, 
@@ -1788,13 +1814,10 @@ contract LenderTest is Test {
         
         // Make the position underwater but not by 100x (price drops by 75%)
         feed.setPrice(0.25e18);
-        
-        // Execute write-off (should return false because debt is not 100x the collateral value)
+
         vm.prank(liquidator);
-        bool result = lender.writeOff(borrower, liquidator);
-        
-        // Verify result is false
-        assertFalse(result, "Write-off should not succeed if position isn't deeply underwater");
+        vm.expectRevert("only via liquidate");
+        lender.writeOff(borrower, liquidator);
         
         // Verify debt and collateral remain unchanged
         assertGt(lender.getDebtOf(borrower), 0, "Borrower's debt should remain after failed write-off");
@@ -1849,8 +1872,10 @@ contract LenderTest is Test {
 
         // First clear one of the two inheriting borrowers so the attack can bounce the debt
         // between a loaded account and a freshly opened account.
-        vm.prank(paidBorrower);
-        lender.writeOff(freeBorrower, paidBorrower);
+        vm.startPrank(paidBorrower);
+        coin.approve(address(lender), type(uint256).max);
+        lender.liquidate(freeBorrower, type(uint256).max, 0);
+        vm.stopPrank();
 
         address emptyBorrower = freeBorrower;
 
