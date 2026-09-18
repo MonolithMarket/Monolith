@@ -26,6 +26,9 @@ contract InterestModel {
         uint _targetFreeDebtRatioStartBps,
         uint _targetFreeDebtRatioEndBps
     ) external pure returns (uint currBorrowRate, uint interest) {
+        // An empty market has no debt ratio signal; preserve its rate until debt or PSM backing exists.
+        if (_totalPaidDebt == 0 && _lastFreeDebtRatioBps == 0) return (_lastRate, 0);
+
         // check _expRate * _timeElapsed overflow
         if(uint(type(int256).max) / _expRate < _timeElapsed) _timeElapsed = uint(type(int256).max) / _expRate;
         // we use a negative exponent in order to prevent growthDecay overflow due to large timeElapsed

@@ -10,6 +10,37 @@ contract InterestModelTest is Test {
     function setUp() public {
         interestModel = new InterestModel();
     }
+
+    function test_calculateInterest_emptyMarket(uint lastRate, uint timeElapsed, uint halfLife) public view {
+        lastRate = bound(lastRate, 5e15, type(uint88).max);
+        timeElapsed = bound(timeElapsed, 0, 3650 days);
+        halfLife = bound(halfLife, 12 hours, 30 days);
+        uint expRate = uint(wadLn(2e18)) / halfLife;
+
+        (uint currBorrowRate, uint interest) = interestModel.calculateInterest(
+            0, lastRate, timeElapsed, expRate, 0, 2500, 7500
+        );
+
+        assertEq(currBorrowRate, lastRate, "Empty market rate should stay constant");
+        assertEq(interest, 0, "Empty market should accrue no interest");
+    }
+
+    function test_calculateInterest_zeroPaidDebtWithFreeDebt() public view {
+        uint expRate = uint(wadLn(2e18)) / 7 days;
+        (uint currBorrowRate, uint interest) = interestModel.calculateInterest(
+            0, 2e16, 7 days, expRate, 10000, 2500, 7500
+        );
+
+        assertApproxEqRel(currBorrowRate, 1e16, 1e8, "Free debt should still halve the rate");
+        assertEq(interest, 0);
+
+        (currBorrowRate, interest) = interestModel.calculateInterest(
+            0, 2e16, 21 days, expRate, 10000, 2500, 7500
+        );
+
+        assertEq(currBorrowRate, 5e15, "Free debt should still reach the minimum rate");
+        assertEq(interest, 0);
+    }
     
     function test_calculateInterest(uint _totalPaidDebt, uint lastFreeDebtRatioBps, uint timeElapsed, uint halfLife, uint lastRate) public view {
         lastFreeDebtRatioBps = bound(lastFreeDebtRatioBps, 0, 10000);

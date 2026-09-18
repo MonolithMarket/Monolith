@@ -340,6 +340,159 @@ contract FactoryTest is Test {
         assertEq(address(vaultContract.lender()), lender, "Vault lender should be set correctly");
     }
     
+    function test_interestRate_emptyMarketAccrual() public {
+        Lender lender = _deployInterestMarket(address(0));
+        vm.prank(operatorAddr);
+        factory.setFeeBps(MAX_FEE_BPS);
+
+        uint[3] memory idlePeriods = [uint(7 days), 30 days, 3650 days];
+        for (uint i = 0; i < idlePeriods.length; i++) {
+            vm.warp(block.timestamp + idlePeriods[i]);
+            assertEq(lender.getPendingInterest(), 0);
+
+            vm.expectEmit(false, false, false, true, address(lender));
+            emit Lender.InterestAccrued(0, 2e16);
+            lender.accrueInterest();
+
+            assertEq(lender.lastBorrowRateMantissa(), 2e16, "Empty market should retain the initial rate");
+            assertEq(lender.lastAccrue(), block.timestamp, "Empty accrual should advance the timestamp");
+            assertEq(lender.cachedGlobalFeeBps(), MAX_FEE_BPS, "Empty accrual should refresh fees");
+            assertEq(lender.totalPaidDebt(), 0);
+            assertEq(lender.totalFreeDebt(), 0);
+            assertEq(lender.accruedLocalReserves(), 0);
+            assertEq(lender.accruedGlobalReserves(), 0);
+            assertEq(lender.coin().totalSupply(), 0);
+        }
+    }
+
+    function test_interestRate_firstBorrowAfterIdle() public {
+        Lender lender = _deployInterestMarket(address(0));
+        uint principal = 1000e18;
+
+        // No accrual calls occur between deployment and the first borrow.
+        vm.warp(block.timestamp + 30 days);
+        collateral.mint(address(this), 4000e18);
+        collateral.approve(address(lender), 4000e18);
+        lender.adjust(address(this), 4000e18, int(principal));
+
+        assertEq(lender.lastBorrowRateMantissa(), 2e16, "First borrow should start at 2%");
+        assertEq(lender.lastAccrue(), block.timestamp);
+        assertEq(lender.getDebtOf(address(this)), principal, "Idle time should add no debt");
+
+        vm.warp(block.timestamp + 7 days);
+        lender.accrueInterest();
+
+        // Integral over one doubling period: principal * initial rate * half-life / ln(2) / year.
+        uint expectedInterest = principal * 2e16 * 7 days / uint(wadLn(2e18)) / 365 days;
+        assertApproxEqRel(lender.lastBorrowRateMantissa(), 4e16, 1e8, "Paid debt should double the rate");
+        assertApproxEqRel(
+            lender.totalPaidDebt() - principal, expectedInterest, 1e8,
+            "Interest should cover only the time since borrowing"
+        );
+    }
+
+    function test_interestRate_repaymentPausesUntilNextBorrow() public {
+        Lender lender = _deployInterestMarket(address(0));
+        collateral.mint(address(this), 4000e18);
+        collateral.approve(address(lender), 4000e18);
+        lender.adjust(address(this), 4000e18, 1000e18);
+
+        vm.warp(block.timestamp + 7 days);
+        lender.accrueInterest();
+        uint rateBeforeRepayment = lender.lastBorrowRateMantissa();
+        assertGt(rateBeforeRepayment, 2e16);
+
+        uint debt = lender.getDebtOf(address(this));
+        Coin coin = lender.coin();
+        // Fund the accrued interest so the borrower can repay the entire position.
+        deal(address(coin), address(this), debt, true);
+        coin.approve(address(lender), debt);
+        lender.adjust(address(this), 0, -int(debt));
+        assertEq(lender.totalPaidDebt(), 0);
+        assertEq(lender.totalFreeDebt(), 0);
+
+        vm.warp(block.timestamp + 7 days);
+        lender.accrueInterest();
+        assertEq(lender.lastBorrowRateMantissa(), rateBeforeRepayment, "Empty market should retain its last rate");
+        assertEq(lender.lastAccrue(), block.timestamp);
+
+        // The next borrow must also discard any idle time since the last accrual.
+        vm.warp(block.timestamp + 30 days);
+        lender.adjust(address(this), 0, 1000e18);
+        assertEq(lender.lastBorrowRateMantissa(), rateBeforeRepayment);
+        assertEq(lender.lastAccrue(), block.timestamp);
+        assertEq(lender.totalPaidDebt(), 1000e18);
+
+        vm.warp(block.timestamp + 7 days);
+        lender.accrueInterest();
+        assertApproxEqRel(lender.lastBorrowRateMantissa(), rateBeforeRepayment * 2, 1e8);
+        assertGt(lender.totalPaidDebt(), 1000e18);
+    }
+
+    function test_interestRate_freeDebtStillDecays() public {
+        Lender lender = _deployInterestMarket(address(0));
+        vm.warp(block.timestamp + 7 days);
+        collateral.mint(address(this), 4000e18);
+        collateral.approve(address(lender), 4000e18);
+        lender.adjust(address(this), 4000e18, 1000e18, true);
+
+        assertEq(lender.totalFreeDebt(), 1000e18);
+        _assertRateDecaysWithoutPaidDebt(lender);
+    }
+
+    function test_interestRate_psmBackingStillDecays() public {
+        Lender lender = _deployInterestMarket(address(collateral));
+        vm.warp(block.timestamp + 7 days);
+        collateral.mint(address(this), 1000e18);
+        collateral.approve(address(lender), 1000e18);
+        lender.buy(1000e18, 1000e18);
+
+        assertEq(lender.totalFreeDebt(), 0);
+        assertEq(lender.freePsmAssets(), 1000e18);
+        _assertRateDecaysWithoutPaidDebt(lender);
+    }
+
+    function _assertRateDecaysWithoutPaidDebt(Lender lender) internal {
+        assertEq(lender.totalPaidDebt(), 0);
+        assertEq(lender.getFreeDebtRatio(), 10000);
+        assertEq(lender.lastBorrowRateMantissa(), 2e16);
+
+        vm.warp(block.timestamp + 7 days);
+        lender.accrueInterest();
+        assertApproxEqRel(lender.lastBorrowRateMantissa(), 1e16, 1e8);
+
+        vm.warp(block.timestamp + 14 days);
+        lender.accrueInterest();
+        assertEq(lender.lastBorrowRateMantissa(), 5e15, "Rate should decay to its minimum");
+        assertEq(lender.totalPaidDebt(), 0);
+        assertEq(lender.getPendingInterest(), 0);
+    }
+
+    function _deployInterestMarket(address psmAsset) internal returns (Lender lender) {
+        Factory.DeployParams memory params = Factory.DeployParams({
+            name: "Interest Test USD",
+            symbol: "itUSD",
+            collateral: address(collateral),
+            psmAsset: psmAsset,
+            psmVault: address(0),
+            feed: address(priceFeed),
+            collateralFactor: 5000,
+            minDebt: 1000e18,
+            timeUntilImmutability: 365 days,
+            operator: operatorAddr,
+            manager: address(0),
+            halfLife: 7 days,
+            targetFreeDebtRatioStartBps: 2000,
+            targetFreeDebtRatioEndBps: 4000,
+            redeemFeeBps: 30,
+            stalenessThreshold: 48 hours,
+            maxBorrowDeltaBps: 50,
+            psmVaultMinTotalSupply: 1
+        });
+        (address deployedLender,,) = factory.deploy(params);
+        lender = Lender(deployedLender);
+    }
+
     function test_multiDeploy() public {
         // Test parameters for first deployment
         string memory name1 = "Test USD";
@@ -550,4 +703,4 @@ contract LenderMock {
     function pullGlobalReservesRecipient() external view returns (address) {
         return _pullGlobalReservesRecipient;
     }
-} 
+}
