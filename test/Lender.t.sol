@@ -2340,7 +2340,40 @@ contract LenderTest is Test {
     function test_setLocalReserveFeeBps_revertInvalidValue() public {
         vm.prank(operatorAddr);
         vm.expectRevert("Invalid fee");
-        lender.setLocalReserveFeeBps(1001); // Above max 1000 bps (10%)
+        lender.setLocalReserveFeeBps(5001); // Above max 5000 bps (50%)
+    }
+
+    function test_setLocalReserveFeeBps_maximumInterestAccounting() public {
+        vm.prank(operatorAddr);
+        lender.setLocalReserveFeeBps(5000);
+        assertEq(lender.cachedGlobalFeeBps(), 1000, "Global fee should remain 10%");
+
+        address borrower = address(0xBEEF);
+        uint borrowAmount = 2000e18;
+        uint collateralAmount = 4000e18;
+        ERC20Mock collateral = ERC20Mock(address(lender.collateral()));
+        ERC20Mock coin = ERC20Mock(address(lender.coin()));
+        address vault = address(lender.vault());
+        collateral.mint(borrower, collateralAmount);
+
+        vm.startPrank(borrower);
+        collateral.approve(address(lender), collateralAmount);
+        lender.adjust(borrower, int256(collateralAmount), int256(borrowAmount), false);
+        coin.transfer(vault, borrowAmount);
+        vm.stopPrank();
+
+        // The mock charges 100% annual interest; fully staked debt avoids the supply-rate cap.
+        vm.warp(block.timestamp + 365 days);
+        uint pendingInterest = lender.getPendingInterest();
+        assertEq(pendingInterest, borrowAmount * 40 / 100, "Stakers should receive 40% of interest");
+
+        lender.accrueInterest();
+
+        assertEq(lender.accruedLocalReserves(), borrowAmount / 2, "Local reserves should receive 50% of interest");
+        assertEq(lender.accruedGlobalReserves(), borrowAmount / 10, "Global reserves should receive 10% of interest");
+        assertEq(coin.balanceOf(vault) - borrowAmount, pendingInterest, "Accrued vault interest should match the estimate");
+        assertEq(lender.totalPaidDebt(), borrowAmount * 2, "Borrower debt should include all interest");
+        assertEq(lender.getPendingInterest(), 0, "No pending interest should remain after accrual");
     }
 
     function test_enableImmutabilityNow() public {

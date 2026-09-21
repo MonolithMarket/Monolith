@@ -866,7 +866,7 @@ contract Lender {
 
     function setLocalReserveFeeBps(uint _feeBps) external onlyOperator {
         accrueInterest();
-        require(_feeBps <= 1000, "Invalid fee");
+        require(_feeBps <= 5000, "Invalid fee");
         feeBps = uint16(_feeBps);
         emit LocalReserveFeeUpdated(_feeBps);
     }
