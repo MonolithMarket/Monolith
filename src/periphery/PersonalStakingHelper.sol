@@ -84,22 +84,22 @@ contract PersonalStakingHelper is ReentrancyGuard {
 
     /// @notice Claims GOV to the fixed owner, including any GOV sent here directly.
     function claim() external onlyOwner nonReentrant returns (uint256 amount) {
-        stakingRewards.getReward();
-        amount = rewardToken.balanceOf(address(this));
-        if (amount != 0) rewardToken.safeTransfer(owner, amount);
-        emit RewardClaimed(amount);
+        return _claim();
     }
 
-    /// @notice Unstakes sToken to the owner without requiring a successful GOV claim.
-    function withdraw(uint256 shares) external onlyOwner nonReentrant {
+    /// @notice Unstakes sToken to the owner and optionally claims GOV.
+    /// @dev With claimRewards=false, GOV claims cannot block the withdrawal.
+    function withdraw(uint256 shares, bool claimRewards) external onlyOwner nonReentrant {
         if (shares == 0) revert ZeroAmount();
         stakingRewards.withdraw(shares);
         IERC20(address(vault)).safeTransfer(owner, shares);
         emit Withdrawn(shares);
+        if (claimRewards) _claim();
     }
 
-    /// @notice Unstakes and redeems to Token for the owner; GOV stays claimable.
-    function withdrawAndRedeem(uint256 shares, uint256 minAssets)
+    /// @notice Unstakes and redeems to Token for the owner and optionally claims GOV.
+    /// @dev With claimRewards=false, GOV claims cannot block the withdrawal.
+    function withdrawAndRedeem(uint256 shares, uint256 minAssets, bool claimRewards)
         external
         onlyOwner
         nonReentrant
@@ -110,6 +110,14 @@ contract PersonalStakingHelper is ReentrancyGuard {
         assets = vault.redeem(shares, owner, address(this));
         if (assets < minAssets) revert InsufficientAssets(assets, minAssets);
         emit WithdrawnAndRedeemed(shares, assets);
+        if (claimRewards) _claim();
+    }
+
+    function _claim() private returns (uint256 amount) {
+        stakingRewards.getReward();
+        amount = rewardToken.balanceOf(address(this));
+        if (amount != 0) rewardToken.safeTransfer(owner, amount);
+        emit RewardClaimed(amount);
     }
 
     /// @notice Recovers loose tokens to the owner. Cannot withdraw the staked position.

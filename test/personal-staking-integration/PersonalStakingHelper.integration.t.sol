@@ -99,27 +99,24 @@ contract PersonalStakingHelperIntegrationTest is Test {
         uint256 earnedB = b.earned();
         assertGt(earnedA, 0);
         assertGt(earnedB, earnedA);
-        vm.prank(alice);
-        assertEq(a.claim(), earnedA);
-        assertEq(market.gov.balanceOf(alice), earnedA);
-        assertEq(market.gov.balanceOf(bob), 0);
-
         uint256 remaining = aShares - aShares / 2;
         vm.prank(alice);
-        a.withdraw(aShares / 2);
+        a.withdraw(aShares / 2, true);
         assertEq(market.vault.balanceOf(alice), aShares / 2);
+        assertEq(market.gov.balanceOf(alice), earnedA);
+        assertEq(a.earned(), 0);
+        assertEq(market.gov.balanceOf(bob), 0);
         uint256 tokenBefore = market.token.balanceOf(alice);
         quote = market.vault.previewRedeem(remaining);
         vm.prank(alice);
-        assertEq(a.withdrawAndRedeem(remaining, quote), quote);
+        assertEq(a.withdrawAndRedeem(remaining, quote, false), quote);
         assertEq(market.token.balanceOf(alice) - tokenBefore, quote);
         assertEq(a.stakedShares(), 0);
         assertEq(b.stakedShares(), bShares);
         vm.prank(bob);
-        b.withdraw(bShares);
-        vm.prank(bob);
-        assertEq(b.claim(), earnedB);
+        b.withdraw(bShares, true);
         assertEq(market.gov.balanceOf(bob), earnedB);
+        assertEq(b.earned(), 0);
         assertEq(market.pool.balanceOf(address(b)), 0);
 
         (PersonalStakingHelper reused, uint256 added) = _deposit(market, alice, 10e18);
@@ -144,18 +141,25 @@ contract PersonalStakingHelperIntegrationTest is Test {
         assertEq(address(factory.helperOf(first.id, alice)), address(a));
         assertEq(address(factory.helperOf(second.id, alice)), address(b));
         vm.warp(vm.getBlockTimestamp() + 1 days);
-        vm.prank(alice);
-        a.claim();
-        assertGt(first.gov.balanceOf(alice), 0);
-        assertEq(second.gov.balanceOf(alice), 0);
-        vm.prank(alice);
-        b.claim();
-        assertGt(second.gov.balanceOf(alice), 0);
+        uint256 firstReward = a.earned();
+        uint256 secondReward = b.earned();
+        assertGt(firstReward, 0);
+        assertGt(secondReward, 0);
         uint256 quote = first.vault.previewRedeem(firstShares);
         vm.prank(alice);
-        a.withdrawAndRedeem(firstShares, quote);
-        assertEq(a.stakedShares(), 0);
+        a.withdrawAndRedeem(firstShares, quote, true);
+        assertEq(first.gov.balanceOf(alice), firstReward);
+        assertEq(second.gov.balanceOf(alice), 0);
         assertEq(b.stakedShares(), secondShares);
+        uint256 partialShares = secondShares / 2;
+        quote = second.vault.previewRedeem(partialShares);
+        vm.prank(alice);
+        b.withdrawAndRedeem(partialShares, quote, true);
+        assertEq(second.gov.balanceOf(alice), secondReward);
+        assertEq(first.gov.balanceOf(alice), firstReward);
+        assertEq(a.stakedShares(), 0);
+        assertEq(b.stakedShares(), secondShares - partialShares);
+        assertEq(b.earned(), 0);
         _assertClean(first, a);
         _assertClean(second, b);
     }
@@ -193,7 +197,7 @@ contract PersonalStakingHelperIntegrationTest is Test {
         assertEq(helper.stakedShares(), shares);
         uint256 quote = market.vault.previewRedeem(shares);
         vm.prank(alice);
-        helper.withdrawAndRedeem(shares, quote);
+        helper.withdrawAndRedeem(shares, quote, true);
         assertEq(helper.stakedShares(), 0);
         _assertClean(market, helper);
     }

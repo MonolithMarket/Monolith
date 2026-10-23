@@ -86,12 +86,12 @@ contract GeneralizedStakingHelperTest is HelperFixture {
         uint256 secondBalance = second.token.balanceOf(alice);
         uint256 quote = vault.previewRedeem(aShares);
         vm.prank(alice);
-        assertEq(a.withdrawAndRedeem(aShares, quote), quote);
+        assertEq(a.withdrawAndRedeem(aShares, quote, false), quote);
         assertEq(a.stakedShares(), 0);
         assertEq(b.stakedShares(), bShares);
         assertEq(second.token.balanceOf(alice), secondBalance);
         vm.prank(alice);
-        b.withdraw(bShares);
+        b.withdraw(bShares, false);
         assertEq(second.vault.balanceOf(alice), bShares);
         assertEq(b.stakedShares(), 0);
         assertClean(a);

@@ -67,13 +67,23 @@ already fixed:
 | Function | Result |
 | --- | --- |
 | `claim()` | Claims GOV and transfers its entire loose GOV balance to the owner. |
-| `withdraw(shares)` | Unstakes sToken to the owner, retaining vault exposure. |
-| `withdrawAndRedeem(shares, minAssets)` | Unstakes and redeems to Token for the owner. |
+| `withdraw(shares, claimRewards)` | Unstakes sToken to the owner, retaining vault exposure; optionally claims GOV. |
+| `withdrawAndRedeem(shares, minAssets, claimRewards)` | Unstakes and redeems to Token for the owner; optionally claims GOV. |
 | `recoverToken(token)` | Returns loose tokens to the owner without touching the staked position. |
 
-Withdrawals do not call `getReward()`, so a failing GOV transfer does not block
-either exit route. Accrued GOV remains claimable after withdrawal. The helper
-does not bypass failures in the vault, staking pool or Token.
+With `claimRewards=true`, either withdrawal route also claims all accrued GOV
+and forwards its entire loose GOV balance to the owner in the same transaction.
+If the pool claim or GOV forwarding fails, the whole transaction reverts,
+including the withdrawal or redemption. Users can retry with `claimRewards=false`:
+that path never calls `getReward()`, so a failing GOV claim cannot block the exit.
+Unclaimed GOV remains available through `claim()`, including after a full exit.
+Standalone and combined claims use the same internal logic under the helper's
+reentrancy guard. The helper does not bypass failures in the vault, staking pool
+or Token.
+
+Vault yield is already reflected in sToken's redemption value and requires no
+separate harvest. Withdrawing sToken retains that vault exposure; redeeming
+returns its underlying Token value.
 
 ## Minimum outputs and supported contracts
 
@@ -121,8 +131,12 @@ invariant covers three owners across two DAOs, checking separate stakes,
 market bindings and full backing during deposits, exits, claims and yield.
 Unit tests cover the registry getter ABI, future DAO registration, approval
 isolation, unsupported DAO rejection, initialization, slippage rollback,
-donations, transfer failures and reentrancy. Dynamic test linking is disabled
-for expected-constructor-revert compatibility with Foundry v1.8.5.
+donations, transfer failures and reentrancy. Optional-claim tests cover both
+withdrawal routes, both flag values, partial and full exits, empty rewards,
+pool/forwarding failures, atomic rollback and a retry without claiming. The
+invariant checks exact GOV payouts for withdrawals with either flag value.
+Dynamic test linking is disabled for expected-constructor-revert compatibility
+with Foundry v1.8.5.
 
 The fixture deploys this repository's actual Vault and simulates lender
 interest and ERC20 assets. `fixtures/CoinDAOFactoryRegistry.sol` independently
@@ -163,8 +177,8 @@ Only external collateral and its price feed are simulated. Users obtain Token
 by borrowing from the real lender; vault yield comes from real debt interest,
 and GOV rewards come from the factory's actual pool/funder launch flow. Tests
 cover two owners, independent DAOs added after helper-factory deployment,
-Token-staking rejection, both exit routes, and attachment to an existing
-Monolith market whose index differs from the CoinDAO ID.
+Token-staking rejection, both exit routes with optional GOV claiming, and
+attachment to an existing Monolith market whose index differs from the CoinDAO ID.
 
 These are local integration tests, not live-state or mainnet-fork checks.
 This change does not deploy any contracts onchain.

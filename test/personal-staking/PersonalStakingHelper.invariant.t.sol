@@ -53,24 +53,28 @@ contract HelperHandler is Test {
         deposits++;
     }
 
-    function withdraw(uint256 marketSeed, uint256 actorSeed, uint256 sharesSeed) external {
+    function withdraw(uint256 marketSeed, uint256 actorSeed, uint256 sharesSeed, bool claimRewards) external {
         uint256 index = marketSeed % markets.length;
         uint256 id = daoIds[index];
-        IERC4626 vault = markets[index].vault;
+        TestMarket memory market = markets[index];
+        IERC4626 vault = market.vault;
         address actor = actors[actorSeed % 3];
         uint256 staked = expectedShares[id][actor];
         if (staked == 0) return;
         uint256 shares = 1 + sharesSeed % staked;
         PersonalStakingHelper helper = factory.helperOf(id, actor);
         uint256 beforeBalance = vault.balanceOf(actor);
+        uint256 reward = helper.earned();
+        uint256 beforeGov = market.gov.balanceOf(actor);
         vm.prank(actor);
-        helper.withdraw(shares);
+        helper.withdraw(shares, claimRewards);
         assertEq(vault.balanceOf(actor) - beforeBalance, shares);
+        assertEq(market.gov.balanceOf(actor) - beforeGov, claimRewards ? reward : 0);
         expectedShares[id][actor] -= shares;
         withdrawals++;
     }
 
-    function redeem(uint256 marketSeed, uint256 actorSeed, uint256 sharesSeed) external {
+    function redeem(uint256 marketSeed, uint256 actorSeed, uint256 sharesSeed, bool claimRewards) external {
         uint256 index = marketSeed % markets.length;
         uint256 id = daoIds[index];
         TestMarket memory market = markets[index];
@@ -82,9 +86,12 @@ contract HelperHandler is Test {
         if (quote == 0) return;
         PersonalStakingHelper helper = factory.helperOf(id, actor);
         uint256 beforeBalance = market.token.balanceOf(actor);
+        uint256 reward = helper.earned();
+        uint256 beforeGov = market.gov.balanceOf(actor);
         vm.prank(actor);
-        helper.withdrawAndRedeem(shares, quote);
+        helper.withdrawAndRedeem(shares, quote, claimRewards);
         assertEq(market.token.balanceOf(actor) - beforeBalance, quote);
+        assertEq(market.gov.balanceOf(actor) - beforeGov, claimRewards ? reward : 0);
         expectedShares[id][actor] -= shares;
         redemptions++;
     }
