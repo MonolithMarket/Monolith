@@ -10,7 +10,10 @@ import {
     IERC4626,
     StakingRewards,
     IStakingRewards,
-    Clones
+    Clones,
+    TestMarket,
+    ICoinDAOFactory,
+    CoinDAOFactoryRegistry
 } from "./HelperFixture.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -19,9 +22,9 @@ contract CallbackOwner {
     bool public success;
     bytes public result;
 
-    function enter(MockToken token, PersonalStakingHelperFactory factory, uint256 amount) external {
+    function enter(MockToken token, PersonalStakingHelperFactory factory, uint256 daoId, uint256 amount) external {
         token.approve(address(factory), amount);
-        (helper,) = factory.depositAndStake(amount, 1);
+        (helper,) = factory.depositAndStake(daoId, amount, 1);
     }
 
     function claim() external {
@@ -35,10 +38,10 @@ contract CallbackOwner {
 
 contract PersonalStakingHelperTest is HelperFixture {
     function test_FirstDepositCreatesOwnedHelperAndBurnsMinimumShares() public {
-        assertEq(address(factory.helperOf(alice)), address(0));
+        assertEq(address(factory.helperOf(daoId, alice)), address(0));
         (PersonalStakingHelper helper, uint256 shares) = deposit(alice, 100e18);
         assertEq(address(helper).code.length, 45);
-        assertEq(address(factory.helperOf(alice)), address(helper));
+        assertEq(address(factory.helperOf(daoId, alice)), address(helper));
         assertEq(helper.owner(), alice);
         assertEq(helper.factory(), address(factory));
         assertEq(address(helper.vault()), address(vault));
@@ -146,8 +149,8 @@ contract PersonalStakingHelperTest is HelperFixture {
         vm.expectRevert(
             abi.encodeWithSelector(PersonalStakingHelper.InsufficientShares.selector, 100e18 - MIN_SHARES, 100e18)
         );
-        factory.depositAndStake(100e18, 100e18);
-        assertEq(address(factory.helperOf(alice)), address(0));
+        factory.depositAndStake(daoId, 100e18, 100e18);
+        assertEq(address(factory.helperOf(daoId, alice)), address(0));
         assertEq(vm.getNonce(address(factory)), nonceBefore);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(token.allowance(alice, address(factory)), allowanceBefore);
@@ -160,7 +163,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PersonalStakingHelper.InsufficientShares.selector, 1e18, 2e18));
-        factory.depositAndStake(1e18, 2e18);
+        factory.depositAndStake(daoId, 1e18, 2e18);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(helper.stakedShares(), shares);
         assertClean(helper);
@@ -184,7 +187,7 @@ contract PersonalStakingHelperTest is HelperFixture {
     function test_ZeroAmounts() public {
         vm.prank(alice);
         vm.expectRevert(PersonalStakingHelperFactory.ZeroAmount.selector);
-        factory.depositAndStake(0, 0);
+        factory.depositAndStake(daoId, 0, 0);
         (PersonalStakingHelper helper,) = deposit(alice, 100e18);
         vm.prank(alice);
         vm.expectRevert(PersonalStakingHelper.ZeroAmount.selector);
@@ -198,9 +201,9 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PersonalStakingHelper.InsufficientShares.selector, 0, 0));
-        factory.depositAndStake(MIN_SHARES, 0);
+        factory.depositAndStake(daoId, MIN_SHARES, 0);
         assertEq(token.balanceOf(alice), beforeBalance);
-        assertEq(address(factory.helperOf(alice)), address(0));
+        assertEq(address(factory.helperOf(daoId, alice)), address(0));
         assertEq(vault.totalSupply(), 0);
     }
 
@@ -214,8 +217,8 @@ contract PersonalStakingHelperTest is HelperFixture {
         );
         vm.prank(alice);
         vm.expectRevert("STAKE_FAILED");
-        factory.depositAndStake(100e18, 1);
-        assertEq(address(factory.helperOf(alice)), address(0));
+        factory.depositAndStake(daoId, 100e18, 1);
+        assertEq(address(factory.helperOf(daoId, alice)), address(0));
         assertEq(vm.getNonce(address(factory)), nonceBefore);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(vault.totalSupply(), 0);
@@ -227,7 +230,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         vm.expectRevert();
-        factory.depositAndStake(MIN_SHARES - 1, 0);
+        factory.depositAndStake(daoId, MIN_SHARES - 1, 0);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(vault.totalSupply(), 0);
     }
@@ -282,14 +285,14 @@ contract PersonalStakingHelperTest is HelperFixture {
         helper.depositAndStake(1, 0);
         vm.prank(bob);
         vm.expectRevert(PersonalStakingHelper.OnlyFactory.selector);
-        helper.initialize(bob);
+        helper.initialize(bob, vault, IStakingRewards(address(pool)));
         vm.prank(address(factory));
         vm.expectRevert(PersonalStakingHelper.AlreadyInitialized.selector);
-        helper.initialize(bob);
+        helper.initialize(bob, vault, IStakingRewards(address(pool)));
         PersonalStakingHelper implementation = factory.implementation();
         vm.prank(address(factory));
         vm.expectRevert(PersonalStakingHelper.AlreadyInitialized.selector);
-        implementation.initialize(alice);
+        implementation.initialize(alice, vault, IStakingRewards(address(pool)));
     }
 
     function test_InsufficientApprovalOrBalanceRevertsCloneCreation() public {
@@ -297,33 +300,25 @@ contract PersonalStakingHelperTest is HelperFixture {
         token.approve(address(factory), 0);
         vm.prank(alice);
         vm.expectRevert();
-        factory.depositAndStake(1e18, 1);
-        assertEq(address(factory.helperOf(alice)), address(0));
+        factory.depositAndStake(daoId, 1e18, 1);
+        assertEq(address(factory.helperOf(daoId, alice)), address(0));
         vm.prank(alice);
         token.approve(address(factory), type(uint256).max);
         vm.prank(alice);
         vm.expectRevert();
-        factory.depositAndStake(1e30 + 1, 1);
-        assertEq(address(factory.helperOf(alice)), address(0));
+        factory.depositAndStake(daoId, 1e30 + 1, 1);
+        assertEq(address(factory.helperOf(daoId, alice)), address(0));
     }
 
-    function test_InvalidPoolPairAndSameRewardTokenRejected() public {
-        vm.expectRevert(PersonalStakingHelperFactory.InvalidPair.selector);
-        new PersonalStakingHelperFactory(IERC4626(address(0)), IStakingRewards(address(pool)));
-        vm.expectRevert(PersonalStakingHelperFactory.InvalidPair.selector);
-        new PersonalStakingHelperFactory(vault, IStakingRewards(address(0)));
-        StakingRewards wrong = StakingRewards(Clones.clone(address(new StakingRewards())));
-        wrong.initialize(address(token), address(gov), address(this), DURATION);
-        vm.expectRevert(PersonalStakingHelperFactory.InvalidPair.selector);
-        new PersonalStakingHelperFactory(vault, IStakingRewards(address(wrong)));
-        StakingRewards same = StakingRewards(Clones.clone(address(new StakingRewards())));
-        same.initialize(address(vault), address(token), address(this), DURATION);
-        vm.expectRevert(PersonalStakingHelperFactory.InvalidPair.selector);
-        new PersonalStakingHelperFactory(vault, IStakingRewards(address(same)));
+    function test_InvalidCoinDAOFactoryRejected() public {
+        vm.expectRevert(PersonalStakingHelperFactory.InvalidFactory.selector);
+        new PersonalStakingHelperFactory(ICoinDAOFactory(address(0)));
+        vm.expectRevert(PersonalStakingHelperFactory.InvalidFactory.selector);
+        new PersonalStakingHelperFactory(ICoinDAOFactory(alice));
     }
 
     function test_FactoryRejectsTokenCallbackReentrancy() public {
-        token.setHook(alice, address(factory), abi.encodeCall(factory.depositAndStake, (1e18, 0)));
+        token.setHook(alice, address(factory), abi.encodeCall(factory.depositAndStake, (daoId, 1e18, 0)));
         (PersonalStakingHelper helper,) = deposit(alice, 100e18);
         assertFalse(token.callbackSuccess());
         assertEq(token.callbackResult(), abi.encodeWithSelector(ReentrancyGuard.ReentrancyGuardReentrantCall.selector));
@@ -333,7 +328,7 @@ contract PersonalStakingHelperTest is HelperFixture {
     function test_HelperRejectsAuthorizedOwnerCallbackReentrancy() public {
         CallbackOwner receiver = new CallbackOwner();
         token.mint(address(receiver), 100e18);
-        receiver.enter(token, factory, 100e18);
+        receiver.enter(token, factory, daoId, 100e18);
         PersonalStakingHelper helper = receiver.helper();
         vm.warp(block.timestamp + 100);
         gov.setHook(address(helper), address(receiver), abi.encodeCall(receiver.reenter, ()));

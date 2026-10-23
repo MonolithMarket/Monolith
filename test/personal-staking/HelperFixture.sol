@@ -11,6 +11,8 @@ import {StakingRewards} from "./fixtures/StakingRewards.sol";
 import {PersonalStakingHelper} from "../../src/periphery/PersonalStakingHelper.sol";
 import {PersonalStakingHelperFactory} from "../../src/periphery/PersonalStakingHelperFactory.sol";
 import {IStakingRewards} from "../../src/periphery/interfaces/IStakingRewards.sol";
+import {ICoinDAOFactory} from "../../src/periphery/interfaces/ICoinDAOFactory.sol";
+import {CoinDAOFactoryRegistry} from "./fixtures/CoinDAOFactoryRegistry.sol";
 
 contract MockToken is ERC20 {
     bool public blocked;
@@ -52,7 +54,7 @@ contract MockToken is ERC20 {
     }
 }
 
-/// @dev Only the lender is simulated. The vault is the repository's actual Vault contract.
+/// @dev Simulates lender interest; the vault is the repository's actual Vault contract.
 contract LenderStub {
     MockToken public immutable coin;
     address public vault;
@@ -82,6 +84,14 @@ contract LenderStub {
     }
 }
 
+struct TestMarket {
+    MockToken token;
+    MockToken gov;
+    LenderStub lender;
+    IERC4626 vault;
+    StakingRewards pool;
+}
+
 abstract contract HelperFixture is Test {
     MockToken internal token;
     MockToken internal gov;
@@ -89,6 +99,8 @@ abstract contract HelperFixture is Test {
     IERC4626 internal vault;
     StakingRewards internal pool;
     PersonalStakingHelperFactory internal factory;
+    CoinDAOFactoryRegistry internal coinDAOFactory;
+    uint256 internal daoId;
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
     uint256 internal constant MIN_SHARES = 1e16;
@@ -96,37 +108,71 @@ abstract contract HelperFixture is Test {
 
     function setUp() public virtual {
         vm.warp(1_000_000);
-        token = new MockToken("Token");
-        gov = new MockToken("GOV");
-        lender = new LenderStub(token);
-        vault = IERC4626(address(new Vault("Token", "TOKEN", address(lender))));
-        lender.setVault(address(vault));
-        pool = StakingRewards(Clones.clone(address(new StakingRewards())));
-        pool.initialize(address(vault), address(gov), address(this), DURATION);
-        gov.mint(address(pool), DURATION * 1e18);
-        pool.notifyRewardAmount(DURATION * 1e18);
-        factory = new PersonalStakingHelperFactory(vault, IStakingRewards(address(pool)));
-        token.mint(alice, 1e30);
-        token.mint(bob, 1e30);
-        vm.prank(alice);
-        token.approve(address(factory), type(uint256).max);
-        vm.prank(bob);
-        token.approve(address(factory), type(uint256).max);
+        coinDAOFactory = new CoinDAOFactoryRegistry();
+        TestMarket memory market;
+        (daoId, market) = createDAO("Token", true);
+        token = market.token;
+        gov = market.gov;
+        lender = market.lender;
+        vault = market.vault;
+        pool = market.pool;
+        factory = new PersonalStakingHelperFactory(ICoinDAOFactory(address(coinDAOFactory)));
+        fundAndApprove(market, alice, 1e30);
+        fundAndApprove(market, bob, 1e30);
+    }
+
+    function createDAO(string memory name, bool stakeVault) internal returns (uint256 id, TestMarket memory market) {
+        market.token = new MockToken(name);
+        market.gov = new MockToken(string.concat(name, " GOV"));
+        market.lender = new LenderStub(market.token);
+        market.vault = IERC4626(address(new Vault(name, name, address(market.lender))));
+        market.lender.setVault(address(market.vault));
+        market.pool = StakingRewards(Clones.clone(address(new StakingRewards())));
+        address stakingToken = stakeVault ? address(market.vault) : address(market.token);
+        market.pool.initialize(stakingToken, address(market.gov), address(this), DURATION);
+        market.gov.mint(address(market.pool), DURATION * 1e18);
+        market.pool.notifyRewardAmount(DURATION * 1e18);
+        CoinDAOFactoryRegistry.Deployment memory deployment;
+        deployment.govToken = address(market.gov);
+        deployment.lender = address(market.lender);
+        deployment.coin = address(market.token);
+        deployment.vault = address(market.vault);
+        deployment.stakingToken = stakingToken;
+        deployment.coinStakingRewards = address(market.pool);
+        id = coinDAOFactory.addDeployment(deployment);
+    }
+
+    function fundAndApprove(TestMarket memory market, address who, uint256 amount) internal {
+        market.token.mint(who, amount);
+        vm.prank(who);
+        market.token.approve(address(factory), type(uint256).max);
     }
 
     function deposit(address who, uint256 assets) internal returns (PersonalStakingHelper helper, uint256 shares) {
         uint256 quote = vault.previewDeposit(assets);
         vm.prank(who);
-        return factory.depositAndStake(assets, quote);
+        return factory.depositAndStake(daoId, assets, quote);
+    }
+
+    function depositIn(uint256 id, TestMarket memory market, address who, uint256 assets)
+        internal
+        returns (PersonalStakingHelper helper, uint256 shares)
+    {
+        uint256 quote = market.vault.previewDeposit(assets);
+        vm.prank(who);
+        return factory.depositAndStake(id, assets, quote);
     }
 
     function assertClean(PersonalStakingHelper helper) internal view {
-        assertEq(token.balanceOf(address(factory)), 0);
-        assertEq(vault.balanceOf(address(factory)), 0);
-        assertEq(pool.balanceOf(address(factory)), 0);
-        assertEq(token.balanceOf(address(helper)), 0);
-        assertEq(vault.balanceOf(address(helper)), 0);
-        assertEq(token.allowance(address(helper), address(vault)), 0);
-        assertEq(vault.allowance(address(helper), address(pool)), 0);
+        IERC20 marketToken = helper.asset();
+        IERC4626 marketVault = helper.vault();
+        IStakingRewards marketPool = helper.stakingRewards();
+        assertEq(marketToken.balanceOf(address(factory)), 0);
+        assertEq(marketVault.balanceOf(address(factory)), 0);
+        assertEq(marketPool.balanceOf(address(factory)), 0);
+        assertEq(marketToken.balanceOf(address(helper)), 0);
+        assertEq(marketVault.balanceOf(address(helper)), 0);
+        assertEq(marketToken.allowance(address(helper), address(marketVault)), 0);
+        assertEq(marketVault.allowance(address(helper), address(marketPool)), 0);
     }
 }

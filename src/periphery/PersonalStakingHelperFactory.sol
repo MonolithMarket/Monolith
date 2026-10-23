@@ -7,59 +7,56 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IStakingRewards} from "./interfaces/IStakingRewards.sol";
+import {ICoinDAOFactory} from "./interfaces/ICoinDAOFactory.sol";
 import {PersonalStakingHelper} from "./PersonalStakingHelper.sol";
 
-/// @notice Token -> sToken -> existing GOV rewards, with one isolated helper per user.
-/// @dev Deploy one factory per trusted vault/rewards pair. No admin or upgrade path.
+/// @notice Token -> sToken -> GOV rewards, with one helper per owner and CoinDAO.
+/// @dev One fixed, trusted CoinDAOFactory registry. No admin or upgrade path.
 contract PersonalStakingHelperFactory is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    IERC4626 public immutable vault;
-    IStakingRewards public immutable stakingRewards;
-    IERC20 public immutable asset;
+    ICoinDAOFactory public immutable coinDAOFactory;
     PersonalStakingHelper public immutable implementation;
-    mapping(address owner => PersonalStakingHelper helper) public helperOf;
+    mapping(uint256 daoId => mapping(address owner => PersonalStakingHelper helper)) public helperOf;
 
+    error InvalidFactory();
     error InvalidPair();
     error ZeroAmount();
 
-    event HelperCreated(address indexed owner, address indexed helper);
-    event DepositedAndStaked(address indexed owner, address indexed helper, uint256 assets, uint256 shares);
+    event HelperCreated(uint256 indexed daoId, address indexed owner, address indexed helper);
+    event DepositedAndStaked(
+        uint256 indexed daoId, address indexed owner, address indexed helper, uint256 assets, uint256 shares
+    );
 
-    constructor(IERC4626 vault_, IStakingRewards stakingRewards_) {
-        if (address(vault_).code.length == 0 || address(stakingRewards_).code.length == 0) revert InvalidPair();
-        if (stakingRewards_.stakingToken() != address(vault_)) revert InvalidPair();
-        address underlying = vault_.asset();
-        address gov = stakingRewards_.rewardsToken();
-        if (
-            underlying.code.length == 0 || gov.code.length == 0 || underlying == address(vault_) || gov == underlying
-                || gov == address(vault_)
-        ) revert InvalidPair();
-        vault = vault_;
-        stakingRewards = stakingRewards_;
-        asset = IERC20(underlying);
-        implementation = new PersonalStakingHelper(vault_, stakingRewards_);
+    constructor(ICoinDAOFactory coinDAOFactory_) {
+        if (address(coinDAOFactory_).code.length == 0) revert InvalidFactory();
+        coinDAOFactory = coinDAOFactory_;
+        implementation = new PersonalStakingHelper();
     }
 
     /// @notice Approve this factory for Token, then deposit for your own address.
     /// @dev No arbitrary payer/beneficiary arguments: allowances cannot fund somebody else's position.
-    function depositAndStake(uint256 assets, uint256 minShares)
+    function depositAndStake(uint256 daoId, uint256 assets, uint256 minShares)
         external
         nonReentrant
         returns (PersonalStakingHelper helper, uint256 shares)
     {
         if (assets == 0) revert ZeroAmount();
 
-        helper = helperOf[msg.sender];
+        helper = helperOf[daoId][msg.sender];
         if (address(helper) == address(0)) {
+            ICoinDAOFactory.Deployment memory deployment = coinDAOFactory.deployments(daoId);
+            if (deployment.vault == address(0) || deployment.stakingToken != deployment.vault) revert InvalidPair();
             helper = PersonalStakingHelper(Clones.clone(address(implementation)));
-            helper.initialize(msg.sender);
-            helperOf[msg.sender] = helper;
-            emit HelperCreated(msg.sender, address(helper));
+            helper.initialize(
+                msg.sender, IERC4626(deployment.vault), IStakingRewards(deployment.coinStakingRewards)
+            );
+            helperOf[daoId][msg.sender] = helper;
+            emit HelperCreated(daoId, msg.sender, address(helper));
         }
 
-        asset.safeTransferFrom(msg.sender, address(helper), assets);
+        helper.asset().safeTransferFrom(msg.sender, address(helper), assets);
         shares = helper.depositAndStake(assets, minShares);
-        emit DepositedAndStaked(msg.sender, address(helper), assets, shares);
+        emit DepositedAndStaked(daoId, msg.sender, address(helper), assets, shares);
     }
 }

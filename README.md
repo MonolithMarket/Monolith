@@ -75,4 +75,4 @@ This role is automatically revoked after a set amount of time. This provides a b
 
 ### Personal staking helper
 
-[Deposit Token and stake the resulting sToken in an existing GOV rewards pool](docs/personal-staking-helper.md) using an isolated helper owned by the depositor.
+[Deposit Token and stake the resulting sToken in an existing GOV rewards pool](docs/personal-staking-helper.md) across eligible CoinDAOs, using one shared factory and isolated helpers for each owner and DAO.

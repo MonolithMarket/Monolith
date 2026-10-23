@@ -8,17 +8,15 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IStakingRewards} from "./interfaces/IStakingRewards.sol";
 
 /// @notice One owner's position in a fixed Monolith vault and existing rewards pool.
-/// @dev Supports the fixed Monolith Token, Vault and StakingRewards contracts.
-///      The factory uses immutable EIP-1167 clones. The implementation's immutable
-///      addresses are shared by every clone; each clone has its own owner/storage.
+/// @dev Each clone's owner and market are set once by the factory at creation.
 contract PersonalStakingHelper is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address public immutable factory;
-    IERC4626 public immutable vault;
-    IStakingRewards public immutable stakingRewards;
-    IERC20 public immutable asset;
-    IERC20 public immutable rewardToken;
+    IERC4626 public vault;
+    IStakingRewards public stakingRewards;
+    IERC20 public asset;
+    IERC20 public rewardToken;
     address public owner;
 
     error OnlyFactory();
@@ -36,12 +34,8 @@ contract PersonalStakingHelper is ReentrancyGuard {
     event TokenRecovered(address indexed token, uint256 amount);
 
     /// @dev Called only by the factory's constructor. Locks the implementation.
-    constructor(IERC4626 vault_, IStakingRewards stakingRewards_) {
+    constructor() {
         factory = msg.sender;
-        vault = vault_;
-        stakingRewards = stakingRewards_;
-        asset = IERC20(vault_.asset());
-        rewardToken = IERC20(stakingRewards_.rewardsToken());
         owner = address(this);
     }
 
@@ -56,10 +50,14 @@ contract PersonalStakingHelper is ReentrancyGuard {
     }
 
     /// @dev The factory creates and initializes each clone in the same call.
-    function initialize(address owner_) external onlyFactory {
+    function initialize(address owner_, IERC4626 vault_, IStakingRewards stakingRewards_) external onlyFactory {
         if (owner != address(0)) revert AlreadyInitialized();
         if (owner_ == address(0)) revert ZeroAddress();
         owner = owner_;
+        vault = vault_;
+        stakingRewards = stakingRewards_;
+        asset = IERC20(vault_.asset());
+        rewardToken = IERC20(stakingRewards_.rewardsToken());
     }
 
     /// @notice Deposits exactly the assets just supplied by the factory.
