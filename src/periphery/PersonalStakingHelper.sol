@@ -8,7 +8,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IStakingRewards} from "./interfaces/IStakingRewards.sol";
 
 /// @notice One owner's position in a fixed Monolith vault and existing rewards pool.
-/// @dev The factory uses immutable EIP-1167 clones. The implementation's immutable
+/// @dev Supports the fixed Monolith Token, Vault and StakingRewards contracts.
+///      The factory uses immutable EIP-1167 clones. The implementation's immutable
 ///      addresses are shared by every clone; each clone has its own owner/storage.
 contract PersonalStakingHelper is ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -25,10 +26,8 @@ contract PersonalStakingHelper is ReentrancyGuard {
     error AlreadyInitialized();
     error ZeroAddress();
     error ZeroAmount();
-    error DeadlineExpired();
     error InsufficientShares(uint256 received, uint256 minimum);
     error InsufficientAssets(uint256 received, uint256 minimum);
-    error UnexpectedBalanceChange();
 
     event DepositedAndStaked(uint256 assets, uint256 shares);
     event Withdrawn(uint256 shares);
@@ -72,29 +71,16 @@ contract PersonalStakingHelper is ReentrancyGuard {
         returns (uint256 shares)
     {
         if (assets == 0) revert ZeroAmount();
-        uint256 assetsBefore = asset.balanceOf(address(this));
-        uint256 sharesBefore = vault.balanceOf(address(this));
-        uint256 stakedBefore = stakingRewards.balanceOf(address(this));
-
         asset.forceApprove(address(vault), assets);
         shares = vault.deposit(assets, address(this));
         asset.forceApprove(address(vault), 0);
 
         // Includes Monolith's first-deposit MIN_SHARES deduction.
         if (shares == 0 || shares < minShares) revert InsufficientShares(shares, minShares);
-        if (
-            asset.balanceOf(address(this)) != assetsBefore - assets
-                || vault.balanceOf(address(this)) != sharesBefore + shares
-        ) revert UnexpectedBalanceChange();
-
         IERC20(address(vault)).forceApprove(address(stakingRewards), shares);
         stakingRewards.stake(shares);
         IERC20(address(vault)).forceApprove(address(stakingRewards), 0);
 
-        if (
-            vault.balanceOf(address(this)) != sharesBefore
-                || stakingRewards.balanceOf(address(this)) != stakedBefore + shares
-        ) revert UnexpectedBalanceChange();
         emit DepositedAndStaked(assets, shares);
     }
 
@@ -115,13 +101,12 @@ contract PersonalStakingHelper is ReentrancyGuard {
     }
 
     /// @notice Unstakes and redeems to Token for the owner; GOV stays claimable.
-    function withdrawAndRedeem(uint256 shares, uint256 minAssets, uint256 deadline)
+    function withdrawAndRedeem(uint256 shares, uint256 minAssets)
         external
         onlyOwner
         nonReentrant
         returns (uint256 assets)
     {
-        if (block.timestamp > deadline) revert DeadlineExpired();
         if (shares == 0) revert ZeroAmount();
         stakingRewards.withdraw(shares);
         assets = vault.redeem(shares, owner, address(this));

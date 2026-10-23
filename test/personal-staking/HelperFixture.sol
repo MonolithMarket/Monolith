@@ -14,7 +14,6 @@ import {IStakingRewards} from "../../src/periphery/interfaces/IStakingRewards.so
 
 contract MockToken is ERC20 {
     bool public blocked;
-    uint256 public transferFeeBps;
     address public hookTarget;
     address public hookFrom;
     bytes public hookData;
@@ -32,10 +31,6 @@ contract MockToken is ERC20 {
         blocked = value;
     }
 
-    function setFee(uint256 value) external {
-        transferFeeBps = value;
-    }
-
     function setHook(address from, address target, bytes calldata data) external {
         hookFrom = from;
         hookTarget = target;
@@ -45,9 +40,7 @@ contract MockToken is ERC20 {
     function _update(address from, address to, uint256 amount) internal override {
         if (from != address(0) && to != address(0)) {
             require(!blocked, "TOKEN_BLOCKED");
-            uint256 fee = amount * transferFeeBps / 10_000;
-            if (fee != 0) super._update(from, address(0), fee);
-            super._update(from, to, amount - fee);
+            super._update(from, to, amount);
             if (!inHook && hookTarget != address(0) && from == hookFrom) {
                 inHook = true;
                 (callbackSuccess, callbackResult) = hookTarget.call(hookData);
@@ -124,7 +117,7 @@ abstract contract HelperFixture is Test {
     function deposit(address who, uint256 assets) internal returns (PersonalStakingHelper helper, uint256 shares) {
         uint256 quote = vault.previewDeposit(assets);
         vm.prank(who);
-        return factory.depositAndStake(assets, quote, block.timestamp);
+        return factory.depositAndStake(assets, quote);
     }
 
     function assertClean(PersonalStakingHelper helper) internal view {

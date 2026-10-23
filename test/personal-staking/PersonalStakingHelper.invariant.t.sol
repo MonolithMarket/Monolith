@@ -46,7 +46,7 @@ contract HelperHandler is Test {
         uint256 quote = vault.previewDeposit(amount);
         if (quote == 0) return;
         vm.prank(actor);
-        (, uint256 shares) = factory.depositAndStake(amount, quote, block.timestamp);
+        (, uint256 shares) = factory.depositAndStake(amount, quote);
         expectedShares[actor] += shares;
         deposits++;
     }
@@ -75,7 +75,7 @@ contract HelperHandler is Test {
         PersonalStakingHelper helper = factory.helperOf(actor);
         uint256 beforeBalance = token.balanceOf(actor);
         vm.prank(actor);
-        helper.withdrawAndRedeem(shares, quote, block.timestamp);
+        helper.withdrawAndRedeem(shares, quote);
         assertEq(token.balanceOf(actor) - beforeBalance, quote);
         expectedShares[actor] -= shares;
         redemptions++;
@@ -133,7 +133,6 @@ contract PersonalStakingHelperInvariantTest is HelperFixture {
             }
             assertEq(helper.owner(), actor);
             assertEq(helper.stakedShares(), expected);
-            assertEq(address(helper), factory.predictHelper(actor));
             assertClean(helper);
             total += expected;
         }

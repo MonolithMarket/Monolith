@@ -22,8 +22,6 @@ contract PersonalStakingHelperFactory is ReentrancyGuard {
 
     error InvalidPair();
     error ZeroAmount();
-    error DeadlineExpired();
-    error UnsupportedAssetTransfer();
 
     event HelperCreated(address indexed owner, address indexed helper);
     event DepositedAndStaked(address indexed owner, address indexed helper, uint256 assets, uint256 shares);
@@ -45,33 +43,23 @@ contract PersonalStakingHelperFactory is ReentrancyGuard {
 
     /// @notice Approve this factory for Token, then deposit for your own address.
     /// @dev No arbitrary payer/beneficiary arguments: allowances cannot fund somebody else's position.
-    function depositAndStake(uint256 assets, uint256 minShares, uint256 deadline)
+    function depositAndStake(uint256 assets, uint256 minShares)
         external
         nonReentrant
         returns (PersonalStakingHelper helper, uint256 shares)
     {
-        if (block.timestamp > deadline) revert DeadlineExpired();
         if (assets == 0) revert ZeroAmount();
 
         helper = helperOf[msg.sender];
         if (address(helper) == address(0)) {
-            helper = PersonalStakingHelper(
-                Clones.cloneDeterministic(address(implementation), bytes32(uint256(uint160(msg.sender))))
-            );
+            helper = PersonalStakingHelper(Clones.clone(address(implementation)));
             helper.initialize(msg.sender);
             helperOf[msg.sender] = helper;
             emit HelperCreated(msg.sender, address(helper));
         }
 
-        uint256 beforeBalance = asset.balanceOf(address(helper));
         asset.safeTransferFrom(msg.sender, address(helper), assets);
-        if (asset.balanceOf(address(helper)) != beforeBalance + assets) revert UnsupportedAssetTransfer();
         shares = helper.depositAndStake(assets, minShares);
         emit DepositedAndStaked(msg.sender, address(helper), assets, shares);
-    }
-
-    function predictHelper(address owner) external view returns (address) {
-        return
-            Clones.predictDeterministicAddress(address(implementation), bytes32(uint256(uint160(owner))), address(this));
     }
 }

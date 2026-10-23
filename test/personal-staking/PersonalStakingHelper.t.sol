@@ -21,7 +21,7 @@ contract CallbackOwner {
 
     function enter(MockToken token, PersonalStakingHelperFactory factory, uint256 amount) external {
         token.approve(address(factory), amount);
-        (helper,) = factory.depositAndStake(amount, 1, block.timestamp);
+        (helper,) = factory.depositAndStake(amount, 1);
     }
 
     function claim() external {
@@ -34,18 +34,18 @@ contract CallbackOwner {
 }
 
 contract PersonalStakingHelperTest is HelperFixture {
-    function test_FirstDepositCreatesPredictedHelperAndBurnsMinimumShares() public {
-        address predicted = factory.predictHelper(alice);
+    function test_FirstDepositCreatesOwnedHelperAndBurnsMinimumShares() public {
+        assertEq(address(factory.helperOf(alice)), address(0));
         (PersonalStakingHelper helper, uint256 shares) = deposit(alice, 100e18);
-        assertEq(address(helper), predicted);
-        assertEq(address(factory.helperOf(alice)), predicted);
+        assertEq(address(helper).code.length, 45);
+        assertEq(address(factory.helperOf(alice)), address(helper));
         assertEq(helper.owner(), alice);
         assertEq(helper.factory(), address(factory));
         assertEq(address(helper.vault()), address(vault));
         assertEq(address(helper.stakingRewards()), address(pool));
         assertEq(address(helper.rewardToken()), address(gov));
         assertEq(shares, 100e18 - MIN_SHARES);
-        assertEq(pool.balanceOf(predicted), shares);
+        assertEq(pool.balanceOf(address(helper)), shares);
         assertEq(helper.stakedShares(), shares);
         assertEq(vault.balanceOf(address(0)), MIN_SHARES);
         assertClean(helper);
@@ -90,7 +90,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         assertGt(quoted, 100e18);
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
-        uint256 redeemed = helper.withdrawAndRedeem(shares, quoted, block.timestamp);
+        uint256 redeemed = helper.withdrawAndRedeem(shares, quoted);
         assertEq(redeemed, quoted);
         assertEq(token.balanceOf(alice) - beforeBalance, quoted);
         assertEq(pool.balanceOf(address(helper)), 0);
@@ -129,7 +129,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         vm.prank(alice);
         helper.withdraw(shares / 2);
         vm.prank(alice);
-        helper.withdrawAndRedeem(shares - shares / 2, 1, block.timestamp);
+        helper.withdrawAndRedeem(shares - shares / 2, 1);
         assertEq(helper.stakedShares(), 0);
         gov.setBlocked(false);
         vm.prank(alice);
@@ -141,14 +141,14 @@ contract PersonalStakingHelperTest is HelperFixture {
     function test_FirstDepositSlippageRollsBackCloneTransferAllowanceAndVault() public {
         uint256 beforeBalance = token.balanceOf(alice);
         uint256 allowanceBefore = token.allowance(alice, address(factory));
-        address predicted = factory.predictHelper(alice);
+        uint64 nonceBefore = vm.getNonce(address(factory));
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(PersonalStakingHelper.InsufficientShares.selector, 100e18 - MIN_SHARES, 100e18)
         );
-        factory.depositAndStake(100e18, 100e18, block.timestamp);
+        factory.depositAndStake(100e18, 100e18);
         assertEq(address(factory.helperOf(alice)), address(0));
-        assertEq(predicted.code.length, 0);
+        assertEq(vm.getNonce(address(factory)), nonceBefore);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(token.allowance(alice, address(factory)), allowanceBefore);
         assertEq(vault.totalSupply(), 0);
@@ -160,7 +160,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PersonalStakingHelper.InsufficientShares.selector, 1e18, 2e18));
-        factory.depositAndStake(1e18, 2e18, block.timestamp);
+        factory.depositAndStake(1e18, 2e18);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(helper.stakedShares(), shares);
         assertClean(helper);
@@ -174,44 +174,38 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 paid = pool.userRewardPerTokenPaid(address(helper));
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PersonalStakingHelper.InsufficientAssets.selector, quoted, quoted + 1));
-        helper.withdrawAndRedeem(shares, quoted + 1, block.timestamp);
+        helper.withdrawAndRedeem(shares, quoted + 1);
         assertEq(helper.stakedShares(), shares);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(pool.userRewardPerTokenPaid(address(helper)), paid);
         assertClean(helper);
     }
 
-    function test_DeadlinesAndZeroAmounts() public {
-        vm.prank(alice);
-        vm.expectRevert(PersonalStakingHelperFactory.DeadlineExpired.selector);
-        factory.depositAndStake(1e18, 1, block.timestamp - 1);
+    function test_ZeroAmounts() public {
         vm.prank(alice);
         vm.expectRevert(PersonalStakingHelperFactory.ZeroAmount.selector);
-        factory.depositAndStake(0, 0, block.timestamp);
+        factory.depositAndStake(0, 0);
         (PersonalStakingHelper helper,) = deposit(alice, 100e18);
-        vm.prank(alice);
-        vm.expectRevert(PersonalStakingHelper.DeadlineExpired.selector);
-        helper.withdrawAndRedeem(1, 0, block.timestamp - 1);
         vm.prank(alice);
         vm.expectRevert(PersonalStakingHelper.ZeroAmount.selector);
         helper.withdraw(0);
         vm.prank(alice);
         vm.expectRevert(PersonalStakingHelper.ZeroAmount.selector);
-        helper.withdrawAndRedeem(0, 0, block.timestamp);
+        helper.withdrawAndRedeem(0, 0);
     }
 
     function test_FirstDepositExactlyMinimumSharesRevertsWithoutLoss() public {
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PersonalStakingHelper.InsufficientShares.selector, 0, 0));
-        factory.depositAndStake(MIN_SHARES, 0, block.timestamp);
+        factory.depositAndStake(MIN_SHARES, 0);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(address(factory.helperOf(alice)), address(0));
         assertEq(vault.totalSupply(), 0);
     }
 
     function test_StakingFailureRollsBackVaultDepositAndHelperCreation() public {
-        address predicted = factory.predictHelper(alice);
+        uint64 nonceBefore = vm.getNonce(address(factory));
         uint256 beforeBalance = token.balanceOf(alice);
         vm.mockCallRevert(
             address(pool),
@@ -220,9 +214,9 @@ contract PersonalStakingHelperTest is HelperFixture {
         );
         vm.prank(alice);
         vm.expectRevert("STAKE_FAILED");
-        factory.depositAndStake(100e18, 1, block.timestamp);
+        factory.depositAndStake(100e18, 1);
         assertEq(address(factory.helperOf(alice)), address(0));
-        assertEq(predicted.code.length, 0);
+        assertEq(vm.getNonce(address(factory)), nonceBefore);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(vault.totalSupply(), 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -233,22 +227,23 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         vm.expectRevert();
-        factory.depositAndStake(MIN_SHARES - 1, 0, block.timestamp);
+        factory.depositAndStake(MIN_SHARES - 1, 0);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(vault.totalSupply(), 0);
     }
 
-    function test_DonationsToPredictedHelperCannotBeSweptByAnotherUserOrStakedAccidentally() public {
-        address predicted = factory.predictHelper(alice);
-        token.mint(predicted, 7e18);
+    function test_LooseTokensCannotBeSweptByAnotherUserOrStakedAccidentally() public {
+        (PersonalStakingHelper helper, uint256 firstShares) = deposit(alice, 100e18);
+        token.mint(address(helper), 7e18);
         token.mint(address(this), 10e18);
         token.approve(address(vault), 10e18);
-        uint256 donatedShares = vault.deposit(10e18, predicted);
-        (PersonalStakingHelper helper, uint256 shares) = deposit(alice, 100e18);
+        uint256 donatedShares = vault.deposit(10e18, address(helper));
+        (PersonalStakingHelper again, uint256 shares) = deposit(alice, 100e18);
+        assertEq(address(again), address(helper));
         assertEq(shares, 100e18);
-        assertEq(token.balanceOf(predicted), 7e18);
-        assertEq(vault.balanceOf(predicted), donatedShares);
-        assertEq(helper.stakedShares(), shares);
+        assertEq(token.balanceOf(address(helper)), 7e18);
+        assertEq(vault.balanceOf(address(helper)), donatedShares);
+        assertEq(helper.stakedShares(), firstShares + shares);
         vm.prank(bob);
         vm.expectRevert(PersonalStakingHelper.OnlyOwner.selector);
         helper.recoverToken(token);
@@ -259,7 +254,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         vm.prank(alice);
         helper.recoverToken(IERC20(address(vault)));
         assertEq(vault.balanceOf(alice), donatedShares);
-        assertEq(helper.stakedShares(), shares);
+        assertEq(helper.stakedShares(), firstShares + shares);
         assertClean(helper);
     }
 
@@ -271,7 +266,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         vm.expectRevert(PersonalStakingHelper.OnlyOwner.selector);
         helper.withdraw(1);
         vm.expectRevert(PersonalStakingHelper.OnlyOwner.selector);
-        helper.withdrawAndRedeem(1, 0, block.timestamp);
+        helper.withdrawAndRedeem(1, 0);
         vm.expectRevert(PersonalStakingHelper.OnlyOwner.selector);
         helper.recoverToken(token);
         vm.stopPrank();
@@ -302,27 +297,14 @@ contract PersonalStakingHelperTest is HelperFixture {
         token.approve(address(factory), 0);
         vm.prank(alice);
         vm.expectRevert();
-        factory.depositAndStake(1e18, 1, block.timestamp);
+        factory.depositAndStake(1e18, 1);
         assertEq(address(factory.helperOf(alice)), address(0));
         vm.prank(alice);
         token.approve(address(factory), type(uint256).max);
         vm.prank(alice);
         vm.expectRevert();
-        factory.depositAndStake(1e30 + 1, 1, block.timestamp);
+        factory.depositAndStake(1e30 + 1, 1);
         assertEq(address(factory.helperOf(alice)), address(0));
-    }
-
-    function test_FeeOnTransferIsRejectedEvenWithPreexistingHelperFunds() public {
-        address predicted = factory.predictHelper(alice);
-        token.mint(predicted, 10e18);
-        token.setFee(100);
-        uint256 beforeBalance = token.balanceOf(alice);
-        vm.prank(alice);
-        vm.expectRevert(PersonalStakingHelperFactory.UnsupportedAssetTransfer.selector);
-        factory.depositAndStake(100e18, 1, block.timestamp);
-        assertEq(token.balanceOf(alice), beforeBalance);
-        assertEq(token.balanceOf(predicted), 10e18);
-        assertEq(predicted.code.length, 0);
     }
 
     function test_InvalidPoolPairAndSameRewardTokenRejected() public {
@@ -341,7 +323,7 @@ contract PersonalStakingHelperTest is HelperFixture {
     }
 
     function test_FactoryRejectsTokenCallbackReentrancy() public {
-        token.setHook(alice, address(factory), abi.encodeCall(factory.depositAndStake, (1e18, 0, block.timestamp)));
+        token.setHook(alice, address(factory), abi.encodeCall(factory.depositAndStake, (1e18, 0)));
         (PersonalStakingHelper helper,) = deposit(alice, 100e18);
         assertFalse(token.callbackSuccess());
         assertEq(token.callbackResult(), abi.encodeWithSelector(ReentrancyGuard.ReentrancyGuardReentrantCall.selector));
@@ -389,7 +371,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         vm.prank(alice);
         assertEq(helper.claim(), 0);
         vm.prank(alice);
-        helper.withdrawAndRedeem(shares, 1, block.timestamp);
+        helper.withdrawAndRedeem(shares, 1);
         (PersonalStakingHelper again, uint256 newShares) = deposit(alice, 20e18);
         assertEq(address(helper), address(again));
         assertEq(again.stakedShares(), newShares);
@@ -412,7 +394,7 @@ contract PersonalStakingHelperTest is HelperFixture {
         uint256 quote = vault.previewRedeem(shares);
         uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
-        helper.withdrawAndRedeem(shares, quote, block.timestamp);
+        helper.withdrawAndRedeem(shares, quote);
         assertEq(token.balanceOf(alice) - beforeBalance, quote);
         assertEq(pool.totalSupply(), 0);
         assertClean(helper);
