@@ -1333,7 +1333,7 @@ contract LenderTest is Test {
         lender.adjust(user, int256(collateralAmount), int256(borrowAmount));
         
         // Record timestamp and debt before time advance
-        uint initialTimestamp = block.timestamp;
+        uint initialTimestamp = vm.getBlockTimestamp();
         uint initialDebt = lender.getDebtOf(user);
         
         // Advance time by 6 months to accrue interest (the mock interest model returns 1e18 per year)
