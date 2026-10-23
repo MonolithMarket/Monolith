@@ -134,5 +134,37 @@ getter. It is a registry fixture, not a complete CoinDAO launch simulation.
 [GovernanceFactory's staking implementation](https://github.com/MonolithMarket/GovernanceFactory/blob/be1b426577d17edba960ce28363d39dde3acbcb4/src/StakingRewards.sol)
 at the same commit, blob `7c2306c9a81a502ce1053fe32c38f69426433273`. Its only
 source change is lowering the compiler pragma from `^0.8.26` to `^0.8.24` to
-use Monolith's compiler alongside the real Vault. These tests do not establish
-live registry or pool state, and this change does not deploy any contracts.
+use Monolith's compiler alongside the real Vault.
+
+### Full CoinDAO integration
+
+The separate integration suite launches the actual Monolith Factory, Lender,
+Coin, InterestModel and Vault, together with the actual CoinDAOFactory, its
+eight implementations and its funded rewards pools. The governance sources
+and their vendored dependencies come from the pinned `lib/monolith-governance`
+submodule. No upstream source or compiler pragma is changed in this suite.
+
+Build the governance contracts with their own Solidity 0.8.26 project first,
+then run the Monolith integration tests with Solidity 0.8.24:
+
+```sh
+FOUNDRY_PROFILE=default forge build --root integration/coin-dao --use 0.8.26
+FOUNDRY_PROFILE=personal-staking-integration forge test --use 0.8.24 -vv
+```
+
+On PowerShell, set `$env:FOUNDRY_PROFILE` before each command. The integration
+profile grants read access only to the governance build's artifact directory;
+the tests deploy that bytecode locally across the compiler boundary. The
+test-only `CoinDAOTestDeployer` constructs launch parameters using the actual
+CoinDAOFactory types. The default test profile excludes this suite because it
+requires those separately built artifacts. CI builds and runs both suites.
+
+Only external collateral and its price feed are simulated. Users obtain Token
+by borrowing from the real lender; vault yield comes from real debt interest,
+and GOV rewards come from the factory's actual pool/funder launch flow. Tests
+cover two owners, independent DAOs added after helper-factory deployment,
+Token-staking rejection, both exit routes, and attachment to an existing
+Monolith market whose index differs from the CoinDAO ID.
+
+These are local integration tests, not live-state or mainnet-fork checks.
+This change does not deploy any contracts onchain.

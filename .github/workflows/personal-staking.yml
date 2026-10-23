@@ -5,6 +5,8 @@ on:
     paths:
       - 'src/**'
       - 'test/personal-staking/**'
+      - 'test/personal-staking-integration/**'
+      - 'integration/coin-dao/**'
       - 'lib/**'
       - '.gitmodules'
       - 'foundry.toml'
@@ -28,4 +30,13 @@ jobs:
         with:
           version: v1.8.5
       - name: Test personal staking helper
+        run: forge test --use 0.8.24 -vv
+      - name: Build actual CoinDAOFactory and implementations
+        working-directory: integration/coin-dao
+        env:
+          FOUNDRY_PROFILE: default
+        run: forge build --use 0.8.26
+      - name: Test actual CoinDAO integration
+        env:
+          FOUNDRY_PROFILE: personal-staking-integration
         run: forge test --use 0.8.24 -vv
