@@ -3,8 +3,32 @@ src = "src"
 out = "out"
 libs = ["lib"]
 no_match_coverage = "test"
+# Integration tests require the separate, unchanged CoinDAO 0.8.26 build.
+no_match_path = "test/personal-staking-integration/*.t.sol"
 optimizer = true
 optimizer_runs = 200
 via-ir = true
+# Expected-revert constructor tests must continue after the reverting creation.
+dynamic_test_linking = false
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/"
+]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[profile.personal-staking]
+match_path = "test/personal-staking/*.t.sol"
+
+[profile.personal-staking.fuzz]
+runs = 512
+
+[profile.personal-staking.invariant]
+runs = 128
+depth = 64
+fail_on_revert = true
+
+[profile.personal-staking-integration]
+match_path = "test/personal-staking-integration/*.t.sol"
+no_match_path = "test/personal-staking/*.t.sol"
+fs_permissions = [{ access = "read", path = "./integration/coin-dao/out" }]

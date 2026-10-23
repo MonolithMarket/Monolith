@@ -1,5 +1,14 @@
 {
   "lib/solmate": {
     "rev": "80d48c6f466a02458dad94ac72e19d0d3b51ca64"
+  },
+  "lib/openzeppelin-contracts": {
+    "rev": "fcbae5394ae8ad52d8e580a3477db99814b9d565"
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "rev": "aa677e9d28ed78fc427ec47ba2baef2030c58e7c"
+  },
+  "lib/monolith-governance": {
+    "rev": "be1b426577d17edba960ce28363d39dde3acbcb4"
   }
 }
