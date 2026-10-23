@@ -1,0 +1,31 @@
+name: Personal staking helper
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'test/personal-staking/**'
+      - 'lib/**'
+      - '.gitmodules'
+      - 'foundry.toml'
+      - 'foundry.lock'
+      - '.github/workflows/personal-staking.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      FOUNDRY_PROFILE: personal-staking
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+      - name: Test personal staking helper
+        run: forge test --use 0.8.24 -vv

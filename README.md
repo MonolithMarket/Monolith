@@ -72,3 +72,7 @@ Excess interest is added to the protocol's reserve which is only accessible by t
 A temporary operator role is added to the protocol to allow for adjusting certain protocol parameters after deployment. However, this role cannot upgrade the protocol or make changes beyong the predetermined parameters.
 
 This role is automatically revoked after a set amount of time. This provides a balance between initial flexibility and long-term immutability. Only the fee switch is exempt from this deadline.
+
+### Personal staking helper
+
+[Deposit Token and stake the resulting sToken in an existing GOV rewards pool](docs/personal-staking-helper.md) using an isolated helper owned by the depositor.
